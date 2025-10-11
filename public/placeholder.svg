@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" fill="none">
+  <rect width="1200" height="1200" fill="#6C63FF" rx="12"/>
+  
+  <!-- Party Hat -->
+  <path d="M600 150L750 600H450L600 150Z" fill="#FF6B6B" stroke="#FFF" stroke-width="8"/>
+  
+  <!-- Party Hat Decorations -->
+  <circle cx="600" cy="220" r="25" fill="#FFE66D"/>
+  <circle cx="520" cy="320" r="20" fill="#4ECDC4"/>
+  <circle cx="680" cy="320" r="20" fill="#95E1D3"/>
+  <circle cx="560" cy="420" r="18" fill="#FF6B6B"/>
+  <circle cx="640" cy="420" r="18" fill="#C7CEEA"/>
+  <circle cx="600" cy="500" r="15" fill="#FFE66D"/>
+  
+  <!-- House Base -->
+  <rect x="300" y="600" width="600" height="300" fill="#FFF" stroke="#000" stroke-width="6"/>
+  
+  <!-- Door -->
+  <rect x="550" y="720" width="100" height="180" fill="#4A4A4A"/>
+  <circle cx="620" cy="810" r="8" fill="#FFE66D"/>
+  
+  <!-- Windows -->
+  <rect x="350" y="650" width="120" height="120" fill="#87CEEB"/>
+  <rect x="730" y="650" width="120" height="120" fill="#87CEEB"/>
+  
+  <!-- Window Frames -->
+  <line x1="410" y1="650" x2="410" y2="770" stroke="#000" stroke-width="4"/>
+  <line x1="350" y1="710" x2="470" y2="710" stroke="#000" stroke-width="4"/>
+  <line x1="790" y1="650" x2="790" y2="770" stroke="#000" stroke-width="4"/>
+  <line x1="730" y1="710" x2="850" y2="710" stroke="#000" stroke-width="4"/>
+  
+  <!-- PartyHaus Text -->
+  <text x="600" y="1050" font-family="Arial, sans-serif" font-size="72" font-weight="bold" text-anchor="middle" fill="#FFF">PartyHaus</text>
+  
+  <!-- Confetti -->
+  <circle cx="200" cy="200" r="8" fill="#FF6B6B"/>
+  <circle cx="1000" cy="150" r="6" fill="#4ECDC4"/>
+  <circle cx="150" cy="400" r="10" fill="#FFE66D"/>
+  <circle cx="1050" cy="350" r="7" fill="#95E1D3"/>
+  <circle cx="100" cy="800" r="9" fill="#C7CEEA"/>
+  <circle cx="1100" cy="750" r="8" fill="#FF6B6B"/>
+  
+  <!-- Party Streamers -->
+  <path d="M50 50 Q 200 100 350 50 Q 500 100 650 50 Q 800 100 950 50 Q 1100 100 1150 50" 
+        stroke="#FF6B6B" stroke-width="8" fill="none"/>
+  <path d="M50 1150 Q 200 1100 350 1150 Q 500 1100 650 1150 Q 800 1100 950 1150 Q 1100 1100 1150 1150" 
+        stroke="#4ECDC4" stroke-width="8" fill="none"/>
+</svg>
