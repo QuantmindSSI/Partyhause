@@ -14,9 +14,8 @@ interface ResendWebhookData {
 }
 
 // Initialize Supabase client for webhook handler (server-side env vars)
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
+import { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from './env-server.js';
+const supabase = createClient(SUPABASE_URL || '', SUPABASE_SERVICE_ROLE_KEY || '', { auth: { persistSession: false } });
 
 // Resend webhook handler for email delivery status updates
 export default async function handler(req: any, res: any) {
