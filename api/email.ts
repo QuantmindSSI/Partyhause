@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { RESEND_API_KEY, RESEND_FROM_EMAIL } from './env-server.js';
 
 export default async function handler(req: any, res: any) {
   // Enable CORS
@@ -23,20 +24,20 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    if (!process.env.RESEND_API_KEY) {
+    if (!RESEND_API_KEY) {
       console.error('RESEND_API_KEY is not configured');
       return res.status(500).json({ success: false, error: 'Server configuration error' });
     }
 
-    if (!process.env.RESEND_FROM_EMAIL) {
+    if (!RESEND_FROM_EMAIL) {
       console.error('RESEND_FROM_EMAIL must be set to a verified sending address');
       return res.status(500).json({ success: false, error: 'Server configuration error: RESEND_FROM_EMAIL not set' });
     }
 
     // Initialize Resend inside handler to avoid module-level failures and make errors local to the request
-    const resend = new Resend(process.env.RESEND_API_KEY);
+  const resend = new Resend(RESEND_API_KEY);
 
-    const emailFrom = `PartyHause <${process.env.RESEND_FROM_EMAIL}>`;
+  const emailFrom = `PartyHause <${RESEND_FROM_EMAIL}>`;
     const sendPayload: any = {
       from: emailFrom,
       to: [to],

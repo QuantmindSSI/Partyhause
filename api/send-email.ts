@@ -1,10 +1,11 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { Resend } from 'resend';
+import { RESEND_API_KEY, RESEND_FROM_EMAIL, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from './env-server.js';
 import sanitizeHtml from 'sanitize-html';
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Resend with API key
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = new Resend(RESEND_API_KEY);
 
 interface SendEmailRequest {
   to: string;
@@ -39,12 +40,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Validate request body
   const { to, subject, html, guestId, eventId, metadata, from } = req.body as SendEmailRequest;
 
-    console.log('api/send-email - env RESEND_API_KEY present:', !!process.env.RESEND_API_KEY);
-    console.log('api/send-email - env RESEND_FROM_EMAIL present:', !!process.env.RESEND_FROM_EMAIL);
+  console.log('api/send-email - env RESEND_API_KEY present:', !!RESEND_API_KEY);
+  console.log('api/send-email - env RESEND_FROM_EMAIL present:', !!RESEND_FROM_EMAIL);
     console.log('api/send-email - incoming body:', JSON.stringify({ to, subject, html, guestId, eventId, metadata }));
 
     // Server-side Supabase admin client for updating email_logs
-    const supabaseAdmin = createClient(process.env.SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || '', {
+    const supabaseAdmin = createClient(SUPABASE_URL || '', SUPABASE_SERVICE_ROLE_KEY || '', {
       auth: { persistSession: false }
     });
 
@@ -69,7 +70,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Check if API key is available
-    if (!process.env.RESEND_API_KEY) {
+    if (!RESEND_API_KEY) {
       console.error('RESEND_API_KEY environment variable is not set');
       return res.status(500).json({
         success: false,
@@ -78,12 +79,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
       // Ensure a verified FROM address is configured and always use it.
-      if (!process.env.RESEND_FROM_EMAIL) {
+      if (!RESEND_FROM_EMAIL) {
   console.error('RESEND_FROM_EMAIL environment variable must be set to a verified sending address (e.g. dara@partyhause.com)');
           return res.status(500).json({ success: false, error: 'Server configuration error: RESEND_FROM_EMAIL not set' });
         }
 
-        const emailFrom = `PartyHause <${process.env.RESEND_FROM_EMAIL}>`;
+        const emailFrom = `PartyHause <${RESEND_FROM_EMAIL}>`;
 
     // Sanitize the HTML content before sending
     const sanitizedHtml = sanitizeHtml(contentHtml, {

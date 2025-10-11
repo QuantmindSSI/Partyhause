@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Server-side Supabase client using service_role key
-const supabaseAdmin = createClient(process.env.SUPABASE_URL || '', process.env.SUPABASE_SERVICE_ROLE_KEY || '', {
+import { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from './env-server.js';
+const supabaseAdmin = createClient(SUPABASE_URL || '', SUPABASE_SERVICE_ROLE_KEY || '', {
   auth: { persistSession: false }
 });
 
