@@ -17,6 +17,7 @@
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "smoke-test:migration": "node ./scripts/smoke-test-migration.js",
     "server": "node server/index.js"
   },
   "dependencies": {
