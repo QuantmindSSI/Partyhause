@@ -1,4 +1,3 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
 // Server-side Supabase client using service_role key
@@ -7,7 +6,7 @@ const supabaseAdmin = createClient(process.env.SUPABASE_URL || '', process.env.S
 });
 
 // Helper to get current user id from Authorization header (expects Bearer <token>)
-async function getUserIdFromAuth(req: VercelRequest) {
+async function getUserIdFromAuth(req: any) {
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) return null;
   const token = auth.split(' ')[1];
@@ -22,7 +21,7 @@ async function getUserIdFromAuth(req: VercelRequest) {
   }
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   // Allow CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');

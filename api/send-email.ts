@@ -127,7 +127,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (Object.keys(meta).length > 0) sendPayload.metadata = meta;
 
     const data: unknown = await resend.emails.send(sendPayload);
-    console.log('api/send-email - Resend response:', JSON.stringify(data));
+    // Avoid throwing if the SDK response contains circular refs or non-serializable values
+    try {
+      const serial = typeof data === 'string' ? data : JSON.stringify(data);
+      console.log('api/send-email - Resend response:', serial);
+    } catch (e) {
+      console.log('api/send-email - Resend response (non-serializable):', String(data));
+    }
 
     // Normalize resend id (some SDK versions return data.id or data.data.id)
     const extractResendId = (d: unknown): string | null => {
@@ -173,27 +179,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
   } catch (error: unknown) {
+    // Ensure we always return JSON and avoid re-throwing non-serializable errors
     console.error('Email sending failed:', error);
-    const err = error as { name?: string; message?: string };
+    const errAny = error as any;
+    const name = errAny?.name as string | undefined;
+    const message = (typeof errAny?.message === 'string' && errAny.message) || String(errAny) || 'unknown error';
 
-    // Handle different types of errors
-    if (err.name === 'validation_error') {
-      return res.status(400).json({
-        success: false,
-        error: 'Email validation failed: ' + (err.message || 'validation error')
-      });
+    // Handle typed-like errors when possible
+    if (name === 'validation_error') {
+      return res.status(400).json({ success: false, error: `Email validation failed: ${message}` });
     }
 
-    if (err.name === 'api_key_invalid') {
-      return res.status(401).json({
-        success: false,
-        error: 'Invalid API key configuration'
-      });
+    if (name === 'api_key_invalid') {
+      return res.status(401).json({ success: false, error: 'Invalid API key configuration' });
     }
 
-    return res.status(500).json({
-      success: false,
-      error: 'Failed to send email: ' + (err.message || 'unknown error')
-    });
+    return res.status(500).json({ success: false, error: `Failed to send email: ${message}` });
   }
 }
