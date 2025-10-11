@@ -24,7 +24,15 @@ export const sendEmail = async ({ to, subject, html }: EmailTemplate) => {
       body: JSON.stringify({ to, subject, html }),
     });
     
-    const data = await response.json();
+    // Parse JSON safely — if server returns non-JSON (html/text) catch and include raw text
+    let data: any;
+    try {
+      data = await response.json();
+    } catch (jsonErr) {
+      const text = await response.text().catch(() => '<unable to read response body>');
+      console.error('Non-JSON response from email API:', text);
+      throw new Error(`Email API returned non-JSON response (status ${response.status}): ${text}`);
+    }
     
     if (!response.ok) {
       throw new Error(data.error || `HTTP error! status: ${response.status}`);

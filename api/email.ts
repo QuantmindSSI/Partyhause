@@ -1,9 +1,6 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -28,15 +25,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!process.env.RESEND_API_KEY) {
       console.error('RESEND_API_KEY is not configured');
-      return res.status(500).json({ error: 'Server configuration error' });
+      return res.status(500).json({ success: false, error: 'Server configuration error' });
     }
 
     if (!process.env.RESEND_FROM_EMAIL) {
       console.error('RESEND_FROM_EMAIL must be set to a verified sending address');
-      return res.status(500).json({ error: 'Server configuration error: RESEND_FROM_EMAIL not set' });
+      return res.status(500).json({ success: false, error: 'Server configuration error: RESEND_FROM_EMAIL not set' });
     }
 
-  const emailFrom = `PartyHause <${process.env.RESEND_FROM_EMAIL}>`;
+    // Initialize Resend inside handler to avoid module-level failures and make errors local to the request
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    const emailFrom = `PartyHause <${process.env.RESEND_FROM_EMAIL}>`;
     const sendPayload: any = {
       from: emailFrom,
       to: [to],
@@ -52,12 +52,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const data = await resend.emails.send(sendPayload);
 
-    console.log('Email sent:', data);
-    const resendId = data?.data?.id || null;
-    return res.status(200).json({ success: true, data: { id: resendId, raw: data } });
+    // Safe logging: some SDK responses can be non-serializable
+    try {
+      console.log('Email sent:', typeof data === 'string' ? data : JSON.stringify(data));
+    } catch (e) {
+      console.log('Email sent (non-serializable response)');
+    }
 
-  } catch (error: any) {
+    const resendId = (data && typeof data === 'object' && (data as any).data && (data as any).data.id) ? (data as any).data.id : null;
+    return res.status(200).json({ success: true, data: { id: resendId } });
+
+  } catch (error: unknown) {
+    // Always return JSON to clients and avoid exposing stack traces
     console.error('Email error:', error);
-    return res.status(500).json({ error: error.message });
+    const err: any = error;
+    const message = (err && (err.message || String(err))) || 'unknown error';
+    // Map some known error types to statuses
+    if (message.toLowerCase().includes('invalid api key') || message.toLowerCase().includes('unauthorized')) {
+      return res.status(401).json({ success: false, error: 'Email provider authentication failed' });
+    }
+    if (message.toLowerCase().includes('validation') || message.toLowerCase().includes('invalid')) {
+      return res.status(400).json({ success: false, error: message });
+    }
+    return res.status(500).json({ success: false, error: `Failed to send email: ${message}` });
   }
 }

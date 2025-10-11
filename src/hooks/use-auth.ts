@@ -46,8 +46,20 @@ export const useAuth = () => {
           };
           await usePartyStore.getState().setUser(normalizedUser);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.warn('Session check failed:', error);
+        // If refresh token is invalid or not found (token rotation or revocation),
+        // proactively clear local session and force the user to sign in again.
+        const msg = (error && (error.message || String(error))) || '';
+        if (msg.includes('Refresh Token Not Found') || msg.includes('Invalid Refresh Token')) {
+          try {
+            // Best-effort sign out to clear local storage/cookies
+            await supabase.auth.signOut();
+          } catch (e) {
+            // ignore signOut errors
+          }
+          usePartyStore.getState().logout();
+        }
       } finally {
         if (mounted) {
           usePartyStore.getState().setLoading(false);

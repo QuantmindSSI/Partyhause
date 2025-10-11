@@ -1,11 +1,9 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-
 // Lightweight health endpoint to verify presence of critical env vars used by the email
 // handlers. THIS ENDPOINT DOES NOT RETURN SECRET VALUES — only booleans indicating
 // whether the variable is set. Deploy to production and call /api/email-health to
 // verify configuration without exposing keys.
 
-export default function handler(_req: VercelRequest, res: VercelResponse) {
+export default function handler(_req: any, res: any) {
   try {
     const present = {
       RESEND_API_KEY: !!process.env.RESEND_API_KEY,
