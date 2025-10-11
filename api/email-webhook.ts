@@ -13,10 +13,10 @@ interface ResendWebhookData {
   [key: string]: unknown;
 }
 
-// Initialize Supabase client for webhook handler
-const supabaseUrl = process.env.VITE_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+// Initialize Supabase client for webhook handler (server-side env vars)
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
 
 // Resend webhook handler for email delivery status updates
 export default async function handler(req: any, res: any) {
