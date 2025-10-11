@@ -75,9 +75,6 @@ VITE_APP_ENV=development
 This project uses GitHub Actions for automated CI/CD deployment to Vercel.
 
 ### Automatic Deployment
-- **Production**: Push to `main` branch triggers production deployment
-- **Preview**: Pull requests automatically create preview deployments
-- **Manual**: Use GitHub Actions workflow dispatch for manual deployments
 
 ### Setup Deployment
 
@@ -92,6 +89,29 @@ This project uses GitHub Actions for automated CI/CD deployment to Vercel.
    ```
 4. **Deploy automatically** - Vercel deploys on every push to main
 
+## CI/CD and Deployment
+
+This repository includes a GitHub Actions workflow at `.github/workflows/ci.yml` that runs on pushes and pull requests to `main`.
+
+Required GitHub secrets (set these in the repository settings for CI to run optional steps):
+- `SUPABASE_URL` - your Supabase project URL
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (used by migration smoke-test)
+- `VERCEL_TOKEN` - Vercel deploy token (for automated deploys)
+- `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` - Vercel identifiers for the project
+
+The CI pipeline runs:
+- `npm ci`
+- `npm run lint`
+- `npm run build:check` (typecheck & build)
+- `npm run test:run` (unit tests)
+- Optionally `npm run smoke-test:migration` when Supabase secrets are present
+- Optionally deploys to Vercel when Vercel secrets are present
+
+Run the migration smoke-test locally (requires service role key):
+
+```bash
+SUPABASE_URL="https://xyz.supabase.co" SUPABASE_SERVICE_ROLE_KEY="your-service-role-key" npm run smoke-test:migration
+```
 For detailed setup instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ## 🧪 Testing
