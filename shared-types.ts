@@ -121,7 +121,7 @@ export interface Notification {
   title: string;
   message: string;
   type: 'event_invite' | 'event_reminder' | 'game_invite' | 'system';
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
   isRead: boolean;
   createdAt: Date;
 }
@@ -146,7 +146,7 @@ export interface GameFilters {
 export interface AppError {
   code: string;
   message: string;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
 }
 
 // State Types (for both GetX and React state management)

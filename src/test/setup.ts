@@ -200,6 +200,7 @@ vi.mock('lucide-react', () => ({
   ArrowRight: ({ ...props }: any) => React.createElement('svg', props),
   QrCode: ({ ...props }: any) => React.createElement('svg', props),
   Loader2: ({ ...props }: any) => React.createElement('svg', props),
+  Lock: ({ ...props }: any) => React.createElement('svg', props),
   UserCheck: ({ ...props }: any) => React.createElement('svg', props),
   UserX: ({ ...props }: any) => React.createElement('svg', props),
   Copy: ({ ...props }: any) => React.createElement('svg', props),
@@ -216,6 +217,10 @@ vi.mock('lucide-react', () => ({
   ChevronDown: ({ ...props }: any) => React.createElement('svg', props),
   Circle: ({ ...props }: any) => React.createElement('svg', props),
   X: ({ ...props }: any) => React.createElement('svg', props),
+  Eye: ({ ...props }: any) => React.createElement('svg', props),
+  EyeOff: ({ ...props }: any) => React.createElement('svg', props),
+  CheckCircle: ({ ...props }: any) => React.createElement('svg', props),
+  CheckCircle2: ({ ...props }: any) => React.createElement('svg', props),
 }))
 
 // Mock UI components to prevent undefined component errors
