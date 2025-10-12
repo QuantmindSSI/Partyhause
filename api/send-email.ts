@@ -17,6 +17,12 @@ interface SendEmailRequest {
   from?: string;
 }
 
+type EmailMetadata = Record<string, unknown> & {
+  templateBody?: unknown;
+  emailLogId?: unknown;
+  templateId?: unknown;
+};
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Handle CORS for cross-origin requests
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -39,6 +45,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
   // Validate request body
   const { to, subject, html, guestId, eventId, metadata, from } = req.body as SendEmailRequest;
+  const metadataRecord: EmailMetadata | undefined =
+    metadata && typeof metadata === 'object' ? (metadata as EmailMetadata) : undefined;
 
   console.log('api/send-email - env RESEND_API_KEY present:', !!RESEND_API_KEY);
   console.log('api/send-email - env RESEND_FROM_EMAIL present:', !!RESEND_FROM_EMAIL);
@@ -50,7 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     // Check for required fields. Allow templateBody via metadata as alternative to html.
-    const templateBodyFromMeta = metadata?.templateBody || null;
+  const templateBodyFromMeta = metadataRecord?.templateBody ?? null;
     const contentHtml = templateBodyFromMeta || html;
 
     if (!to || !subject || !contentHtml) {
@@ -122,8 +130,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const meta: Record<string, string> = {};
     if (guestId) meta.guestId = String(guestId);
     if (eventId) meta.eventId = String(eventId);
-    if (metadata && typeof metadata === 'object') {
-      Object.entries(metadata).forEach(([k, v]) => { meta[k] = String(v); });
+    if (metadataRecord) {
+      Object.entries(metadataRecord).forEach(([k, v]) => {
+        if (v != null) {
+          meta[k] = String(v);
+        }
+      });
     }
   if (Object.keys(meta).length > 0) sendPayload.metadata = meta;
 
@@ -153,7 +165,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const resendId = extractResendId(data);
 
     // If we have an emailLogId from metadata, update the email_logs record with template info and resend id
-    const emailLogId = metadata?.emailLogId;
+    const emailLogIdRaw = metadataRecord?.emailLogId;
+    const emailLogId = typeof emailLogIdRaw === 'string' || typeof emailLogIdRaw === 'number'
+      ? String(emailLogIdRaw)
+      : undefined;
     if (emailLogId) {
       try {
         await supabaseAdmin
@@ -182,9 +197,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error: unknown) {
     // Ensure we always return JSON and avoid re-throwing non-serializable errors
     console.error('Email sending failed:', error);
-    const errAny = error as any;
-    const name = errAny?.name as string | undefined;
-    const message = (typeof errAny?.message === 'string' && errAny.message) || String(errAny) || 'unknown error';
+    let name: string | undefined;
+    let message = 'unknown error';
+
+    if (error instanceof Error) {
+      name = error.name;
+      message = error.message;
+    } else if (typeof error === 'object' && error !== null && 'message' in error) {
+      const potential = (error as { message?: unknown; name?: unknown }).message;
+      const potentialName = (error as { message?: unknown; name?: unknown }).name;
+      if (typeof potentialName === 'string') {
+        name = potentialName;
+      }
+      if (typeof potential === 'string') {
+        message = potential;
+      } else {
+        message = String(potential);
+      }
+    } else {
+      message = String(error);
+    }
 
     // Handle typed-like errors when possible
     if (name === 'validation_error') {
