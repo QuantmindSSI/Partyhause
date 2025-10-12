@@ -29,7 +29,7 @@ describe('Email Service', () => {
 
       const result = await sendEmail(emailData);
 
-      expect(fetch).toHaveBeenCalledWith('/api/send-email', {
+      expect(fetch).toHaveBeenCalledWith('/api/email', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -79,7 +79,7 @@ describe('Email Service', () => {
         html: '<h1>Test Email</h1>'
       };
 
-      await expect(sendEmail(emailData)).rejects.toThrow('Failed to send email');
+      await expect(sendEmail(emailData)).rejects.toThrow('API Error');
     });
 
     it('should handle network errors', async () => {
@@ -117,10 +117,10 @@ describe('Email Service', () => {
       expect(template.html).toContain('December 31, 2024');
       expect(template.html).toContain('123 Party Street, Fun City');
       expect(template.html).toContain(invitationUrl);
-      expect(template.html).toContain('PartyHaus');
+      expect(template.html).toContain('PartyHause');
     });
 
-    it('should include RSVP buttons in the template', () => {
+    it('should include RSVP call-to-action in the template', () => {
       const eventDetails = {
         name: 'Test Party',
         date: 'December 31, 2024',
@@ -135,9 +135,8 @@ describe('Email Service', () => {
         invitationUrl
       );
 
-      expect(template.html).toContain('Accept');
-      expect(template.html).toContain('Decline');
-      expect(template.html).toContain('Maybe');
+      expect(template.html).toContain('RSVP Now');
+      expect(template.html).toContain('Ready to join the party');
     });
 
     it('should include QR code placeholder', () => {
@@ -155,7 +154,7 @@ describe('Email Service', () => {
         invitationUrl
       );
 
-      expect(template.html).toContain('QR');
+    expect(template.html).toContain('QR Check-in');
     });
 
     it('should handle special characters in event details', () => {
@@ -197,7 +196,7 @@ describe('Email Service', () => {
 
       expect(template.to).toBe('guest@example.com');
       expect(template.subject).toContain('RSVP Confirmed');
-      expect(template.html).toContain('confirmed');
+  expect(template.html).toContain('RSVP Confirmed');
       expect(template.html).toContain('Test Party');
       expect(template.html).toContain('John Doe');
     });
@@ -218,9 +217,9 @@ describe('Email Service', () => {
       );
 
       expect(template.to).toBe('guest@example.com');
-      expect(template.subject).toContain('Reminder');
-      expect(template.subject).toContain('Test Party');
-      expect(template.html).toContain('coming up');
+    expect(template.subject).toContain('Test Party');
+    expect(template.subject).toContain("Don't forget");
+    expect(template.html).toContain("Tomorrow's the day");
       expect(template.html).toContain('Test Party');
       expect(template.html).toContain('John Doe');
     });

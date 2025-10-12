@@ -1,347 +1,281 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { renderHook, act, waitFor } from '@testing-library/react';
+
+vi.mock('@/hooks/use-auth', async () => {
+  const actual = await vi.importActual<typeof import('@/hooks/use-auth')>('@/hooks/use-auth');
+  return actual;
+});
+
 import { useAuth } from '@/hooks/use-auth';
 import { supabase } from '@/lib/supabase';
 import { usePartyStore } from '@/store/usePartyStore';
-
-// Get the real setUser before mocking
-const realStore = require('../store/usePartyStore.ts');
-const realSetUser = realStore.usePartyStore.getState().setUser;
 import { eventService } from '@/lib/events';
 
-// Mock Supabase
-vi.mock('@/lib/supabase', () => ({
-  supabase: {
-    auth: {
-      getSession: vi.fn(),
-      onAuthStateChange: vi.fn(),
-      signInWithPassword: vi.fn(),
-      signUp: vi.fn(),
-      signOut: vi.fn(),
-    },
-    from: vi.fn(() => ({
-      upsert: vi.fn(),
-    })),
-  },
-}));
+declare global {
+  interface Window {
+    requestIdleCallback?: (callback: (...args: any[]) => void) => number;
+  }
+}
 
-// Mock Zustand store - don't mock it so real setUser runs
-// vi.mock('@/store/usePartyStore', () => ({
-//   usePartyStore: vi.fn(),
-// }));
+type AuthStateHandler = (event: string, session: unknown) => void | Promise<void>;
 
-// Mock event service
-vi.mock('@/lib/events', () => ({
-  eventService: {
-    getUserEvents: vi.fn(),
-    createEvent: vi.fn(),
-  },
-}));
+type SupabaseAuthMock = {
+  getSession: ReturnType<typeof vi.fn>;
+  onAuthStateChange: ReturnType<typeof vi.fn>;
+  signInWithPassword: ReturnType<typeof vi.fn>;
+  signUp: ReturnType<typeof vi.fn>;
+  signOut: ReturnType<typeof vi.fn>;
+};
 
-describe('Authentication Hook', () => {
-  let mockStore: any;
+const supabaseAuth = supabase.auth as unknown as SupabaseAuthMock;
+
+const resetStore = () => {
+  usePartyStore.setState({
+    user: null,
+    isAuthenticated: false,
+    isLoading: false,
+    currentPage: 'auth',
+    events: [],
+    currentEvent: null,
+    guests: [],
+    loadedEventIds: new Set<string>(),
+    fetchingEventId: null,
+  });
+};
+
+const waitForAsyncQueue = async () => {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+};
+
+describe('useAuth hook', () => {
+  let originalRequestIdleCallback: typeof window.requestIdleCallback;
+  let authStateHandler: AuthStateHandler | undefined;
+
+  beforeAll(() => {
+    originalRequestIdleCallback = window.requestIdleCallback;
+    const immediate = (callback: (...args: any[]) => void) => {
+      callback({});
+      return 1;
+    };
+    window.requestIdleCallback = immediate;
+  });
+
+  afterAll(() => {
+    if (originalRequestIdleCallback) {
+      window.requestIdleCallback = originalRequestIdleCallback;
+    } else {
+      delete window.requestIdleCallback;
+    }
+  });
 
   beforeEach(() => {
-    mockStore = {
-      setUser: vi.fn(realSetUser),
-      logout: vi.fn(),
-      setLoading: vi.fn(),
-      user: null,
-      isAuthenticated: false,
-    };
-    // Mock the store to return our mock store
-    vi.mocked(usePartyStore).mockReturnValue(mockStore);
+    vi.clearAllMocks();
+    resetStore();
+    authStateHandler = undefined;
+
+    (eventService.getUserEvents as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    supabaseAuth.getSession.mockResolvedValue({
+      data: { session: null },
+      error: null,
+    });
+    supabaseAuth.signOut.mockResolvedValue({ error: null });
+    supabaseAuth.onAuthStateChange.mockImplementation((callback: AuthStateHandler) => {
+      authStateHandler = callback;
+      return { data: { subscription: { unsubscribe: vi.fn() } } };
+    });
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    authStateHandler = undefined;
   });
 
-  describe('Initial Load', () => {
-    it('should handle existing session on mount', async () => {
-      const mockSession = {
-        user: { id: '123', email: 'test@example.com' },
-        access_token: 'token',
-      };
+  const triggerAuthEvent = async (event: string, session: unknown) => {
+    if (!authStateHandler) throw new Error('Auth state handler not registered');
+    await act(async () => {
+      await authStateHandler?.(event, session);
+    });
+    await waitForAsyncQueue();
+  };
 
-      (supabase.auth.getSession as any).mockResolvedValue({
-        data: { session: mockSession },
-        error: null,
-      });
+  it('hydrates the store from an existing session', async () => {
+    const mockSession = {
+      user: {
+        id: 'user-1',
+        email: 'init@example.com',
+        user_metadata: { name: 'Init User' },
+      },
+    };
 
-      (supabase.auth.onAuthStateChange as any).mockImplementation((callback) => {
-        // Simulate immediate call with existing session
-        callback('TOKEN_REFRESHED', mockSession);
-        return { data: { subscription: { unsubscribe: vi.fn() } } };
-      });
-
-      const { result } = renderHook(() => useAuth());
-
-      // Wait for async operations
-      await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
-      });
-
-      // Just verify that the hook initializes without errors
-      expect(result.current).toBeDefined();
+    supabaseAuth.getSession.mockResolvedValue({
+      data: { session: mockSession },
+      error: null,
     });
 
-    it('should handle no existing session', async () => {
-      (supabase.auth.getSession as any).mockResolvedValue({
-        data: { session: null },
-        error: null,
-      });
-
-      (supabase.auth.onAuthStateChange as any).mockReturnValue({
-        data: { subscription: { unsubscribe: vi.fn() } },
-      });
-
-      const { result } = renderHook(() => useAuth());
-
-      await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
-      });
-
-      // Just verify that the hook initializes without errors
-      expect(result.current).toBeDefined();
+    renderHook(() => useAuth());
+    await waitFor(() => {
+      expect(supabaseAuth.onAuthStateChange).toHaveBeenCalledTimes(1);
     });
+    await waitFor(() => {
+      expect(supabaseAuth.getSession).toHaveBeenCalledTimes(1);
+    });
+    await waitForAsyncQueue();
+
+    const state = usePartyStore.getState();
+    expect(state.user).toMatchObject({
+      id: 'user-1',
+      email: 'init@example.com',
+      name: 'Init User',
+    });
+    expect(state.isAuthenticated).toBe(true);
+    expect(state.isLoading).toBe(false);
+    expect(eventService.getUserEvents).toHaveBeenCalledWith('user-1');
   });
 
-  describe('Authentication Methods', () => {
-    it('should handle sign in successfully', async () => {
-      const mockUser = { id: '123', email: 'test@example.com' };
-      const mockSession = { user: mockUser, access_token: 'token' };
+  it('signs in a user via Supabase', async () => {
+    const mockUser = { id: 'user-2', email: 'signin@example.com' };
 
-      (supabase.auth.signInWithPassword as any).mockResolvedValue({
-        data: { user: mockUser, session: mockSession },
-        error: null,
-      });
-
-      const { result } = renderHook(() => useAuth());
-
-      await act(async () => {
-        await result.current.signIn('test@example.com', 'password');
-      });
-
-      // Just verify the return value
-      expect(result.current).toBeDefined();
+    supabaseAuth.signInWithPassword.mockResolvedValue({
+      data: { user: mockUser, session: { access_token: 'token' } },
+      error: null,
     });
 
-    it('should handle sign in error', async () => {
-      const mockError = { message: 'Invalid credentials' };
+    const { result } = renderHook(() => useAuth());
+    expect((supabase.auth.signInWithPassword as any).mock).toBeDefined();
 
-      (supabase.auth.signInWithPassword as any).mockResolvedValue({
-        data: { user: null, session: null },
-        error: mockError,
-      });
-
-      const { result } = renderHook(() => useAuth());
-
-      await act(async () => {
-        await result.current.signIn('test@example.com', 'wrongpassword');
-      });
-
-      // Just verify the hook still works
-      expect(result.current).toBeDefined();
+    let response: unknown;
+    await act(async () => {
+      response = await result.current.signIn('signin@example.com', 'secret');
     });
 
-    it('should handle sign up successfully', async () => {
-      const mockUser = { id: '123', email: 'test@example.com' };
-
-      (supabase.auth.signUp as any).mockResolvedValue({
-        data: { user: mockUser, session: null },
-        error: null,
+    await waitFor(() => {
+      expect(supabaseAuth.signInWithPassword).toHaveBeenCalledWith({
+        email: 'signin@example.com',
+        password: 'secret',
       });
-
-      const { result } = renderHook(() => useAuth());
-
-      await act(async () => {
-        await result.current.signUp('test@example.com', 'password');
-      });
-
-      // Just verify the return value
-      expect(result.current).toBeDefined();
     });
-
-    it('should handle sign out', async () => {
-      (supabase.auth.signOut as any).mockResolvedValue({
-        error: null,
-      });
-
-      const { result } = renderHook(() => useAuth());
-
-      await act(async () => {
-        await result.current.signOut();
-      });
-
-      expect(mockStore.logout).toHaveBeenCalled();
-      expect(mockStore.setLoading).toHaveBeenCalledWith(false);
-    });
+    expect(response).toEqual({ user: mockUser, error: null });
   });
 
-  describe('Auth State Changes', () => {
-    it('should handle SIGNED_IN event', async () => {
-      const mockSession = {
-        user: { id: '123', email: 'test@example.com' },
-        access_token: 'token',
-      };
+  it('propagates sign in errors and resets loading state', async () => {
+    const signInError = new Error('Invalid credentials');
 
-      (supabase.auth.onAuthStateChange as any).mockImplementation((callback) => {
-        // Simulate SIGNED_IN event
-        callback('SIGNED_IN', mockSession);
-        return { data: { subscription: { unsubscribe: vi.fn() } } };
-      });
-
-      renderHook(() => useAuth());
-
-      await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
-      });
-
-      expect(mockStore.setUser).toHaveBeenCalledWith({
-        id: '123',
-        email: 'test@example.com',
-        access_token: 'token',
-      });
+    supabaseAuth.signInWithPassword.mockResolvedValue({
+      data: { user: null, session: null },
+      error: signInError,
     });
 
-    it('should handle SIGNED_OUT event', async () => {
-      (supabase.auth.onAuthStateChange as any).mockImplementation((callback) => {
-        // Simulate SIGNED_OUT event
-        callback('SIGNED_OUT', null);
-        return { data: { subscription: { unsubscribe: vi.fn() } } };
-      });
+    const { result } = renderHook(() => useAuth());
 
-      renderHook(() => useAuth());
-
-      await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 10));
-      });
-
-      expect(mockStore.logout).toHaveBeenCalled();
+    let response: unknown;
+    await act(async () => {
+      response = await result.current.signIn('signin@example.com', 'wrong');
     });
+
+    await waitFor(() => {
+      expect(supabaseAuth.signInWithPassword).toHaveBeenCalledWith({
+        email: 'signin@example.com',
+        password: 'wrong',
+      });
+    });
+    expect(response).toEqual({ user: null, error: signInError });
+    expect(usePartyStore.getState().isLoading).toBe(false);
   });
 
-  describe('User Creation + Event Creation Flow', () => {
-    it('should handle user creation and event creation without 404 errors', async () => {
-      const mockUser = {
-        id: 'user-123',
-        email: 'newuser@example.com',
-        name: 'New User',
-        user_metadata: { name: 'New User' }
-      };
+  it('registers new users with additional metadata', async () => {
+    const mockUser = { id: 'user-3', email: 'signup@example.com' };
 
-      const mockEvent = {
-        id: 'event-123',
-        host_id: 'user-123',
-        name: 'Test Event',
-        event_date: '2025-01-01T12:00:00Z',
-        location: 'Test Location'
-      };
-
-      // Mock successful user upsert
-      const mockSupabaseFrom = vi.fn(() => ({
-        upsert: vi.fn().mockResolvedValue({ data: mockUser, error: null })
-      }));
-      (supabase.from as any).mockImplementation(mockSupabaseFrom);
-
-      // Mock successful event creation
-      (eventService.createEvent as any).mockResolvedValue(mockEvent);
-      (eventService.getUserEvents as any).mockResolvedValue([mockEvent]);
-
-      // Mock auth state change for user creation
-      (supabase.auth.onAuthStateChange as any).mockImplementation((callback) => {
-        // Simulate SIGNED_IN event after signup
-        setTimeout(() => {
-          callback('SIGNED_IN', {
-            user: mockUser,
-            access_token: 'token'
-          });
-        }, 10);
-        return { data: { subscription: { unsubscribe: vi.fn() } } };
-      });
-
-      // Mock successful signup
-      (supabase.auth.signUp as any).mockResolvedValue({
-        data: { user: mockUser },
-        error: null
-      });
-
-      const { result } = renderHook(() => useAuth());
-
-      // Test signup
-      await act(async () => {
-        const signupResult = await result.current.signUp('newuser@example.com', 'password123');
-        expect(signupResult.error).toBeNull();
-        expect(signupResult.user).toEqual(mockUser);
-      });
-
-      // Wait for auth state change to process
-      await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 50));
-      });
-
-      // Verify user was set in store
-      expect(mockStore.setUser).toHaveBeenCalledWith(expect.objectContaining({
-        id: 'user-123',
-        email: 'newuser@example.com',
-        name: 'New User'
-      }));
-
-      // Verify user upsert was called (should not cause 404)
-      expect(supabase.from).toHaveBeenCalledWith('users');
-      expect(mockSupabaseFrom().upsert).toHaveBeenCalledWith({
-        id: 'user-123',
-        email: 'newuser@example.com',
-        name: 'New User'
-      }, { onConflict: 'id' });
-
-      // Verify events were loaded
-      expect(eventService.getUserEvents).toHaveBeenCalledWith('user-123');
+    supabaseAuth.signUp.mockResolvedValue({
+      data: { user: mockUser },
+      error: null,
     });
 
-    it('should handle user upsert failure gracefully', async () => {
-      const mockUser = {
-        id: 'user-123',
-        email: 'newuser@example.com',
-        name: 'New User'
-      };
+    const { result } = renderHook(() => useAuth());
 
-      // Mock failed user upsert (simulating 404)
-      const mockSupabaseFrom = vi.fn(() => ({
-        upsert: vi.fn().mockRejectedValue(new Error('Table users does not exist'))
-      }));
-      (supabase.from as any).mockImplementation(mockSupabaseFrom);
-
-      // Mock successful event loading despite user upsert failure
-      (eventService.getUserEvents as any).mockResolvedValue([]);
-
-      // Mock auth state change
-      (supabase.auth.onAuthStateChange as any).mockImplementation((callback) => {
-        setTimeout(() => {
-          callback('SIGNED_IN', {
-            user: mockUser,
-            access_token: 'token'
-          });
-        }, 10);
-        return { data: { subscription: { unsubscribe: vi.fn() } } };
-      });
-
-      const { result } = renderHook(() => useAuth());
-
-      // Wait for auth state change to process
-      await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 50));
-      });
-
-      // Verify user was still set in store despite upsert failure
-      expect(mockStore.setUser).toHaveBeenCalledWith(expect.objectContaining({
-        id: 'user-123',
-        email: 'newuser@example.com'
-      }));
-
-      // Verify events were still loaded (graceful degradation)
-      expect(eventService.getUserEvents).toHaveBeenCalledWith('user-123');
+    let response: unknown;
+    await act(async () => {
+      response = await result.current.signUp('signup@example.com', 'password123', 'Signup User');
     });
+
+    await waitFor(() => {
+      expect(supabaseAuth.signUp).toHaveBeenCalledWith({
+        email: 'signup@example.com',
+        password: 'password123',
+        options: {
+          data: {
+            name: 'Signup User',
+            full_name: 'Signup User',
+          },
+        },
+      });
+    });
+    expect(response).toEqual({ user: mockUser, error: null });
+  });
+
+  it('resets the store on sign out', async () => {
+    usePartyStore.setState({
+      user: { id: 'user-4', email: 'active@example.com' } as any,
+      isAuthenticated: true,
+      isLoading: false,
+    });
+
+    const { result } = renderHook(() => useAuth());
+
+    await act(async () => {
+      await result.current.signOut();
+    });
+
+    await waitFor(() => {
+      expect(supabaseAuth.signOut).toHaveBeenCalled();
+    });
+    const state = usePartyStore.getState();
+    expect(state.user).toBeNull();
+    expect(state.isAuthenticated).toBe(false);
+    expect(state.isLoading).toBe(false);
+  });
+
+  it('updates the store after SIGNED_IN events', async () => {
+    const { result } = renderHook(() => useAuth());
+    await waitFor(() => {
+      expect(supabaseAuth.onAuthStateChange).toHaveBeenCalled();
+    });
+    expect(result.current).toBeDefined();
+
+    await triggerAuthEvent('SIGNED_IN', {
+      user: {
+        id: 'user-5',
+        email: 'event@example.com',
+        user_metadata: { name: 'Event User' },
+      },
+    });
+
+    const state = usePartyStore.getState();
+    expect(state.user).toMatchObject({
+      id: 'user-5',
+      email: 'event@example.com',
+      name: 'Event User',
+    });
+    expect(eventService.getUserEvents).toHaveBeenCalledWith('user-5');
+  });
+
+  it('clears the store after SIGNED_OUT events', async () => {
+    const { result } = renderHook(() => useAuth());
+    await waitFor(() => {
+      expect(supabaseAuth.onAuthStateChange).toHaveBeenCalled();
+    });
+    expect(result.current).toBeDefined();
+
+    usePartyStore.setState({
+      user: { id: 'user-6', email: 'existing@example.com' } as any,
+      isAuthenticated: true,
+    });
+
+    await triggerAuthEvent('SIGNED_OUT', null);
+
+    const state = usePartyStore.getState();
+    expect(state.user).toBeNull();
+    expect(state.isAuthenticated).toBe(false);
   });
 });

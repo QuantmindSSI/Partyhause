@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { emailTemplates } from '@/lib/email';
 
 // E2E tests for the email API endpoint
 // These tests require the actual API to be running
 describe('Email API E2E Tests', () => {
   const API_URL = process.env.NODE_ENV === 'production' 
-    ? '/api/send-email' 
+    ? '/api/email' 
     : 'http://localhost:3001/api/send-email';
 
   // Only run these tests if we're in an environment where the API is expected to be available
@@ -110,7 +111,7 @@ describe('Email API E2E Tests', () => {
   describe('Email API Mock Tests', () => {
     it('should have correct API URL configuration', () => {
       const devUrl = 'http://localhost:3001/api/send-email';
-      const prodUrl = '/api/send-email';
+      const prodUrl = '/api/email';
       
       expect([devUrl, prodUrl]).toContain(API_URL);
     });
@@ -136,8 +137,6 @@ describe('Email API E2E Tests', () => {
 // Performance tests for email templates
 describe('Email Template Performance', () => {
   it('should generate email templates quickly', () => {
-    const { emailTemplates } = require('@/lib/email');
-    
     const eventDetails = {
       name: 'Performance Test Event',
       date: 'December 31, 2024',
@@ -163,8 +162,6 @@ describe('Email Template Performance', () => {
   });
 
   it('should handle large event names efficiently', () => {
-    const { emailTemplates } = require('@/lib/email');
-    
     const largeEventName = 'A'.repeat(1000); // 1000 character event name
     const eventDetails = {
       name: largeEventName,
