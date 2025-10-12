@@ -5,7 +5,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { usePartyStore } from "@/store/usePartyStore";
 import { AuthScreen } from "@/components/AuthScreen";
-import { LandingPage } from "@/components/LandingPage";
 import LandingPageCreative from "@/components/LandingPageCreative";
 import PartyCultureBlog from "@/components/PartyCultureBlog";
 import { useAuth } from "@/hooks/use-auth";
@@ -44,10 +43,11 @@ const App = () => {
   const [userIntent, setUserIntent] = useState<'create_event' | 'join_event' | 'explore_features'>('explore_features');
 
   useEffect(() => {
-    // Initialize auth state listener for session management
+    // Initialize auth state listener once for session management
     initializeAuthStateListener();
-    
-    // Enhanced routing logic with landing page support
+  }, []);
+
+  useEffect(() => {
     if (user) {
       setAppMode('app');
       if (currentPage === 'auth' || currentPage === 'landing') {
@@ -64,17 +64,7 @@ const App = () => {
       }
       // Don't auto-redirect to auth from landing - let user choose
     }
-  }, [user?.id, currentPage, appMode]);
-
-  const handleGetStarted = (intent: 'create_event' | 'join_event' | 'explore_features' = 'create_event') => {
-    setUserIntent(intent);
-    setAppMode('auth');
-  };
-
-  const handleSignIn = () => {
-    setUserIntent('explore_features');
-    setAppMode('auth');
-  };
+  }, [user, currentPage, appMode]);
 
   const handleBackToLanding = () => {
     setAppMode('landing');
@@ -97,7 +87,12 @@ const App = () => {
     if (!user) {
       if (appMode === 'landing') {
         return (
-          <LandingPageCreative />
+          <LandingPageCreative 
+            onStartAuth={(intent) => {
+              setUserIntent(intent);
+              setAppMode('auth');
+            }}
+          />
         );
       } else {
         return (

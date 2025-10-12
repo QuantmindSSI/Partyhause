@@ -64,7 +64,7 @@ describe('User Creation + Event Creation Integration Tests', () => {
   describe('Basic Integration Flow', () => {
     it('should render AuthScreen without crashing', () => {
       render(<AuthScreen />);
-      expect(screen.getByText(/welcome/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /partyhaus/i })).toBeInTheDocument();
     });
 
     it('should render EventCreation component when user is authenticated', () => {
@@ -134,6 +134,10 @@ describe('User Creation + Event Creation Integration Tests', () => {
         email: 'jane@example.com',
         event_id: 'event-123',
         is_checked_in: false,
+        status: 'pending' as const,
+        plus_ones: 0,
+        created_at: '2025-01-01T00:00:00Z',
+        updated_at: '2025-01-01T00:00:00Z',
       };
       const mockEvent = {
         id: 'event-123',
@@ -142,6 +146,12 @@ describe('User Creation + Event Creation Integration Tests', () => {
         location: 'Home',
         spotify_playlist_url: 'https://open.spotify.com/playlist/test',
         host_id: 'host-123',
+        start_date: '2025-01-01T12:00:00Z',
+        end_date: '2025-01-01T18:00:00Z',
+        event_type: 'single_day' as const,
+        is_public: false,
+        created_at: '2024-12-01T00:00:00Z',
+        updated_at: '2024-12-01T00:00:00Z',
       };
 
       // Mock store with data

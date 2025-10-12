@@ -1,13 +1,9 @@
-import { motion, useScroll, useTransform, useInView } from 'framer-motion';
-import { useRef, useState, useEffect } from 'react';
+import { motion, useScroll, useTransform } from 'framer-motion';
+import { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { usePartyStore } from '@/store/usePartyStore';
 import { 
   Calendar, 
-  Users, 
-  Gamepad2, 
-  Camera, 
   Sparkles, 
   ArrowRight, 
   Play,
@@ -19,6 +15,12 @@ import {
   ChevronDown
 } from 'lucide-react';
 
+type LandingIntent = 'create_event' | 'join_event' | 'explore_features';
+
+type LandingPageCreativeProps = {
+  onStartAuth?: (intent: LandingIntent) => void;
+};
+
 const videoSources = [
   {
     src: '/videos/Video_concept_lively_202509130901.mp4',
@@ -27,7 +29,7 @@ const videoSources = [
   }
 ];
 
-export const LandingPageCreative = () => {
+export const LandingPageCreative = ({ onStartAuth }: LandingPageCreativeProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: containerRef });
@@ -46,8 +48,9 @@ export const LandingPageCreative = () => {
     setCurrentPage('dashboard');
   };
   
-  const navigateToAuth = () => {
+  const navigateToAuth = (intent: LandingIntent = 'create_event') => {
     setCurrentPage('auth');
+    onStartAuth?.(intent);
   };
   
   const scrollToSection = (sectionId: string) => {
@@ -56,39 +59,6 @@ export const LandingPageCreative = () => {
       element.scrollIntoView({ behavior: 'smooth' });
     }
   };
-    // Video loading optimization
-  useEffect(() => {
-    const video = videoRef.current;
-    if (video) {
-      // Optimize video playback
-      video.playbackRate = 1;
-      video.defaultPlaybackRate = 1;
-      
-      // Handle video load events
-      const handleLoadedData = () => {
-        setVideoLoaded(true);
-      };
-      
-      const handleError = (e: Event) => {
-        console.warn('Video failed to load:', e);
-        setVideoLoaded(false);
-      };
-      
-      video.addEventListener('loadeddata', handleLoadedData);
-      video.addEventListener('error', handleError);
-      
-      // Preload video on component mount
-      video.load();
-      
-      return () => {
-        video.removeEventListener('loadeddata', handleLoadedData);
-        video.removeEventListener('error', handleError);
-      };
-    }
-  }, []);
-
-  const [videoLoaded, setVideoLoaded] = useState(false);
-  
   // Video background parallax effect
   const videoScale = useTransform(scrollYProgress, [0, 0.3], [1, 1.1]);
   const videoOpacity = useTransform(scrollYProgress, [0, 0.5], [0.8, 0.3]);
@@ -164,8 +134,6 @@ export const LandingPageCreative = () => {
             filter: 'brightness(0.7) contrast(1.1) saturate(1.2)',
             transform: 'scale(1.05)' // Slight zoom to avoid edge artifacts
           }}
-          onLoadedData={() => setVideoLoaded(true)}
-          onError={() => setVideoLoaded(false)}
         >
           {videoSources.map((source, index) => (
             <source key={index} src={source.src} type={source.type} />

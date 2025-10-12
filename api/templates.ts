@@ -1,28 +1,54 @@
 import { createClient } from '@supabase/supabase-js';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-// Server-side Supabase client using service_role key
 import { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from './env-server.js';
+
 const supabaseAdmin = createClient(SUPABASE_URL || '', SUPABASE_SERVICE_ROLE_KEY || '', {
   auth: { persistSession: false }
 });
 
-// Helper to get current user id from Authorization header (expects Bearer <token>)
-async function getUserIdFromAuth(req: any) {
-  const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith('Bearer ')) return null;
-  const token = auth.split(' ')[1];
+type TemplatePayload = {
+  name: string;
+  subject: string;
+  body_html?: string;
+  body_markdown?: string;
+  is_default?: boolean;
+};
 
-  // Verify token via Supabase auth admin endpoint
+const parseTemplateBody = (req: VercelRequest): Partial<TemplatePayload> => {
+  const rawBody = req.body;
+  if (typeof rawBody === 'string') {
+    try {
+      return JSON.parse(rawBody) as Partial<TemplatePayload>;
+    } catch (error) {
+      console.warn('Templates API: Failed to parse JSON body', error);
+      return {};
+    }
+  }
+
+  if (rawBody && typeof rawBody === 'object') {
+    return rawBody as Partial<TemplatePayload>;
+  }
+
+  return {};
+};
+
+const getUserIdFromAuth = async (req: VercelRequest): Promise<string | null> => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  const token = authHeader.split(' ')[1];
+
   try {
     const { data, error } = await supabaseAdmin.auth.getUser(token);
     if (error || !data?.user) return null;
     return data.user.id;
-  } catch (e) {
+  } catch (error) {
+    console.warn('Templates API: Auth lookup failed', error);
     return null;
   }
-}
+};
 
-export default async function handler(req: any, res: any) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Allow CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -46,7 +72,7 @@ export default async function handler(req: any, res: any) {
     }
 
     if (req.method === 'POST') {
-      const { name, subject, body_html, body_markdown, is_default } = req.body;
+      const { name, subject, body_html, body_markdown, is_default } = parseTemplateBody(req);
       if (!name || !subject) return res.status(400).json({ error: 'Missing required fields: name, subject' });
 
       // If is_default is true, clear other defaults for this host
@@ -68,8 +94,9 @@ export default async function handler(req: any, res: any) {
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Templates API error:', error);
-    return res.status(500).json({ error: error.message || String(error) });
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return res.status(500).json({ error: message });
   }
 }
