@@ -1,10 +1,49 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { usePartyStore } from '../store/usePartyStore';
+import { usePartyStore, type Event as PartyEvent, type Guest as PartyGuest } from '../store/usePartyStore';
+
+// Helper builders for strongly-typed test data
+const buildEvent = (overrides: Partial<PartyEvent> = {}): PartyEvent => {
+  const timestamp = new Date().toISOString();
+  return {
+    id: 'event-1',
+    host_id: 'host-1',
+    name: 'Test Event',
+    description: 'Description',
+    start_date: timestamp,
+    end_date: timestamp,
+    event_type: 'single_day',
+    location: 'Test Location',
+    max_guests: 100,
+    is_public: false,
+    created_at: timestamp,
+    updated_at: timestamp,
+    ...overrides,
+  };
+};
+
+const buildGuest = (overrides: Partial<PartyGuest> = {}): PartyGuest => {
+  const timestamp = new Date().toISOString();
+  return {
+    id: 'guest-1',
+    event_id: 'event-1',
+    name: 'John Doe',
+    email: 'john@example.com',
+    phone: undefined,
+    status: 'pending',
+    plus_ones: 0,
+    special_requirements: undefined,
+    checked_in_at: undefined,
+    created_at: timestamp,
+    updated_at: timestamp,
+    ...overrides,
+  };
+};
 
 // Mock eventService
 vi.mock('@/lib/events', () => ({
   eventService: {
+    getUserEvents: vi.fn().mockResolvedValue([]),
     getEventGuests: vi.fn().mockResolvedValue([]),
   },
 }));
@@ -15,7 +54,7 @@ vi.mock('@/lib/supabase', () => ({
     auth: {
       signInWithPassword: vi.fn(),
       signUp: vi.fn(),
-      signOut: vi.fn(),
+      signOut: vi.fn(() => Promise.resolve({ error: null })),
       getSession: vi.fn(),
       onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
     },
@@ -122,23 +161,9 @@ describe('Party Store', () => {
     it('should set events correctly', () => {
       const { result } = renderHook(() => usePartyStore());
 
-      const testEvents = [
-        {
-          id: '1',
-          host_id: '123',
-          name: 'Test Event 1',
-          event_date: '2025-01-01T10:00:00Z',
-          location: 'Test Location 1',
-          spotify_playlist_url: '',
-        },
-        {
-          id: '2',
-          host_id: '123',
-          name: 'Test Event 2',
-          event_date: '2025-01-02T10:00:00Z',
-          location: 'Test Location 2',
-          spotify_playlist_url: '',
-        },
+      const testEvents: PartyEvent[] = [
+        buildEvent({ id: 'event-1', name: 'Test Event 1' }),
+        buildEvent({ id: 'event-2', name: 'Test Event 2' }),
       ];
 
       act(() => {
@@ -151,14 +176,7 @@ describe('Party Store', () => {
     it('should set current event correctly', async () => {
       const { result } = renderHook(() => usePartyStore());
 
-      const testEvent = {
-        id: '1',
-        host_id: '123',
-        name: 'Test Event',
-        event_date: '2025-01-01T10:00:00Z',
-        location: 'Test Location',
-        spotify_playlist_url: '',
-      };
+      const testEvent = buildEvent({ id: 'event-3', name: 'Current Event' });
 
       await act(async () => {
         await result.current.setCurrentEvent(testEvent);
@@ -199,13 +217,7 @@ describe('Party Store', () => {
     it('should add guest correctly', () => {
       const { result } = renderHook(() => usePartyStore());
 
-      const testGuest = {
-        id: '1',
-        event_id: 'event-1',
-        name: 'John Doe',
-        email: 'john@example.com',
-        is_checked_in: false,
-      };
+      const testGuest = buildGuest();
 
       act(() => {
         result.current.addGuest(testGuest);
@@ -218,13 +230,7 @@ describe('Party Store', () => {
     it('should update guest correctly', () => {
       const { result } = renderHook(() => usePartyStore());
 
-      const testGuest = {
-        id: '1',
-        event_id: 'event-1',
-        name: 'John Doe',
-        email: 'john@example.com',
-        is_checked_in: false,
-      };
+      const testGuest = buildGuest();
 
       // Add guest first
       act(() => {
@@ -233,10 +239,10 @@ describe('Party Store', () => {
 
       // Update guest
       act(() => {
-        result.current.updateGuest('1', { is_checked_in: true });
+        result.current.updateGuest(testGuest.id, { status: 'checked_in' });
       });
 
-      expect(result.current.guests[0].is_checked_in).toBe(true);
+      expect(result.current.guests[0].status).toBe('checked_in');
       expect(result.current.guests[0].name).toBe('John Doe'); // Other fields unchanged
     });
   });

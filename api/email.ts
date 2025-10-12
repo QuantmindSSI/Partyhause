@@ -1,7 +1,32 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { Resend } from 'resend';
-import { RESEND_API_KEY, RESEND_FROM_EMAIL } from './env-server.js';
 
-export default async function handler(req: any, res: any) {
+interface EmailPayload {
+  to?: string | string[];
+  subject?: string;
+  html?: string;
+  guestId?: string | number;
+  eventId?: string | number;
+  metadata?: Record<string, unknown> | undefined;
+}
+
+type ResendResponseShape = {
+  data?: { id?: string | null } | null;
+  error?: { message?: string } | null;
+};
+
+interface ResendSendEmailRequest {
+  from: string;
+  to: string | string[];
+  subject: string;
+  html: string;
+  metadata?: Record<string, string>;
+}
+
+const RESEND_API_KEY = process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY || '';
+const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL || process.env.VITE_RESEND_FROM_EMAIL || '';
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -18,7 +43,7 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { to, subject, html, guestId, eventId, metadata } = req.body;
+  const { to, subject, html, guestId, eventId, metadata } = (req.body ?? {}) as EmailPayload;
 
     if (!to || !subject || !html) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -35,21 +60,27 @@ export default async function handler(req: any, res: any) {
     }
 
     // Initialize Resend inside handler to avoid module-level failures and make errors local to the request
-  const resend = new Resend(RESEND_API_KEY);
+    const resend = new Resend(RESEND_API_KEY);
 
-  const emailFrom = `PartyHause <${RESEND_FROM_EMAIL}>`;
-    const sendPayload: any = {
-      from: emailFrom,
-      to: [to],
-      subject,
-      html
-    };
-
+    const emailFrom = `PartyHause <${RESEND_FROM_EMAIL}>`;
     const meta: Record<string, string> = {};
     if (guestId) meta.guestId = String(guestId);
     if (eventId) meta.eventId = String(eventId);
-    if (metadata && typeof metadata === 'object') Object.entries(metadata).forEach(([k, v]) => { meta[k] = String(v); });
-    if (Object.keys(meta).length > 0) sendPayload.metadata = meta;
+    if (metadata && typeof metadata === 'object') {
+      Object.entries(metadata).forEach(([key, value]) => {
+        meta[key] = String(value);
+      });
+    }
+
+    const recipients = Array.isArray(to) ? to : [to];
+
+    const sendPayload: ResendSendEmailRequest = {
+      from: emailFrom,
+      to: recipients,
+      subject,
+      html,
+      ...(Object.keys(meta).length > 0 ? { metadata: meta } : {}),
+    };
 
     const data = await resend.emails.send(sendPayload);
 
@@ -60,14 +91,24 @@ export default async function handler(req: any, res: any) {
       console.log('Email sent (non-serializable response)');
     }
 
-    const resendId = (data && typeof data === 'object' && (data as any).data && (data as any).data.id) ? (data as any).data.id : null;
+    const responseObject = (data ?? {}) as ResendResponseShape;
+    const resendId = typeof responseObject.data?.id === 'string' ? responseObject.data.id : null;
     return res.status(200).json({ success: true, data: { id: resendId } });
 
   } catch (error: unknown) {
     // Always return JSON to clients and avoid exposing stack traces
     console.error('Email error:', error);
-    const err: any = error;
-    const message = (err && (err.message || String(err))) || 'unknown error';
+    let message = 'unknown error';
+    if (error instanceof Error) {
+      message = error.message;
+    } else if (typeof error === 'object' && error !== null && 'message' in error) {
+      const potential = (error as { message?: unknown }).message;
+      if (typeof potential === 'string') {
+        message = potential;
+      }
+    } else {
+      message = String(error);
+    }
     // Map some known error types to statuses
     if (message.toLowerCase().includes('invalid api key') || message.toLowerCase().includes('unauthorized')) {
       return res.status(401).json({ success: false, error: 'Email provider authentication failed' });

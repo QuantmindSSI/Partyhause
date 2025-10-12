@@ -1,3 +1,4 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
 // Types for Resend webhook payload (partial, only fields we consume)
@@ -14,11 +15,18 @@ interface ResendWebhookData {
 }
 
 // Initialize Supabase client for webhook handler (server-side env vars)
-import { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from './env-server.js';
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || '';
 const supabase = createClient(SUPABASE_URL || '', SUPABASE_SERVICE_ROLE_KEY || '', { auth: { persistSession: false } });
 
+type EmailLogRecord = {
+  id: string;
+  status?: string | null;
+  guest_id?: string | null;
+};
+
 // Resend webhook handler for email delivery status updates
-export default async function handler(req: any, res: any) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -47,16 +55,16 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    const body = req.body as { type?: string; data?: unknown };
-    const type = body.type;
-    const data = body.data as ResendWebhookData | undefined;
+    const rawBody = (req.body ?? {}) as { type?: string; data?: unknown };
+    const type = rawBody.type;
+    const data = (rawBody.data ?? undefined) as ResendWebhookData | undefined;
 
     if (!type || !data) {
       console.error('❌ Invalid webhook payload');
       return res.status(400).json({ error: 'Invalid webhook payload' });
     }
 
-    const { email_id, created_at } = data as ResendWebhookData;
+      const { email_id, created_at } = data;
 
     if (!email_id) {
       console.error('❌ Missing email_id in webhook data');
@@ -85,8 +93,8 @@ export default async function handler(req: any, res: any) {
     // Preference: use metadata.emailLogId if present in the webhook payload to find the email log.
     // Fallback to searching by resend_email_id for compatibility.
     const metadataEmailLogId = data?.metadata?.emailLogId;
-    let emailLog = null;
-    let findError = null;
+    let emailLog: EmailLogRecord | null = null;
+    let findError: unknown = null;
 
     if (metadataEmailLogId) {
       const r = await supabase
@@ -94,8 +102,8 @@ export default async function handler(req: any, res: any) {
         .select('id, status, guest_id')
         .eq('id', metadataEmailLogId)
         .single();
-      emailLog = r.data;
-      findError = r.error;
+      emailLog = (r.data as EmailLogRecord | null) ?? null;
+      findError = r.error ?? null;
     }
 
     if (!emailLog) {
@@ -104,8 +112,8 @@ export default async function handler(req: any, res: any) {
         .select('id, status, guest_id')
         .eq('resend_email_id', email_id)
         .single();
-      emailLog = r2.data;
-      findError = r2.error;
+      emailLog = (r2.data as EmailLogRecord | null) ?? null;
+      findError = r2.error ?? null;
     }
 
     if (findError) {
@@ -123,7 +131,7 @@ export default async function handler(req: any, res: any) {
     // Prepare update data
     const updateData: Record<string, unknown> = {
       status: newStatus,
-      webhook_data: data as ResendWebhookData
+      webhook_data: data
     };
 
     // Set specific timestamp fields
@@ -143,7 +151,7 @@ export default async function handler(req: any, res: any) {
         break;
       case 'bounced':
         updateData.bounced_at = timestamp;
-  updateData.error_message = (data && (data as ResendWebhookData).error?.message) || 'Email bounced';
+        updateData.error_message = data.error?.message || 'Email bounced';
         break;
       case 'complained':
         updateData.error_message = 'Spam complaint received';
@@ -173,7 +181,7 @@ export default async function handler(req: any, res: any) {
         console.error('❌ Failed to update guest email status:', guestUpdateError);
         // Don't fail the webhook for this, just log it
       } else {
-    console.log(`✅ Updated guest ${emailLog.guest_id} email status to ${newStatus}`);
+        console.log(`✅ Updated guest ${emailLog.guest_id} email status to ${newStatus}`);
       }
     }
 
@@ -202,8 +210,9 @@ export default async function handler(req: any, res: any) {
       email_log_id: emailLog.id
     });
 
-    } catch (error: unknown) {
-    console.error('❌ Webhook processing error:', error instanceof Error ? error.message : String(error));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('❌ Webhook processing error:', message);
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
