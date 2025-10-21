@@ -1,0 +1,209 @@
+{
+  "name": "Group Travel Trip",
+  "slug": "group-travel",
+  "description": "Coordinate a multi-day group vacation with 8-20 travelers. Features shared itinerary planning, expense splitting, packing lists, location tracking, and collaborative trip memories.",
+  "category": "social",
+  "hero_image_url": "/images/templates/group-travel.jpg",
+  "price_tier": "free",
+  "featured": true,
+  "default_payload": {
+    "event": {
+      "title": "Group Trip",
+      "description": "A multi-day adventure with friends or family",
+      "duration_hours": 72,
+      "visibility": "private",
+      "category": "travel",
+      "tags": ["travel", "vacation", "group-trip", "adventure"]
+    },
+    "partyboard": [
+      {
+        "title": "Choose destination and dates",
+        "description": "Vote on destination, finalize travel dates with group",
+        "due_offset_days": 120,
+        "assignee_role": "organizer",
+        "priority": "high"
+      },
+      {
+        "title": "Book flights or transportation",
+        "description": "Research and book flights, trains, or driving logistics",
+        "due_offset_days": 90,
+        "assignee_role": "organizer",
+        "priority": "high"
+      },
+      {
+        "title": "Reserve accommodations",
+        "description": "Book hotel, Airbnb, cabin, or hostel for group",
+        "due_offset_days": 90,
+        "assignee_role": "organizer",
+        "priority": "high"
+      },
+      {
+        "title": "Create daily itinerary",
+        "description": "Plan activities, meals, free time for each day",
+        "due_offset_days": 60,
+        "assignee_role": "organizer",
+        "priority": "medium"
+      },
+      {
+        "title": "Book tours and activities",
+        "description": "Reserve tickets for attractions, tours, experiences",
+        "due_offset_days": 60,
+        "assignee_role": "organizer",
+        "priority": "medium"
+      },
+      {
+        "title": "Arrange car rentals or local transport",
+        "description": "Book rental cars, research public transit, ride-shares",
+        "due_offset_days": 45,
+        "assignee_role": "organizer",
+        "priority": "medium"
+      },
+      {
+        "title": "Research restaurants and dining",
+        "description": "Make reservations for group dinners, find food options",
+        "due_offset_days": 30,
+        "assignee_role": "group",
+        "priority": "medium"
+      },
+      {
+        "title": "Create shared packing list",
+        "description": "Coordinate who brings shared items (first aid, games, cooler)",
+        "due_offset_days": 21,
+        "assignee_role": "group",
+        "priority": "low"
+      },
+      {
+        "title": "Set up expense tracking",
+        "description": "Create shared budget and expense splitting system",
+        "due_offset_days": 30,
+        "assignee_role": "organizer",
+        "priority": "high"
+      },
+      {
+        "title": "Share trip documents",
+        "description": "Compile confirmations, addresses, contact info, emergency numbers",
+        "due_offset_days": 14,
+        "assignee_role": "organizer",
+        "priority": "high"
+      },
+      {
+        "title": "Check travel requirements",
+        "description": "Verify passports, visas, travel insurance, health requirements",
+        "due_offset_days": 60,
+        "assignee_role": "group",
+        "priority": "high"
+      },
+      {
+        "title": "Day 1: Travel day activities",
+        "description": "Arrival, check-in, orientation, welcome dinner",
+        "due_offset_days": 0,
+        "assignee_role": "organizer",
+        "priority": "high"
+      }
+    ],
+    "features": {
+      "games": ["photo_of_the_day", "location_scavenger_hunt"],
+      "polls": ["activity_voting", "restaurant_choices"],
+      "budget": true,
+      "expense_splitting": true,
+      "emailSequence": ["trip_announcement", "reminder_60d", "reminder_30d", "reminder_7d", "packing_list", "trip_recap"],
+      "shared_itinerary": true,
+      "location_checkins": true,
+      "weather_alerts": true,
+      "offline_maps": true
+    },
+    "budget": {
+      "items": [
+        {
+          "label": "Flights/Transportation",
+          "estimated": 400,
+          "notes": "Per person - coordinate group bookings",
+          "split": true
+        },
+        {
+          "label": "Accommodations",
+          "estimated": 300,
+          "notes": "Per person for 3 nights",
+          "split": true
+        },
+        {
+          "label": "Car Rentals",
+          "estimated": 200,
+          "notes": "Shared rental for 4 days",
+          "split": true
+        },
+        {
+          "label": "Activities & Tours",
+          "estimated": 150,
+          "notes": "Per person - group discounts possible",
+          "split": true
+        },
+        {
+          "label": "Meals & Dining",
+          "estimated": 250,
+          "notes": "Per person - mix of restaurants and groceries",
+          "split": true
+        },
+        {
+          "label": "Gas & Local Transport",
+          "estimated": 80,
+          "notes": "Shared costs",
+          "split": true
+        },
+        {
+          "label": "Shared Supplies",
+          "estimated": 100,
+          "notes": "Groceries, snacks, shared items",
+          "split": true
+        },
+        {
+          "label": "Miscellaneous",
+          "estimated": 120,
+          "notes": "Souvenirs, emergencies, extras",
+          "split": false
+        }
+      ],
+      "total_estimated": 1600,
+      "per_person_estimated": 1600
+    },
+    "emails": {
+      "trip_announcement": "group_travel_announcement",
+      "reminder_60d": "travel_reminder_60d",
+      "reminder_30d": "travel_reminder_30d",
+      "reminder_7d": "travel_reminder_7d_packing",
+      "packing_list": "travel_packing_list",
+      "trip_recap": "travel_thankyou_recap"
+    },
+    "customization_hints": {
+      "required_fields": ["title", "start_date", "end_date", "destination"],
+      "recommended_guest_count": "8-20",
+      "setup_time_minutes": 8,
+      "ideal_duration_days": "3-7",
+      "supports_multi_day": true
+    }
+  },
+  "required_fields_schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "required": ["title", "start_date", "end_date", "destination"],
+    "properties": {
+      "title": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 100
+      },
+      "start_date": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "end_date": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "destination": {
+        "type": "string",
+        "minLength": 3
+      }
+    }
+  }
+}

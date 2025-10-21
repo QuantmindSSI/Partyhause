@@ -1,0 +1,177 @@
+{
+  "name": "Birthday Party - Large (Adult)",
+  "slug": "birthday-large",
+  "description": "Plan an unforgettable adult birthday bash with 40-80 guests. Features interactive games, music voting, photo challenges, and comprehensive planning tools for a high-energy celebration.",
+  "category": "birthday",
+  "hero_image_url": "/images/templates/birthday-large.jpg",
+  "price_tier": "free",
+  "featured": true,
+  "default_payload": {
+    "event": {
+      "title": "Birthday Celebration",
+      "description": "A memorable birthday party with friends and family",
+      "duration_hours": 5,
+      "visibility": "private",
+      "category": "birthday",
+      "tags": ["birthday", "party", "celebration", "adult"]
+    },
+    "partyboard": [
+      {
+        "title": "Book venue",
+        "description": "Reserve party space (restaurant, rooftop, event venue, or home)",
+        "due_offset_days": 30,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Create guest list and send invitations",
+        "description": "Finalize guest list and send digital invitations with RSVP tracking",
+        "due_offset_days": 21,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Order birthday cake",
+        "description": "Custom cake for large party - confirm flavors and design",
+        "due_offset_days": 14,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Arrange catering or food",
+        "description": "Book caterer, restaurant, or plan menu for large group",
+        "due_offset_days": 14,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Book DJ or plan music",
+        "description": "Hire DJ, create Spotify playlist, or arrange sound system",
+        "due_offset_days": 21,
+        "assignee_role": "host",
+        "priority": "medium"
+      },
+      {
+        "title": "Order decorations",
+        "description": "Balloons, lighting, banners, photo booth props, centerpieces",
+        "due_offset_days": 10,
+        "assignee_role": "host",
+        "priority": "medium"
+      },
+      {
+        "title": "Arrange drinks and bar",
+        "description": "Stock bar, hire bartender, create signature cocktails",
+        "due_offset_days": 7,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Plan games and activities",
+        "description": "Set up photo booth, trivia, scavenger hunt, or other interactive games",
+        "due_offset_days": 7,
+        "assignee_role": "host",
+        "priority": "medium"
+      },
+      {
+        "title": "Coordinate with co-hosts",
+        "description": "Assign responsibilities, confirm timing, review logistics",
+        "due_offset_days": 3,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Set up venue and decorations",
+        "description": "Arrive early to decorate, set up tables, test AV equipment",
+        "due_offset_days": 0,
+        "assignee_role": "host",
+        "priority": "high"
+      }
+    ],
+    "features": {
+      "games": ["trivia", "photo_scavenger_hunt"],
+      "polls": ["song_vote", "photo_contest"],
+      "budget": true,
+      "emailSequence": ["invitation", "reminder_14d", "reminder_3d", "reminder_1d", "thankyou"],
+      "qr_checkin": true,
+      "photo_booth": true
+    },
+    "budget": {
+      "items": [
+        {
+          "label": "Venue Rental",
+          "estimated": 500,
+          "notes": "Restaurant buyout or event space"
+        },
+        {
+          "label": "Catering & Food",
+          "estimated": 800,
+          "notes": "Food for 60 guests"
+        },
+        {
+          "label": "Birthday Cake",
+          "estimated": 150,
+          "notes": "Custom large cake"
+        },
+        {
+          "label": "Drinks & Bar",
+          "estimated": 600,
+          "notes": "Alcohol, mixers, bartender"
+        },
+        {
+          "label": "DJ or Music",
+          "estimated": 400,
+          "notes": "Professional DJ for 5 hours"
+        },
+        {
+          "label": "Decorations",
+          "estimated": 200,
+          "notes": "Balloons, lighting, centerpieces"
+        },
+        {
+          "label": "Photo Booth",
+          "estimated": 300,
+          "notes": "Rental with props and prints"
+        },
+        {
+          "label": "Party Favors",
+          "estimated": 150,
+          "notes": "Take-home gifts for guests"
+        }
+      ],
+      "total_estimated": 3100
+    },
+    "emails": {
+      "invitation": "adult_birthday_invite_v1",
+      "reminder_14d": "birthday_reminder_14d",
+      "reminder_3d": "birthday_reminder_3d",
+      "reminder_1d": "birthday_reminder_1d",
+      "thankyou": "birthday_thankyou"
+    },
+    "customization_hints": {
+      "required_fields": ["title", "date", "location"],
+      "recommended_guest_count": "40-80",
+      "setup_time_minutes": 5,
+      "ideal_duration_hours": "4-6"
+    }
+  },
+  "required_fields_schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "required": ["title", "date", "location"],
+    "properties": {
+      "title": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 100
+      },
+      "date": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "location": {
+        "type": "string",
+        "minLength": 3
+      }
+    }
+  }
+}

@@ -64,7 +64,7 @@ describe('User Creation + Event Creation Integration Tests', () => {
   describe('Basic Integration Flow', () => {
     it('should render AuthScreen without crashing', () => {
       render(<AuthScreen />);
-      expect(screen.getByRole('heading', { name: /partyhaus/i })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: /partyhause/i })).toBeInTheDocument();
     });
 
     it('should render EventCreation component when user is authenticated', () => {

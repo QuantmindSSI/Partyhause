@@ -80,7 +80,7 @@ export function LandingPageSoft({ onGetStarted, onSignIn }: LandingPageSoftProps
                 whileHover={{ scale: 1.05 }}
                 transition={{ type: "spring", stiffness: 400 }}
               >
-                PartyHaus
+                PartyHause
               </motion.span>
             </div>
             
@@ -199,7 +199,7 @@ export function LandingPageSoft({ onGetStarted, onSignIn }: LandingPageSoftProps
               Everything you need to host amazing events
             </h2>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              From planning to execution, PartyHaus provides all the tools you need to create memorable experiences.
+              From planning to execution, PartyHause provides all the tools you need to create memorable experiences.
             </p>
           </motion.div>
 
@@ -275,7 +275,7 @@ export function LandingPageSoft({ onGetStarted, onSignIn }: LandingPageSoftProps
               </div>
               
               <blockquote className="text-xl md:text-2xl text-gray-700 mb-8 leading-relaxed">
-                "PartyHaus transformed how we organize corporate events. What used to take days now takes hours, and our guests are consistently impressed with the professional experience."
+                "PartyHause transformed how we organize corporate events. What used to take days now takes hours, and our guests are consistently impressed with the professional experience."
               </blockquote>
               
               <div className="flex items-center justify-center gap-4">
@@ -317,7 +317,7 @@ export function LandingPageSoft({ onGetStarted, onSignIn }: LandingPageSoftProps
             </h2>
             
             <p className="text-lg text-gray-600 mb-10 max-w-2xl mx-auto leading-relaxed">
-              Join thousands of hosts who are creating unforgettable experiences with PartyHaus.
+              Join thousands of hosts who are creating unforgettable experiences with PartyHause.
             </p>
             
             <Button
@@ -336,7 +336,7 @@ export function LandingPageSoft({ onGetStarted, onSignIn }: LandingPageSoftProps
         <div className="container mx-auto px-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div>
-              <h3 className="text-xl font-bold text-orange-500 mb-4">PartyHaus</h3>
+              <h3 className="text-xl font-bold text-orange-500 mb-4">PartyHause</h3>
               <p className="text-gray-600 leading-relaxed">
                 The premium platform for event creators who demand excellence.
               </p>
@@ -373,7 +373,7 @@ export function LandingPageSoft({ onGetStarted, onSignIn }: LandingPageSoftProps
           
           <div className="border-t border-gray-200 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center">
             <p className="text-gray-500 text-sm mb-4 md:mb-0">
-              © 2024 PartyHaus. All rights reserved.
+              © 2024 PartyHause. All rights reserved.
             </p>
             <div className="flex space-x-6">
               {[Twitter, Instagram, Facebook, Linkedin].map((Icon, index) => (

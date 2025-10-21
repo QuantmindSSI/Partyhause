@@ -1,6 +1,14 @@
 {
   "rewrites": [
     {
+      "source": "/api/send-email",
+      "destination": "/api/email"
+    },
+    {
+      "source": "/api/health",
+      "destination": "/api/health"
+    },
+    {
       "source": "/(.*)",
       "destination": "/dist/index.html"
     }

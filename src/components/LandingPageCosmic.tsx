@@ -68,7 +68,7 @@ export const LandingPageCosmic = ({ onGetStarted, onSignIn }: LandingPageProps) 
     {
       name: "Sarah Chen",
       role: "Birthday Party Host",
-      content: "PartyHaus turned my daughter's birthday into an unforgettable adventure. The AR treasure hunt had all the kids completely engaged!",
+  content: "PartyHause turned my daughter's birthday into an unforgettable adventure. The AR treasure hunt had all the kids completely engaged!",
       rating: 5,
       image: "/api/placeholder/64/64"
     },
@@ -127,7 +127,7 @@ export const LandingPageCosmic = ({ onGetStarted, onSignIn }: LandingPageProps) 
             >
               <Sparkles className="h-12 w-12 mr-4 text-electric-gold animate-pulse" />
               <h1 className="logo-cosmic text-6xl md:text-8xl lg:text-9xl font-bold">
-                PartyHaus
+                PartyHause
               </h1>
               <Sparkles className="h-12 w-12 ml-4 text-electric-magenta animate-pulse delay-500" />
             </motion.div>
@@ -229,7 +229,7 @@ export const LandingPageCosmic = ({ onGetStarted, onSignIn }: LandingPageProps) 
               Everything You Need for Perfect Events
             </h2>
             <p className="text-xl text-cosmic-secondary max-w-3xl mx-auto">
-              From intimate gatherings to grand celebrations, PartyHaus provides 
+              From intimate gatherings to grand celebrations, PartyHause provides 
               the tools and experiences that make every moment magical.
             </p>
           </motion.div>
@@ -285,7 +285,7 @@ export const LandingPageCosmic = ({ onGetStarted, onSignIn }: LandingPageProps) 
             className="text-center mb-16"
           >
             <h2 className="text-4xl md:text-6xl font-bold text-gradient mb-6">
-              See PartyHaus in Action
+              See PartyHause in Action
             </h2>
             <p className="text-xl text-cosmic-secondary max-w-3xl mx-auto">
               Experience the magic of seamless event management and interactive entertainment.
@@ -411,7 +411,7 @@ export const LandingPageCosmic = ({ onGetStarted, onSignIn }: LandingPageProps) 
               Ready to Create Magic?
             </h2>
             <p className="text-xl text-white/90 mb-8 max-w-2xl mx-auto">
-              Join the PartyHaus community and transform your next event into an 
+              Join the PartyHause community and transform your next event into an 
               unforgettable experience that brings people together.
             </p>
             
