@@ -1,0 +1,152 @@
+{
+  "name": "Birthday Party - Kids",
+  "slug": "birthday-kids",
+  "description": "Perfect for children's birthday parties with fun activities, games, and easy planning. Includes kid-friendly features, parental controls, and a structured timeline to keep the party running smoothly.",
+  "category": "birthday",
+  "hero_image_url": "/images/templates/birthday-kids.jpg",
+  "price_tier": "free",
+  "featured": true,
+  "default_payload": {
+    "event": {
+      "title": "Birthday Party",
+      "description": "A fun-filled birthday celebration for kids",
+      "duration_hours": 3,
+      "visibility": "private",
+      "category": "birthday",
+      "tags": ["kids", "birthday", "party", "celebration"]
+    },
+    "partyboard": [
+      {
+        "title": "Book entertainer or plan activities",
+        "description": "Hire a magician, face painter, balloon artist, or plan DIY games and activities",
+        "due_offset_days": 21,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Order birthday cake",
+        "description": "Choose theme, flavors, and dietary accommodations. Order from bakery or plan homemade.",
+        "due_offset_days": 7,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Send invitations",
+        "description": "Create and send party invitations with RSVP tracking",
+        "due_offset_days": 14,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Buy decorations",
+        "description": "Balloons, banners, tablecloths, themed decorations",
+        "due_offset_days": 10,
+        "assignee_role": "host",
+        "priority": "medium"
+      },
+      {
+        "title": "Plan party food and snacks",
+        "description": "Pizza, finger foods, juice boxes, allergy-friendly options",
+        "due_offset_days": 7,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Buy party favors and goodie bags",
+        "description": "Small toys, candy, stickers, thank-you items for guests",
+        "due_offset_days": 7,
+        "assignee_role": "host",
+        "priority": "medium"
+      },
+      {
+        "title": "Prepare party games and activities",
+        "description": "Set up game stations, craft areas, music playlist",
+        "due_offset_days": 3,
+        "assignee_role": "host",
+        "priority": "medium"
+      },
+      {
+        "title": "Set up party space",
+        "description": "Decorate, arrange seating, set up food and activity areas",
+        "due_offset_days": 0,
+        "assignee_role": "host",
+        "priority": "high"
+      }
+    ],
+    "features": {
+      "games": ["photo_bingo", "scavenger_hunt"],
+      "polls": ["food_preferences"],
+      "budget": true,
+      "emailSequence": ["invitation", "reminder_7d", "reminder_1d", "thankyou"],
+      "parental_controls": true,
+      "photo_tagging": true
+    },
+    "budget": {
+      "items": [
+        {
+          "label": "Venue/Space Rental",
+          "estimated": 0,
+          "notes": "Home party or rented space"
+        },
+        {
+          "label": "Food & Cake",
+          "estimated": 150,
+          "notes": "Pizza, snacks, birthday cake"
+        },
+        {
+          "label": "Decorations",
+          "estimated": 50,
+          "notes": "Balloons, banners, themed items"
+        },
+        {
+          "label": "Entertainment",
+          "estimated": 200,
+          "notes": "Magician, face painter, or activities"
+        },
+        {
+          "label": "Party Favors",
+          "estimated": 75,
+          "notes": "Goodie bags for guests"
+        }
+      ],
+      "total_estimated": 475
+    },
+    "emails": {
+      "invitation": "kids_birthday_invite_v1",
+      "reminder_7d": "kids_birthday_reminder_7d",
+      "reminder_1d": "kids_birthday_reminder_1d",
+      "thankyou": "kids_birthday_thankyou"
+    },
+    "customization_hints": {
+      "required_fields": ["title", "date", "location", "child_age"],
+      "recommended_guest_count": "15-30",
+      "setup_time_minutes": 3,
+      "ideal_age_range": "4-12"
+    }
+  },
+  "required_fields_schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "required": ["title", "date", "location"],
+    "properties": {
+      "title": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 100
+      },
+      "date": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "location": {
+        "type": "string",
+        "minLength": 3
+      },
+      "child_age": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 18
+      }
+    }
+  }
+}

@@ -145,7 +145,7 @@ export const AuthScreen = ({
           };
         default:
           return {
-            title: isLogin ? "Welcome to PartyHaus" : "Join the PartyHaus Family",
+            title: isLogin ? "Welcome to PartyHause" : "Join the PartyHause Family",
             subtitle: isLogin ? "Sign in to continue your journey" : "Create your account to get started",
             benefits: ["Smart event planning", "Social gaming platform", "Lasting connections"]
           };
@@ -213,7 +213,7 @@ export const AuthScreen = ({
                     transition: { duration: 3, repeat: Infinity }
                   })}
                 >
-                  PartyHaus
+                  PartyHause
                 </MotionH1>
                 <Sparkles className="h-12 w-12 ml-4 text-orange-400 animate-pulse delay-500" />
               </MotionDiv>
@@ -228,8 +228,8 @@ export const AuthScreen = ({
                 <p className="text-2xl md:text-3xl lg:text-4xl font-light text-gray-700 mb-4">
                   Where Every Event Becomes Unforgettable
                 </p>
-                <p className="text-lg md:text-xl text-gray-600 max-w-2xl mx-auto">
-                  The premium event platform combining smart planning, interactive gaming, 
+                <p className="text-lg md:text-xl text-gray-600">
+                  The premium event platform combining smart planning, interactive gaming,
                   and magical memory creation.
                 </p>
               </MotionDiv>
@@ -349,7 +349,7 @@ export const AuthScreen = ({
               <div className="inline-flex items-center justify-center mb-4">
                 <Sparkles className="h-8 w-8 mr-3 text-orange-500" />
                 <h1 className="text-4xl md:text-5xl font-bold text-gray-900">
-                  PartyHaus
+                  PartyHause
                 </h1>
                 <Sparkles className="h-8 w-8 ml-3 text-orange-400" />
               </div>

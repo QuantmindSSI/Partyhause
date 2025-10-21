@@ -145,7 +145,7 @@ describe('Logout Userflow Integration Test', () => {
 
     // Initially, user should see dashboard (since user is set)
     await waitFor(() => {
-      expect(screen.getByText('PartyHaus')).toBeInTheDocument();
+  expect(screen.getByText('PartyHause')).toBeInTheDocument();
     });
 
     // Trigger logout by calling the logout function from the store
@@ -206,7 +206,7 @@ describe('Logout Userflow Integration Test', () => {
 
     // Initially, user should see dashboard
     await waitFor(() => {
-      expect(screen.getByText('PartyHaus')).toBeInTheDocument();
+  expect(screen.getByText('PartyHause')).toBeInTheDocument();
     });
 
     // Trigger logout
@@ -261,7 +261,7 @@ describe('Logout Userflow Integration Test', () => {
 
     // Initially, user should see dashboard
     await waitFor(() => {
-      expect(screen.getByText('PartyHaus')).toBeInTheDocument();
+  expect(screen.getByText('PartyHause')).toBeInTheDocument();
     });
 
     // Trigger logout

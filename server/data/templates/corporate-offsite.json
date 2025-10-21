@@ -1,0 +1,230 @@
+{
+  "name": "Corporate Team Offsite",
+  "slug": "corporate-offsite",
+  "description": "Plan a productive and engaging team offsite with session management, team-building activities, feedback tools, and comprehensive analytics. Perfect for 20-50 attendees.",
+  "category": "corporate",
+  "hero_image_url": "/images/templates/corporate-offsite.jpg",
+  "price_tier": "premium",
+  "featured": true,
+  "default_payload": {
+    "event": {
+      "title": "Team Offsite",
+      "description": "Two-day team building and strategy offsite",
+      "duration_hours": 16,
+      "visibility": "private",
+      "category": "corporate",
+      "tags": ["corporate", "team-building", "offsite", "professional"]
+    },
+    "partyboard": [
+      {
+        "title": "Book venue and accommodations",
+        "description": "Reserve conference space, meeting rooms, and lodging if overnight",
+        "due_offset_days": 60,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Create agenda and session plan",
+        "description": "Define sessions, workshops, breakouts, and team-building activities",
+        "due_offset_days": 45,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Send invitations and collect RSVPs",
+        "description": "Invite team members, track attendance, dietary needs, accessibility",
+        "due_offset_days": 30,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Book facilitators and speakers",
+        "description": "Hire external facilitators, confirm internal speakers",
+        "due_offset_days": 30,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Arrange catering for all meals",
+        "description": "Breakfast, lunch, snacks, dinner - accommodate dietary restrictions",
+        "due_offset_days": 21,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Plan team-building activities",
+        "description": "Group games, challenges, outdoor activities, ice breakers",
+        "due_offset_days": 21,
+        "assignee_role": "host",
+        "priority": "medium"
+      },
+      {
+        "title": "Prepare AV and technology",
+        "description": "Projectors, mics, video conferencing, wifi, presentation materials",
+        "due_offset_days": 14,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Create feedback and survey forms",
+        "description": "Session feedback, overall NPS survey, anonymous input channels",
+        "due_offset_days": 14,
+        "assignee_role": "host",
+        "priority": "medium"
+      },
+      {
+        "title": "Arrange transportation",
+        "description": "Shuttles, parking, directions, ride-share codes",
+        "due_offset_days": 7,
+        "assignee_role": "host",
+        "priority": "medium"
+      },
+      {
+        "title": "Prepare materials and swag",
+        "description": "Name badges, folders, pens, notebooks, branded items",
+        "due_offset_days": 7,
+        "assignee_role": "host",
+        "priority": "medium"
+      },
+      {
+        "title": "Confirm all vendors and logistics",
+        "description": "Final confirmations with venue, caterer, facilitators, AV team",
+        "due_offset_days": 3,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Set up registration and check-in",
+        "description": "Badge printing, registration desk, welcome materials",
+        "due_offset_days": 0,
+        "assignee_role": "host",
+        "priority": "high"
+      },
+      {
+        "title": "Day 1: Session facilitation",
+        "description": "Run sessions, manage timing, collect feedback",
+        "due_offset_days": 0,
+        "assignee_role": "facilitator",
+        "priority": "high"
+      },
+      {
+        "title": "Day 2: Session facilitation",
+        "description": "Run sessions, manage timing, collect feedback",
+        "due_offset_days": 1,
+        "assignee_role": "facilitator",
+        "priority": "high"
+      },
+      {
+        "title": "Post-event report and analytics",
+        "description": "Compile feedback, attendance data, NPS, recommendations",
+        "due_offset_days": 7,
+        "assignee_role": "host",
+        "priority": "high"
+      }
+    ],
+    "features": {
+      "games": ["team_challenges", "icebreakers"],
+      "polls": ["anonymous_feedback", "session_rating", "decision_voting"],
+      "budget": true,
+      "emailSequence": ["invitation", "reminder_30d", "reminder_7d", "reminder_1d", "thankyou", "followup"],
+      "analytics_dashboard": true,
+      "feedback_forms": true,
+      "breakout_rooms": true,
+      "qr_checkin": true
+    },
+    "budget": {
+      "items": [
+        {
+          "label": "Venue Rental",
+          "estimated": 2000,
+          "notes": "Conference space for 2 days"
+        },
+        {
+          "label": "Accommodations",
+          "estimated": 3000,
+          "notes": "Hotel rooms if overnight offsite"
+        },
+        {
+          "label": "Catering (Day 1)",
+          "estimated": 1200,
+          "notes": "Breakfast, lunch, snacks, dinner"
+        },
+        {
+          "label": "Catering (Day 2)",
+          "estimated": 1000,
+          "notes": "Breakfast, lunch, snacks"
+        },
+        {
+          "label": "Facilitators & Speakers",
+          "estimated": 2500,
+          "notes": "External facilitators and experts"
+        },
+        {
+          "label": "Team-Building Activities",
+          "estimated": 1500,
+          "notes": "Outdoor activities, games, experiences"
+        },
+        {
+          "label": "AV Equipment & Tech",
+          "estimated": 800,
+          "notes": "Mics, projectors, video conf, wifi"
+        },
+        {
+          "label": "Transportation",
+          "estimated": 500,
+          "notes": "Shuttles, parking, ride-share"
+        },
+        {
+          "label": "Materials & Swag",
+          "estimated": 600,
+          "notes": "Badges, notebooks, branded items"
+        },
+        {
+          "label": "Miscellaneous",
+          "estimated": 400,
+          "notes": "Contingency and unexpected expenses"
+        }
+      ],
+      "total_estimated": 13500
+    },
+    "emails": {
+      "invitation": "corporate_offsite_invite_v1",
+      "reminder_30d": "corporate_reminder_30d",
+      "reminder_7d": "corporate_reminder_7d",
+      "reminder_1d": "corporate_reminder_1d",
+      "thankyou": "corporate_thankyou",
+      "followup": "corporate_followup_survey"
+    },
+    "customization_hints": {
+      "required_fields": ["title", "date", "location", "duration_days"],
+      "recommended_guest_count": "20-50",
+      "setup_time_minutes": 7,
+      "ideal_duration_days": "1-3"
+    }
+  },
+  "required_fields_schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "required": ["title", "date", "location"],
+    "properties": {
+      "title": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 150
+      },
+      "date": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "location": {
+        "type": "string",
+        "minLength": 3
+      },
+      "duration_days": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 7
+      }
+    }
+  }
+}

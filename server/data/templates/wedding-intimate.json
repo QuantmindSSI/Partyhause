@@ -1,0 +1,325 @@
+{
+  "name": "Intimate Wedding",
+  "slug": "wedding-intimate",
+  "description": "Plan a beautiful intimate wedding with 50-100 guests. Comprehensive vendor management, timeline coordination, seating arrangements, and guest experience tools for your perfect day.",
+  "category": "wedding",
+  "hero_image_url": "/images/templates/wedding-intimate.jpg",
+  "price_tier": "premium",
+  "featured": true,
+  "default_payload": {
+    "event": {
+      "title": "Wedding Celebration",
+      "description": "An intimate wedding ceremony and reception",
+      "duration_hours": 8,
+      "visibility": "private",
+      "category": "wedding",
+      "tags": ["wedding", "ceremony", "reception", "celebration"]
+    },
+    "partyboard": [
+      {
+        "title": "Book ceremony venue",
+        "description": "Reserve church, garden, or ceremony location",
+        "due_offset_days": 180,
+        "assignee_role": "couple",
+        "priority": "high"
+      },
+      {
+        "title": "Book reception venue",
+        "description": "Reserve restaurant, hall, or reception space",
+        "due_offset_days": 180,
+        "assignee_role": "couple",
+        "priority": "high"
+      },
+      {
+        "title": "Hire wedding planner (optional)",
+        "description": "Book professional planner for coordination",
+        "due_offset_days": 180,
+        "assignee_role": "couple",
+        "priority": "medium"
+      },
+      {
+        "title": "Book photographer",
+        "description": "Reserve professional photographer and videographer",
+        "due_offset_days": 150,
+        "assignee_role": "couple",
+        "priority": "high"
+      },
+      {
+        "title": "Book caterer and finalize menu",
+        "description": "Choose caterer, confirm menu, tastings, dietary needs",
+        "due_offset_days": 120,
+        "assignee_role": "couple",
+        "priority": "high"
+      },
+      {
+        "title": "Send save-the-dates",
+        "description": "Mail or email save-the-date cards",
+        "due_offset_days": 120,
+        "assignee_role": "couple",
+        "priority": "high"
+      },
+      {
+        "title": "Book florist",
+        "description": "Choose florist for ceremony, bouquets, centerpieces",
+        "due_offset_days": 90,
+        "assignee_role": "couple",
+        "priority": "high"
+      },
+      {
+        "title": "Book music/DJ/band",
+        "description": "Hire ceremony musicians and reception entertainment",
+        "due_offset_days": 90,
+        "assignee_role": "couple",
+        "priority": "high"
+      },
+      {
+        "title": "Order wedding cake",
+        "description": "Book baker, schedule tastings, confirm design",
+        "due_offset_days": 90,
+        "assignee_role": "couple",
+        "priority": "high"
+      },
+      {
+        "title": "Choose wedding attire",
+        "description": "Select and order dress, suit, alterations",
+        "due_offset_days": 120,
+        "assignee_role": "couple",
+        "priority": "high"
+      },
+      {
+        "title": "Send formal invitations",
+        "description": "Mail wedding invitations with RSVP cards",
+        "due_offset_days": 60,
+        "assignee_role": "couple",
+        "priority": "high"
+      },
+      {
+        "title": "Plan ceremony details",
+        "description": "Officiant meeting, vows, readings, processional order",
+        "due_offset_days": 60,
+        "assignee_role": "couple",
+        "priority": "high"
+      },
+      {
+        "title": "Create seating chart",
+        "description": "Assign tables and seats based on final guest count",
+        "due_offset_days": 30,
+        "assignee_role": "couple",
+        "priority": "high"
+      },
+      {
+        "title": "Finalize timeline and schedule",
+        "description": "Confirm timing with all vendors and wedding party",
+        "due_offset_days": 30,
+        "assignee_role": "planner",
+        "priority": "high"
+      },
+      {
+        "title": "Arrange accommodations for guests",
+        "description": "Book hotel blocks, share travel information",
+        "due_offset_days": 60,
+        "assignee_role": "couple",
+        "priority": "medium"
+      },
+      {
+        "title": "Order wedding favors",
+        "description": "Choose and order guest favors and welcome bags",
+        "due_offset_days": 45,
+        "assignee_role": "couple",
+        "priority": "low"
+      },
+      {
+        "title": "Create wedding website",
+        "description": "Build website with details, registry, RSVP",
+        "due_offset_days": 90,
+        "assignee_role": "couple",
+        "priority": "medium"
+      },
+      {
+        "title": "Obtain marriage license",
+        "description": "Apply for and receive marriage license",
+        "due_offset_days": 30,
+        "assignee_role": "couple",
+        "priority": "high"
+      },
+      {
+        "title": "Rehearsal dinner",
+        "description": "Plan and host rehearsal dinner for wedding party",
+        "due_offset_days": 1,
+        "assignee_role": "couple",
+        "priority": "high"
+      },
+      {
+        "title": "Final vendor confirmations",
+        "description": "Confirm timing, headcount, details with all vendors",
+        "due_offset_days": 7,
+        "assignee_role": "planner",
+        "priority": "high"
+      },
+      {
+        "title": "Pack for wedding day and honeymoon",
+        "description": "Emergency kit, timeline, vendor contacts, honeymoon prep",
+        "due_offset_days": 2,
+        "assignee_role": "couple",
+        "priority": "medium"
+      },
+      {
+        "title": "Ceremony setup",
+        "description": "Decorate ceremony space, arrange seating, sound check",
+        "due_offset_days": 0,
+        "assignee_role": "planner",
+        "priority": "high"
+      },
+      {
+        "title": "Reception setup",
+        "description": "Decorate reception, place cards, centerpieces, final touches",
+        "due_offset_days": 0,
+        "assignee_role": "planner",
+        "priority": "high"
+      },
+      {
+        "title": "Thank-you notes",
+        "description": "Send personalized thank-you cards to guests",
+        "due_offset_days": 30,
+        "assignee_role": "couple",
+        "priority": "high"
+      },
+      {
+        "title": "Photo selection and album",
+        "description": "Review photos, select favorites, order album",
+        "due_offset_days": 60,
+        "assignee_role": "couple",
+        "priority": "medium"
+      }
+    ],
+    "features": {
+      "games": ["wedding_trivia"],
+      "polls": ["song_requests"],
+      "budget": true,
+      "emailSequence": ["save_the_date", "invitation", "reminder_30d", "reminder_7d", "thankyou"],
+      "seating_chart": true,
+      "vendor_portal": true,
+      "timeline_management": true,
+      "photo_gallery": true,
+      "guest_book": true,
+      "qr_checkin": true
+    },
+    "budget": {
+      "items": [
+        {
+          "label": "Ceremony Venue",
+          "estimated": 1500,
+          "notes": "Church or ceremony location rental"
+        },
+        {
+          "label": "Reception Venue",
+          "estimated": 3000,
+          "notes": "Restaurant or hall rental"
+        },
+        {
+          "label": "Catering & Bar",
+          "estimated": 6000,
+          "notes": "Food and drinks for 80 guests"
+        },
+        {
+          "label": "Photography & Video",
+          "estimated": 3500,
+          "notes": "Professional photo and video package"
+        },
+        {
+          "label": "Flowers & Decorations",
+          "estimated": 2000,
+          "notes": "Bouquets, ceremony, and reception flowers"
+        },
+        {
+          "label": "Music & Entertainment",
+          "estimated": 1500,
+          "notes": "DJ or band for ceremony and reception"
+        },
+        {
+          "label": "Wedding Cake",
+          "estimated": 500,
+          "notes": "Custom cake for 80 guests"
+        },
+        {
+          "label": "Wedding Attire",
+          "estimated": 2500,
+          "notes": "Dress, suit, alterations, accessories"
+        },
+        {
+          "label": "Invitations & Stationery",
+          "estimated": 400,
+          "notes": "Save-the-dates, invitations, programs"
+        },
+        {
+          "label": "Wedding Planner",
+          "estimated": 2000,
+          "notes": "Day-of coordinator"
+        },
+        {
+          "label": "Officiant",
+          "estimated": 300,
+          "notes": "Ceremony officiant fee"
+        },
+        {
+          "label": "Rings",
+          "estimated": 2000,
+          "notes": "Wedding bands"
+        },
+        {
+          "label": "Guest Accommodations",
+          "estimated": 1000,
+          "notes": "Hotel block deposits"
+        },
+        {
+          "label": "Transportation",
+          "estimated": 600,
+          "notes": "Limo, shuttles for guests"
+        },
+        {
+          "label": "Favors & Gifts",
+          "estimated": 500,
+          "notes": "Guest favors and thank-you gifts"
+        }
+      ],
+      "total_estimated": 27300
+    },
+    "emails": {
+      "save_the_date": "wedding_save_the_date_v1",
+      "invitation": "wedding_invitation_formal",
+      "reminder_30d": "wedding_reminder_30d",
+      "reminder_7d": "wedding_reminder_7d",
+      "thankyou": "wedding_thankyou"
+    },
+    "customization_hints": {
+      "required_fields": ["title", "ceremony_date", "ceremony_location", "reception_location"],
+      "recommended_guest_count": "50-100",
+      "setup_time_minutes": 10,
+      "planning_lead_time_months": "6-12"
+    }
+  },
+  "required_fields_schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "required": ["title", "ceremony_date", "ceremony_location"],
+    "properties": {
+      "title": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 150
+      },
+      "ceremony_date": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "ceremony_location": {
+        "type": "string",
+        "minLength": 3
+      },
+      "reception_location": {
+        "type": "string",
+        "minLength": 3
+      }
+    }
+  }
+}

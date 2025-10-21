@@ -1,11 +1,8 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { Resend } from 'resend';
-import { RESEND_API_KEY, RESEND_FROM_EMAIL, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from './env-server.js';
+import { MailerSend, EmailParams, Sender, Recipient } from "mailersend";
+import { MAILERSEND_API_TOKEN, MAILERSEND_FROM_EMAIL, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from './env-server.js';
 import sanitizeHtml from 'sanitize-html';
 import { createClient } from '@supabase/supabase-js';
-
-// Initialize Resend with API key
-const resend = new Resend(RESEND_API_KEY);
 
 interface SendEmailRequest {
   to: string;
@@ -48,8 +45,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const metadataRecord: EmailMetadata | undefined =
     metadata && typeof metadata === 'object' ? (metadata as EmailMetadata) : undefined;
 
-  console.log('api/send-email - env RESEND_API_KEY present:', !!RESEND_API_KEY);
-  console.log('api/send-email - env RESEND_FROM_EMAIL present:', !!RESEND_FROM_EMAIL);
+  console.log('api/send-email - env MAILERSEND_API_TOKEN present:', !!MAILERSEND_API_TOKEN);
+  console.log('api/send-email - env MAILERSEND_FROM_EMAIL present:', !!MAILERSEND_FROM_EMAIL);
     console.log('api/send-email - incoming body:', JSON.stringify({ to, subject, html, guestId, eventId, metadata }));
 
     // Server-side Supabase admin client for updating email_logs
@@ -78,8 +75,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Check if API key is available
-    if (!RESEND_API_KEY) {
-      console.error('RESEND_API_KEY environment variable is not set');
+    if (!MAILERSEND_API_TOKEN) {
+      console.error('MAILERSEND_API_TOKEN environment variable is not set');
       return res.status(500).json({
         success: false,
         error: 'Email service configuration error'
@@ -87,12 +84,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
       // Ensure a verified FROM address is configured and always use it.
-      if (!RESEND_FROM_EMAIL) {
-  console.error('RESEND_FROM_EMAIL environment variable must be set to a verified sending address (e.g. dara@partyhause.com)');
-          return res.status(500).json({ success: false, error: 'Server configuration error: RESEND_FROM_EMAIL not set' });
+      if (!MAILERSEND_FROM_EMAIL) {
+  console.error('MAILERSEND_FROM_EMAIL environment variable must be set to a verified sending address (e.g. dara@partyhause.com)');
+          return res.status(500).json({ success: false, error: 'Server configuration error: MAILERSEND_FROM_EMAIL not set' });
         }
 
-        const emailFrom = `PartyHause <${RESEND_FROM_EMAIL}>`;
+        // Initialize MailerSend inside handler to avoid module-level failures
+        const mailerSend = new MailerSend({
+          apiKey: MAILERSEND_API_TOKEN,
+        });
 
     // Sanitize the HTML content before sending
     const sanitizedHtml = sanitizeHtml(contentHtml, {
@@ -104,27 +104,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     // Determine 'from' header; allow client override if explicitly enabled
-    let effectiveFrom = emailFrom;
+    let effectiveFromEmail = MAILERSEND_FROM_EMAIL;
     if (from && process.env.ALLOW_FROM_OVERRIDE === 'true') {
-      effectiveFrom = String(from);
-      console.log('api/send-email - Using overridden from header from request:', effectiveFrom);
+      effectiveFromEmail = String(from);
+      console.log('api/send-email - Using overridden from header from request:', effectiveFromEmail);
     } else {
       // Always log the app display name followed by the configured sender address
-      console.log('api/send-email - Using configured from header: PartyHause <' + String(process.env.RESEND_FROM_EMAIL) + '>');
+      console.log('api/send-email - Using configured from header: PartyHause <' + String(MAILERSEND_FROM_EMAIL) + '>');
     }
 
-    const sendPayload: {
-      from: string;
-      to: string[];
-      subject: string;
-      html: string;
-      metadata?: Record<string, string>;
-    } = {
-      from: effectiveFrom,
-      to: [to], // Ensure to is an array
-      subject,
-      html: sanitizedHtml,
-    };
+    const sentFrom = new Sender(effectiveFromEmail, "PartyHause");
+    const recipients = [new Recipient(to, to)]; // MailerSend expects array of Recipient objects
+
+    const emailParams = new EmailParams()
+      .setFrom(sentFrom)
+      .setTo(recipients)
+      .setSubject(subject)
+      .setHtml(sanitizedHtml);
 
     // Attach metadata when provided so webhook events can be correlated
     const meta: Record<string, string> = {};
@@ -137,32 +133,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       });
     }
-  if (Object.keys(meta).length > 0) sendPayload.metadata = meta;
+    // Note: MailerSend doesn't support metadata in the same way as Resend
+    // You may need to use tags or variables instead
 
-    const data: unknown = await resend.emails.send(sendPayload);
+    const data: unknown = await mailerSend.email.send(emailParams);
     // Avoid throwing if the SDK response contains circular refs or non-serializable values
     try {
       const serial = typeof data === 'string' ? data : JSON.stringify(data);
-      console.log('api/send-email - Resend response:', serial);
+      console.log('api/send-email - MailerSend response:', serial);
     } catch (e) {
-      console.log('api/send-email - Resend response (non-serializable):', String(data));
+      console.log('api/send-email - MailerSend response (non-serializable):', String(data));
     }
 
-    // Normalize resend id (some SDK versions return data.id or data.data.id)
-    const extractResendId = (d: unknown): string | null => {
+    // Normalize MailerSend message id (MailerSend returns different structure than Resend)
+    const extractMailerSendId = (d: unknown): string | null => {
       if (d && typeof d === 'object') {
         const obj = d as Record<string, unknown>;
-        const nested = obj['data'];
-        if (nested && typeof nested === 'object') {
-          const nestedObj = nested as Record<string, unknown>;
-          if (typeof nestedObj['id'] === 'string') return nestedObj['id'] as string;
+        const body = obj['body'];
+        if (body && typeof body === 'object') {
+          const bodyObj = body as Record<string, unknown>;
+          if (typeof bodyObj['message_id'] === 'string') return bodyObj['message_id'] as string;
         }
-        if (typeof obj['id'] === 'string') return obj['id'] as string;
+        if (typeof obj['message_id'] === 'string') return obj['message_id'] as string;
       }
       return null;
     };
 
-    const resendId = extractResendId(data);
+    const messageId = extractMailerSendId(data);
 
     // If we have an emailLogId from metadata, update the email_logs record with template info and resend id
     const emailLogIdRaw = metadataRecord?.emailLogId;
@@ -176,7 +173,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .update({
             template_id: metadata?.templateId || null,
             template_body: metadata?.templateBody ? sanitizeHtml(String(metadata.templateBody)) : null,
-            resend_email_id: resendId,
+            resend_email_id: messageId, // Using MailerSend message_id
             status: 'sent',
             sent_at: new Date().toISOString()
           })
@@ -189,7 +186,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ 
       success: true, 
       data: {
-        id: resendId,
+        id: messageId,
         message: 'Email sent successfully'
       }
     });

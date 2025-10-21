@@ -1,0 +1,18 @@
+{
+  "name": "@partyhause/core",
+  "version": "0.1.0",
+  "description": "Shared logic and utilities for PartyHause mobile and web apps.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.36.0",
+    "zustand": "^4.4.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  },
+  "license": "MIT"
+}
