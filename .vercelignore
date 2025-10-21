@@ -1,0 +1,29 @@
+# Ignore non-essential API functions to stay within Vercel limits
+# Only deploy email.ts and health.ts
+api/test.ts
+api/templates.ts
+api/email-webhook.ts
+api/event-templates.ts
+api/create-event-from-template.ts
+api/send-email.ts
+api/services/
+
+# Ignore test files
+scripts/
+server/
+test-*.js
+test-*.ts
+
+# Ignore mobile app (separate deployment)
+apps/mobile/
+packages/
+
+# Ignore local files
+.env
+.env.local
+*.md
+!README.md
+
+# Ignore TypeScript definition files that aren't needed
+api/*.d.ts
+api/env-server.js

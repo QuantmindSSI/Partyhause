@@ -1,4 +1,14 @@
 {
+  "functions": {
+    "api/email.ts": {
+      "memory": 1024,
+      "maxDuration": 10
+    },
+    "api/health.ts": {
+      "memory": 128,
+      "maxDuration": 5
+    }
+  },
   "rewrites": [
     {
       "source": "/api/send-email",
@@ -12,5 +22,6 @@
       "source": "/(.*)",
       "destination": "/dist/index.html"
     }
-  ]
+  ],
+  "outputDirectory": "dist"
 }
