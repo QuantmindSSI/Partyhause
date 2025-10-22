@@ -4,19 +4,27 @@
  */
 
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 // Email API configuration
-// Development: Points to local email server on port 3001
-// iOS Simulator: Uses host machine's IP (192.168.56.1)
-// Android Emulator: Uses special alias 10.0.2.2 which maps to host's localhost
-// Physical Devices: Must use actual IP address of development machine (192.168.56.1)
-const EMAIL_API_URL = __DEV__ 
-  ? Platform.select({
-      ios: 'http://192.168.56.1:3001/api/send-email', // iOS simulator & physical devices
-      android: 'http://10.0.2.2:3001/api/send-email', // Android emulator maps to host localhost
-      default: 'http://192.168.56.1:3001/api/send-email', // Physical devices - ensure same WiFi network
-    })
-  : 'https://www.partyhause.com/api/send-email'; // Production Vercel deployment
+// IMPORTANT: Expo Go always uses PRODUCTION endpoint because it can't access localhost
+// Only use localhost when running in:
+// - iOS Simulator (via Xcode)
+// - Android Emulator (via Android Studio)
+// - Development build on physical device (same WiFi network)
+
+// Detect if running in Expo Go
+const isExpoGo = Constants.appOwnership === 'expo';
+
+// For Expo Go or production, use production URL
+// For development with simulators/emulators, use localhost
+const EMAIL_API_URL = isExpoGo || !__DEV__
+  ? 'https://www.partyhause.com/api/send-email' // Production Vercel (Expo Go always uses this)
+  : Platform.select({
+      ios: 'http://192.168.56.1:3001/api/send-email', // iOS simulator
+      android: 'http://10.0.2.2:3001/api/send-email', // Android emulator
+      default: 'http://192.168.56.1:3001/api/send-email', // Physical device (same WiFi)
+    }) as string;
 
 export interface EmailTemplate {
   to: string;
@@ -53,7 +61,10 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
     console.log('[EmailService] To:', options.to);
     console.log('[EmailService] Subject:', options.subject);
     console.log('[EmailService] API URL:', EMAIL_API_URL);
-    console.log('[EmailService] Environment:', __DEV__ ? 'Development' : 'Production');
+    console.log('[EmailService] __DEV__ flag:', __DEV__);
+    console.log('[EmailService] Is Expo Go:', isExpoGo);
+    console.log('[EmailService] App Ownership:', Constants.appOwnership);
+    console.log('[EmailService] Environment:', isExpoGo ? 'Expo Go (Production API)' : (__DEV__ ? 'Development' : 'Production'));
     console.log('[EmailService] Platform:', Platform.OS);
     if (options.metadata) {
       console.log('[EmailService] Metadata:', JSON.stringify(options.metadata));
@@ -131,9 +142,10 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
  * Generate invitation URL
  */
 export function generateInvitationUrl(eventId: string, guestId: string): string {
-  const baseUrl = __DEV__ 
-    ? 'http://localhost:5173' 
-    : 'https://www.partyhause.com';
+  // Expo Go always uses production URL
+  const baseUrl = isExpoGo || !__DEV__
+    ? 'https://www.partyhause.com'
+    : 'http://localhost:5173';
   
   return `${baseUrl}/event/${eventId}/guest/${guestId}`;
 }
