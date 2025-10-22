@@ -77,7 +77,20 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
   // Add guest mutation
   const addGuestMutation = useMutation({
     mutationFn: async (newGuest: { name: string; email: string; sendInvite: boolean }) => {
-      console.log('[GuestManagement] Adding guest:', newGuest);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('[GuestManagement] 👤 ADDING GUEST');
+      console.log('[GuestManagement] Name:', newGuest.name);
+      console.log('[GuestManagement] Email:', newGuest.email);
+      console.log('[GuestManagement] Send Invite:', newGuest.sendInvite);
+      console.log('[GuestManagement] Event ID:', eventId);
+      console.log('[GuestManagement] Has Event Object:', !!event);
+      if (event) {
+        console.log('[GuestManagement] Event Name:', event.name);
+        console.log('[GuestManagement] Event Date:', event.start_date || event.date);
+        console.log('[GuestManagement] Event Location:', event.location);
+      }
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
       const client = requireSupabase();
       
       // Step 1: Add guest to database
@@ -92,11 +105,16 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('[GuestManagement] ❌ Database error:', error);
+        throw error;
+      }
+
+      console.log('[GuestManagement] ✅ Guest created in database:', data.id);
 
       // Step 2: Send invitation email if requested and event data is available
       if (newGuest.sendInvite && event && data) {
-        console.log('[GuestManagement] Sending invitation email...');
+        console.log('[GuestManagement] 📧 Proceeding to send invitation email...');
         
         try {
           // Create email log entry in database

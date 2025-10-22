@@ -45,9 +45,20 @@ export interface SendEmailResult {
  * Send email via API
  */
 export async function sendEmail(options: SendEmailOptions): Promise<SendEmailResult> {
+  const startTime = Date.now();
+  
   try {
-    console.log('[EmailService] Sending email to:', options.to);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('[EmailService] 📧 SENDING EMAIL');
+    console.log('[EmailService] To:', options.to);
+    console.log('[EmailService] Subject:', options.subject);
     console.log('[EmailService] API URL:', EMAIL_API_URL);
+    console.log('[EmailService] Environment:', __DEV__ ? 'Development' : 'Production');
+    console.log('[EmailService] Platform:', Platform.OS);
+    if (options.metadata) {
+      console.log('[EmailService] Metadata:', JSON.stringify(options.metadata));
+    }
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     const response = await fetch(EMAIL_API_URL, {
       method: 'POST',
@@ -57,29 +68,58 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
       body: JSON.stringify(options),
     });
 
-    const text = await response.text();
-    let data;
+    const duration = Date.now() - startTime;
+    console.log(`[EmailService] ⏱️  Response received in ${duration}ms`);
+    console.log('[EmailService] Status:', response.status, response.statusText);
 
+    const text = await response.text();
+    console.log('[EmailService] Response length:', text.length, 'bytes');
+    
+    // Log first 200 chars for debugging
+    if (text.length > 200) {
+      console.log('[EmailService] Response preview:', text.substring(0, 200) + '...');
+    } else {
+      console.log('[EmailService] Full response:', text);
+    }
+
+    let data;
     try {
       data = JSON.parse(text);
+      console.log('[EmailService] ✅ Parsed JSON successfully');
     } catch (e) {
-      console.error('[EmailService] Failed to parse response:', text);
-      throw new Error('Invalid API response');
+      console.error('[EmailService] ❌ JSON PARSE ERROR');
+      console.error('[EmailService] Parse error:', e instanceof Error ? e.message : String(e));
+      console.error('[EmailService] Response was:', text.substring(0, 500));
+      throw new Error('Invalid API response: ' + text.substring(0, 100));
     }
 
     if (!response.ok) {
-      console.error('[EmailService] API error:', data);
-      throw new Error(data.error || 'Email sending failed');
+      console.error('[EmailService] ❌ API ERROR RESPONSE');
+      console.error('[EmailService] Status:', response.status);
+      console.error('[EmailService] Error data:', JSON.stringify(data, null, 2));
+      throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
     }
 
-    console.log('[EmailService] Email sent successfully:', data);
+    console.log('[EmailService] ✅ EMAIL SENT SUCCESSFULLY!');
+    console.log('[EmailService] Message ID:', data.data?.id || 'N/A');
+    console.log('[EmailService] Response:', JSON.stringify(data, null, 2));
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     return {
       success: true,
       messageId: data.data?.id,
     };
   } catch (error) {
-    console.error('[EmailService] Error sending email:', error);
+    const duration = Date.now() - startTime;
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error(`[EmailService] ❌ ERROR after ${duration}ms`);
+    console.error('[EmailService] Error type:', error?.constructor?.name || 'Unknown');
+    console.error('[EmailService] Error message:', error instanceof Error ? error.message : String(error));
+    if (error instanceof Error && error.stack) {
+      console.error('[EmailService] Stack trace:', error.stack.substring(0, 500));
+    }
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
