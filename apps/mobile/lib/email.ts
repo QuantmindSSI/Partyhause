@@ -16,7 +16,7 @@ const EMAIL_API_URL = __DEV__
       android: 'http://10.0.2.2:3001/api/send-email', // Android emulator maps to host localhost
       default: 'http://192.168.56.1:3001/api/send-email', // Physical devices - ensure same WiFi network
     })
-  : 'https://partyhause.vercel.app/api/send-email'; // Production - update with actual domain
+  : 'https://www.partyhause.com/api/send-email'; // Production Vercel deployment
 
 export interface EmailTemplate {
   to: string;
@@ -93,7 +93,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
 export function generateInvitationUrl(eventId: string, guestId: string): string {
   const baseUrl = __DEV__ 
     ? 'http://localhost:5173' 
-    : 'https://your-domain.vercel.app';
+    : 'https://www.partyhause.com';
   
   return `${baseUrl}/event/${eventId}/guest/${guestId}`;
 }
