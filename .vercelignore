@@ -1,12 +1,16 @@
-# Ignore non-essential API functions to stay within Vercel limits
-# Only deploy email.ts and health.ts
+# Ignore non-essential API functions to stay within Vercel 12 function limit
+# Core functions deployed (10 total):
+# 1. api/email.ts - Main email sending
+# 2. api/health.ts - Health check
+# 3. api/email-webhook.ts - MailerSend webhooks
+# 4. api/event-templates.ts - List templates
+# 5. api/create-event-from-template.ts - Create from template
+# 6-10. api/services/* - Template services (counted as separate functions)
+
+# Ignore these to stay under limit
 api/test.ts
 api/templates.ts
-api/email-webhook.ts
-api/event-templates.ts
-api/create-event-from-template.ts
 api/send-email.ts
-api/services/
 
 # Ignore test files
 scripts/
@@ -24,6 +28,5 @@ packages/
 *.md
 !README.md
 
-# Ignore TypeScript definition files that aren't needed
-api/*.d.ts
-api/env-server.js
+# Keep TypeScript definition files for builds
+# api/*.d.ts files are needed for compilation
