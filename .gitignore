@@ -29,9 +29,10 @@ node_modules/
 .env.local
 node_modules/
 
-# Ignore markdown files across the repo while keeping the top-level README.md tracked
+# Ignore markdown files across the repo while keeping the top-level README.md and docs folder tracked
 **/*.md
 !README.md
+!docs/**/*.md
 
 # Local Netlify folder
 .netlify

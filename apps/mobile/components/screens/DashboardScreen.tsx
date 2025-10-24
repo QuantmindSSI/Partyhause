@@ -1,23 +1,29 @@
 import { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, ImageBackground } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { supabase, requireSupabase } from '@/lib/supabase';
-import { EventDetailsScreen } from './EventDetailsScreen';
-import { GuestManagementScreen } from './GuestManagementScreen';
+import { EventCardCarousel } from '@/components/cards/EventCardCarousel';
+import { getTemplateBackground } from '@/utils/templateBackgrounds';
 
 interface Event {
   id: string;
   name: string;
+  title?: string;
+  template_type?: string;
   event_date: string;
+  start_date?: string;
   location?: string;
   venue?: string;
   description?: string;
   spotify_playlist_url?: string;
+  status?: 'draft' | 'published' | 'cancelled' | 'completed';
   host_id: string;
   created_at: string;
 }
-
-type ScreenMode = 'dashboard' | 'event-details' | 'guest-management';
 
 interface DashboardScreenProps {
   userId: string;
@@ -26,9 +32,9 @@ interface DashboardScreenProps {
 }
 
 export const DashboardScreen = ({ userId, userEmail, onSignOut }: DashboardScreenProps) => {
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
-  const [screenMode, setScreenMode] = useState<ScreenMode>('dashboard');
-  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [currentEventIndex, setCurrentEventIndex] = useState(0);
 
   const { data: events = [], isLoading, refetch } = useQuery<Event[]>({
     queryKey: ['user-events', userId],
@@ -73,120 +79,124 @@ export const DashboardScreen = ({ userId, userEmail, onSignOut }: DashboardScree
   };
 
   const handleEventPress = (event: Event) => {
-    setSelectedEvent(event);
-    setScreenMode('event-details');
+    // Navigate to the new event details screen using dynamic route
+    router.push(`/events/${event.id}` as any);
   };
 
-  const handleBackToDashboard = () => {
-    setScreenMode('dashboard');
-    setSelectedEvent(null);
+  const handleCreateEvent = () => {
+    router.push('/events/create');
   };
 
-  const handleViewGuests = () => {
-    setScreenMode('guest-management');
-  };
+  // Transform events to match carousel component interface
+  const carouselEvents = events.map(event => ({
+    id: event.id,
+    title: event.name || event.title || 'Untitled Event',
+    description: event.description,
+    template_type: event.template_type || 'default',
+    start_date: event.start_date || event.event_date,
+    end_date: event.event_date,
+    location: event.venue || event.location,
+    status: (event.status || 'published') as 'draft' | 'published' | 'cancelled' | 'completed',
+    settings: {},
+  }));
 
-  // Show EventDetailsScreen
-  if (screenMode === 'event-details' && selectedEvent) {
-    return (
-      <EventDetailsScreen
-        event={selectedEvent}
-        onBack={handleBackToDashboard}
-        onViewGuests={handleViewGuests}
-      />
-    );
-  }
+  // Get current event's template background for dashboard
+  const currentEventBackground = carouselEvents.length > 0 
+    ? getTemplateBackground(carouselEvents[currentEventIndex]?.template_type || 'default')
+    : null;
 
-  // Show GuestManagementScreen
-  if (screenMode === 'guest-management' && selectedEvent) {
-    return (
-      <GuestManagementScreen
-        eventId={selectedEvent.id}
-        eventName={selectedEvent.name}
-        onBack={handleBackToDashboard}
-      />
-    );
-  }
-
-  // Show Dashboard (default)
   return (
     <View style={styles.container}>
+      {/* Dynamic Background based on center event */}
+      {currentEventBackground && carouselEvents.length > 0 && (
+        <ImageBackground
+          source={{ uri: currentEventBackground }}
+          style={StyleSheet.absoluteFill}
+          blurRadius={25}
+          resizeMode="cover"
+        >
+          <LinearGradient
+            colors={['rgba(10,10,15,0.95)', 'rgba(10,10,15,0.85)', 'rgba(10,10,15,0.95)']}
+            style={StyleSheet.absoluteFill}
+          />
+        </ImageBackground>
+      )}
+
       {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>Hey there! 👋</Text>
           <Text style={styles.email}>{userEmail}</Text>
         </View>
-        <TouchableOpacity style={styles.signOutButton} onPress={onSignOut}>
-          <Text style={styles.signOutText}>Sign Out</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity 
+            style={styles.draftsButton} 
+            onPress={() => router.push('/events/drafts')}
+          >
+            <Ionicons name="document-text-outline" size={20} color="#6366F1" />
+            <Text style={styles.draftsButtonText}>Drafts</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.signOutButton} onPress={onSignOut}>
+            <Text style={styles.signOutText}>Sign Out</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Content */}
-      <ScrollView
-        style={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6C63FF" />
-        }
-      >
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Your Events</Text>
-          <Text style={styles.sectionSubtitle}>
-            {events.length} {events.length === 1 ? 'event' : 'events'}
-          </Text>
-        </View>
-
+      <View style={styles.content}>
         {isLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#6C63FF" />
             <Text style={styles.loadingText}>Loading your events...</Text>
           </View>
         ) : events.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>🎈</Text>
-            <Text style={styles.emptyTitle}>No events yet</Text>
-            <Text style={styles.emptyText}>
-              Create your first event on the web app at partyhause.com
-            </Text>
-            <TouchableOpacity style={styles.createButton}>
-              <Text style={styles.createButtonText}>+ Create on Web</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.eventsList}>
-            {events.map((event) => (
-              <TouchableOpacity 
-                key={event.id} 
-                style={styles.eventCard}
-                onPress={() => handleEventPress(event)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.eventHeader}>
-                  <View style={styles.eventTitleContainer}>
-                    <Text style={styles.eventName}>{event.name}</Text>
-                    {(event.venue || event.location) && (
-                      <Text style={styles.eventVenue}>📍 {event.venue || event.location}</Text>
-                    )}
-                  </View>
-                  <View style={styles.eventBadge}>
-                    <Text style={styles.eventDateText}>{formatDate(event.event_date)}</Text>
-                  </View>
-                </View>
-                
-                {event.description && (
-                  <Text style={styles.eventDescription} numberOfLines={2}>
-                    {event.description}
-                  </Text>
-                )}
-                
-                <View style={styles.eventFooter}>
-                  <Text style={styles.eventAction}>Tap to view details →</Text>
-                </View>
+          <ScrollView
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6C63FF" />
+            }
+          >
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>🎈</Text>
+              <Text style={styles.emptyTitle}>No events yet</Text>
+              <Text style={styles.emptyText}>
+                Create your first event and start inviting guests!
+              </Text>
+              <TouchableOpacity style={styles.createButton} onPress={handleCreateEvent}>
+                <Ionicons name="add-circle" size={20} color="#FFF" />
+                <Text style={styles.createButtonText}>Create Your First Event</Text>
               </TouchableOpacity>
-            ))}
-          </View>
+            </View>
+          </ScrollView>
+        ) : (
+          <>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Your Events</Text>
+              <Text style={styles.sectionSubtitle}>
+                {events.length} {events.length === 1 ? 'event' : 'events'} • Swipe to navigate
+              </Text>
+            </View>
+            <View style={styles.carouselContainer}>
+              <EventCardCarousel
+                events={carouselEvents}
+                onEventPress={(event) => router.push(`/events/${event.id}` as any)}
+                onIndexChange={setCurrentEventIndex}
+                currentUserId={userId}
+              />
+            </View>
+          </>
         )}
-      </ScrollView>
+      </View>
+
+      {/* Floating Create Button */}
+      {events.length > 0 && (
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={handleCreateEvent}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="add" size={28} color="#FFF" />
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
@@ -216,6 +226,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#a8a8b3',
   },
+  headerRight: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  draftsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#EEF2FF',
+  },
+  draftsButtonText: {
+    color: '#6366F1',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   signOutButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -231,9 +260,13 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  carouselContainer: {
+    flex: 1,
+  },
   section: {
     paddingHorizontal: 24,
-    paddingVertical: 24,
+    paddingTop: 24,
+    paddingBottom: 12,
   },
   sectionTitle: {
     fontSize: 28,
@@ -277,15 +310,34 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   createButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#6C63FF',
     paddingHorizontal: 24,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderRadius: 12,
+    gap: 8,
   },
   createButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  fab: {
+    position: 'absolute',
+    right: 24,
+    bottom: 24,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#6C63FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 8,
+    shadowColor: '#6C63FF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
   eventsList: {
     paddingHorizontal: 24,

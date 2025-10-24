@@ -68,7 +68,7 @@ const extractApiResult = (d: unknown): { success: boolean; error?: string; id?: 
 export interface SendResult {
   raw?: unknown;
   emailLogId: string;
-  resendEmailId: string | null;
+  resendEmailId: string | null; // Now contains MailerSend message ID for backward compatibility
 }
 
 export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate, logData: EmailLogData): Promise<SendResult> => {
@@ -134,7 +134,7 @@ export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate
         html,
         // Optionally include a from override controlled via Vite env vars
         ...(fromOverride ? { from: fromOverride } : {}),
-        // Attach metadata so Resend webhook payloads can be correlated to this email log
+        // Attach metadata so MailerSend webhook payloads can be correlated to this email log
         metadata: {
           emailLogId: emailLog.id,
           guestId: logData.guestId,
@@ -182,13 +182,13 @@ export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate
       throw new Error(parsed.error || 'Email sending failed');
     }
     
-    // Update email log with success and Resend email ID
-  const resendEmailId = parsed.id || null;
+    // Update email log with success and MailerSend message ID
+  const mailerSendId = parsed.id || null;
     await supabase
       .from<EmailLogRow>('email_logs')
       .update({
         status: 'sent',
-        resend_email_id: resendEmailId,
+        resend_email_id: mailerSendId, // Keep column name for backward compatibility
         sent_at: new Date().toISOString()
       })
       .eq('id', emailLog.id);
@@ -207,14 +207,14 @@ export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate
     
     console.log('✅ Email sent successfully with tracking:', {
       emailLogId: emailLog.id,
-      resendEmailId,
+      resendEmailId: mailerSendId,
       recipient: to
     });
     
     return {
       raw: data,
       emailLogId: emailLog.id,
-      resendEmailId
+      resendEmailId: mailerSendId
     };
     
   } catch (error) {
@@ -344,7 +344,7 @@ export const getEventEmailLogs = async (eventId: string) => {
   }
 };
 
-// Resend failed email
+// Re-send failed email (now using MailerSend)
 export const resendEmail = async (emailLogId: string) => {
   try {
     // Get original email log
@@ -403,7 +403,7 @@ export const resendEmail = async (emailLogId: string) => {
         );
         break;
       default:
-        throw new Error('Unsupported email type for resend');
+        throw new Error('Unsupported email type for re-send');
     }
 
   // Send email with tracking
@@ -421,7 +421,7 @@ export const resendEmail = async (emailLogId: string) => {
     });
 
   } catch (error) {
-    console.error('Failed to resend email:', error);
+    console.error('Failed to re-send email:', error);
     throw error;
   }
 };

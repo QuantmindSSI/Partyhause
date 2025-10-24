@@ -10,7 +10,7 @@ console.log('This simulates what happens when sending email from Expo Go...\n');
 
 async function testExpoGoEmail() {
   const payload = {
-    to: 'dara@partyhause.com',
+    to: 'honeyalofetekun@gmail.com',
     subject: '📱 Expo Go Test - Invitation',
     html: `
       <div style="font-family: Arial, sans-serif; padding: 20px;">
