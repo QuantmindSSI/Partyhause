@@ -1,7 +1,5 @@
-import { Resend } from 'resend';
-
 // Email service that uses the backend API instead of exposing API keys
-// No longer exposing Resend API key on frontend
+// Now using MailerSend instead of Resend
 
 export interface EmailTemplate {
   to: string;

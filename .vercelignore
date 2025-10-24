@@ -1,16 +1,23 @@
 # Ignore non-essential API functions to stay within Vercel 12 function limit
-# Core functions deployed (10 total):
-# 1. api/email.ts - Main email sending
-# 2. api/health.ts - Health check
+# ESSENTIAL FUNCTIONS DEPLOYED (8 total):
+# 1. api/health.ts - Health check
+# 2. api/email.ts - Main email sending
 # 3. api/email-webhook.ts - MailerSend webhooks
-# 4. api/event-templates.ts - List templates
-# 5. api/create-event-from-template.ts - Create from template
-# 6-10. api/services/* - Template services (counted as separate functions)
+# 4. api/events.ts - Event CRUD (REQUIRED FOR MOBILE)
+# 5. api/guests.ts - Guest management (REQUIRED FOR MOBILE)
+# 6. api/timeline.ts - Timeline/schedule (REQUIRED FOR MOBILE)
+# 7. api/event-templates.ts - List templates
+# 8. api/create-event-from-template.ts - Create from template
 
 # Ignore these to stay under limit
 api/test.ts
 api/templates.ts
 api/send-email.ts
+api/email-health.js
+api/email-health-debug.js
+api/ping.js
+api/services/
+api/templates/
 
 # Ignore test files
 scripts/
@@ -20,7 +27,6 @@ test-*.ts
 
 # Ignore mobile app (separate deployment)
 apps/mobile/
-packages/
 
 # Ignore local files
 .env

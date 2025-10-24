@@ -19,6 +19,18 @@
     "api/create-event-from-template.ts": {
       "memory": 512,
       "maxDuration": 10
+    },
+    "api/events.ts": {
+      "memory": 512,
+      "maxDuration": 10
+    },
+    "api/guests.ts": {
+      "memory": 512,
+      "maxDuration": 10
+    },
+    "api/timeline.ts": {
+      "memory": 256,
+      "maxDuration": 10
     }
   },
   "rewrites": [
@@ -41,6 +53,18 @@
     {
       "source": "/api/create-event-from-template",
       "destination": "/api/create-event-from-template"
+    },
+    {
+      "source": "/api/events/:id/guests",
+      "destination": "/api/guests"
+    },
+    {
+      "source": "/api/events/:id/timeline",
+      "destination": "/api/timeline"
+    },
+    {
+      "source": "/api/events/:path*",
+      "destination": "/api/events"
     },
     {
       "source": "/(.*)",

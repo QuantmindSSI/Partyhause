@@ -8,11 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Calendar, MapPin, Music, Sparkles } from 'lucide-react';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { Calendar as CalendarPicker } from '@/components/ui/calendar';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ArrowLeft, Sparkles } from 'lucide-react';
 
 
 export const EventCreation = () => {

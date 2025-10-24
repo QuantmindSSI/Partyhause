@@ -113,6 +113,13 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
       console.log('[GuestManagement] ✅ Guest created in database:', data.id);
 
       // Step 2: Send invitation email if requested and event data is available
+      console.log('[GuestManagement] 📧 Checking email send conditions:', {
+        sendInvite: newGuest.sendInvite,
+        hasEvent: !!event,
+        hasData: !!data,
+        willSendEmail: !!(newGuest.sendInvite && event && data)
+      });
+      
       if (newGuest.sendInvite && event && data) {
         console.log('[GuestManagement] 📧 Proceeding to send invitation email...');
         
