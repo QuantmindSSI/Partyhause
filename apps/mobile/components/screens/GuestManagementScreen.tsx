@@ -14,24 +14,8 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase, requireSupabase } from '@/lib/supabase';
 import { sendInvitationEmail, generateInvitationUrl } from '@/lib/email';
-
-interface Guest {
-  id: string;
-  event_id: string;
-  name: string;
-  email: string;
-  is_checked_in: boolean;
-  created_at: string;
-}
-
-interface Event {
-  id: string;
-  name: string;
-  date: string;
-  start_date?: string;
-  location: string;
-  description?: string;
-}
+import { Guest } from '@/types/guest';
+import { Event } from '@/types/event';
 
 interface GuestManagementScreenProps {
   eventId: string;
@@ -85,8 +69,8 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
       console.log('[GuestManagement] Event ID:', eventId);
       console.log('[GuestManagement] Has Event Object:', !!event);
       if (event) {
-        console.log('[GuestManagement] Event Name:', event.name);
-        console.log('[GuestManagement] Event Date:', event.start_date || event.date);
+        console.log('[GuestManagement] Event Name:', event.name || event.title);
+        console.log('[GuestManagement] Event Date:', event.start_date || event.date || event.event_date);
         console.log('[GuestManagement] Event Location:', event.location);
       }
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -101,7 +85,7 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
           name: newGuest.name.trim(),
           email: newGuest.email.trim(),
           is_checked_in: false,
-        })
+        } as any)
         .select()
         .single();
 
@@ -110,31 +94,32 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
         throw error;
       }
 
-      console.log('[GuestManagement] ✅ Guest created in database:', data.id);
+      const guestData = data as any; // Type assertion for Supabase data
+      console.log('[GuestManagement] ✅ Guest created in database:', guestData.id);
 
       // Step 2: Send invitation email if requested and event data is available
       console.log('[GuestManagement] 📧 Checking email send conditions:', {
         sendInvite: newGuest.sendInvite,
         hasEvent: !!event,
         hasData: !!data,
-        willSendEmail: !!(newGuest.sendInvite && event && data)
+        willSendEmail: !!(newGuest.sendInvite && event && guestData)
       });
       
-      if (newGuest.sendInvite && event && data) {
+      if (newGuest.sendInvite && event && guestData) {
         console.log('[GuestManagement] 📧 Proceeding to send invitation email...');
         
         try {
           // Create email log entry in database
-          const { data: emailLog, error: logError } = await client
+          const { data: emailLogData, error: logError } = await client
             .from('email_logs')
             .insert({
               event_id: eventId,
-              guest_id: data.id,
+              guest_id: guestData.id,
               email_type: 'invitation',
               recipient_email: newGuest.email.trim(),
-              subject: `🎉 You're Invited to ${event.name}!`,
+              subject: `🎉 You're Invited to ${event.name || event.title}!`,
               status: 'pending',
-            })
+            } as any)
             .select()
             .single();
 
@@ -142,15 +127,17 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
             console.warn('[GuestManagement] Failed to create email log:', logError);
           }
 
+          const emailLog = emailLogData as any; // Type assertion for email log
+
           // Send the email
-          const invitationUrl = generateInvitationUrl(eventId, data.id);
+          const invitationUrl = generateInvitationUrl(eventId, guestData.id);
           const emailResult = await sendInvitationEmail(
             { name: newGuest.name.trim(), email: newGuest.email.trim() },
             {
               id: event.id,
-              name: event.name,
-              date: event.start_date || event.date,
-              location: event.location,
+              name: event.name || event.title || '',
+              date: (event.start_date || event.date || event.event_date || '') as string,
+              location: typeof event.location === 'string' ? event.location : (event.location?.name || event.venue || ''),
               description: event.description,
             },
             { emailLogId: emailLog?.id }
@@ -161,42 +148,35 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
             
             // Update email log status
             if (emailLog) {
-              await client
-                .from('email_logs')
-                .update({
-                  status: 'sent',
-                  resend_email_id: emailResult.messageId,
-                  sent_at: new Date().toISOString(),
-                })
-                .eq('id', emailLog.id);
+              await (client.from('email_logs') as any).update({
+                status: 'sent',
+                resend_email_id: emailResult.messageId,
+                sent_at: new Date().toISOString(),
+              }).eq('id', emailLog.id);
             }
 
             // Update guest email_sent_at timestamp
-            await client
-              .from('guests')
-              .update({ email_sent_at: new Date().toISOString() })
-              .eq('id', data.id);
+            await (client.from('guests') as any).update({
+              email_sent_at: new Date().toISOString()
+            }).eq('id', guestData.id);
 
-            return { ...data, emailSent: true };
+            return { ...(guestData as object), emailSent: true };
           } else {
             console.warn('[GuestManagement] Email sending failed:', emailResult.error);
             
             // Update email log with error
             if (emailLog) {
-              await client
-                .from('email_logs')
-                .update({
-                  status: 'failed',
-                  error_message: emailResult.error,
-                })
-                .eq('id', emailLog.id);
+              await (client.from('email_logs') as any).update({
+                status: 'failed',
+                error_message: emailResult.error,
+              }).eq('id', emailLog.id);
             }
 
-            return { ...data, emailSent: false, emailError: emailResult.error };
+            return { ...(guestData as object), emailSent: false, emailError: emailResult.error };
           }
         } catch (emailError) {
           console.error('[GuestManagement] Error in email flow:', emailError);
-          return { ...data, emailSent: false, emailError: String(emailError) };
+          return { ...(guestData as object), emailSent: false, emailError: String(emailError) };
         }
       }
 
@@ -230,11 +210,10 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
 
   // Toggle check-in mutation
   const toggleCheckInMutation = useMutation({
-    mutationFn: async ({ guestId, isCheckedIn }: { guestId: string; isCheckedIn: boolean }) => {
+    mutationFn: async ({ guestId, isCheckedIn }: { guestId: string; isCheckedIn: boolean | undefined }) => {
       console.log('[GuestManagement] Toggling check-in for guest:', guestId, 'to', !isCheckedIn);
       const client = requireSupabase();
-      const { data, error } = await client
-        .from('guests')
+      const { data, error } = await (client.from('guests') as any)
         .update({ is_checked_in: !isCheckedIn })
         .eq('id', guestId)
         .select()

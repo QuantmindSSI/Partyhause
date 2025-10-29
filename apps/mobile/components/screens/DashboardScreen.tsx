@@ -8,22 +8,7 @@ import { BlurView } from 'expo-blur';
 import { supabase, requireSupabase } from '@/lib/supabase';
 import { EventCardCarousel } from '@/components/cards/EventCardCarousel';
 import { getTemplateBackground } from '@/utils/templateBackgrounds';
-
-interface Event {
-  id: string;
-  name: string;
-  title?: string;
-  template_type?: string;
-  event_date: string;
-  start_date?: string;
-  location?: string;
-  venue?: string;
-  description?: string;
-  spotify_playlist_url?: string;
-  status?: 'draft' | 'published' | 'cancelled' | 'completed';
-  host_id: string;
-  created_at: string;
-}
+import { Event } from '@/types/event';
 
 interface DashboardScreenProps {
   userId: string;
@@ -107,20 +92,11 @@ export const DashboardScreen = ({ userId, userEmail, onSignOut }: DashboardScree
 
   return (
     <View style={styles.container}>
-      {/* Dynamic Background based on center event */}
-      {currentEventBackground && carouselEvents.length > 0 && (
-        <ImageBackground
-          source={{ uri: currentEventBackground }}
-          style={StyleSheet.absoluteFill}
-          blurRadius={25}
-          resizeMode="cover"
-        >
-          <LinearGradient
-            colors={['rgba(10,10,15,0.95)', 'rgba(10,10,15,0.85)', 'rgba(10,10,15,0.95)']}
-            style={StyleSheet.absoluteFill}
-          />
-        </ImageBackground>
-      )}
+      {/* Clean White/Off-White Background */}
+      <LinearGradient
+        colors={['#FAFAFA', '#FFFFFF', '#F5F5F7']}
+        style={StyleSheet.absoluteFill}
+      />
 
       {/* Header */}
       <View style={styles.header}>
@@ -146,13 +122,13 @@ export const DashboardScreen = ({ userId, userEmail, onSignOut }: DashboardScree
       <View style={styles.content}>
         {isLoading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#6C63FF" />
+            <ActivityIndicator size="large" color="#6366F1" />
             <Text style={styles.loadingText}>Loading your events...</Text>
           </View>
         ) : events.length === 0 ? (
           <ScrollView
             refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6C63FF" />
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366F1" />
             }
           >
             <View style={styles.emptyState}>
@@ -194,7 +170,14 @@ export const DashboardScreen = ({ userId, userEmail, onSignOut }: DashboardScree
           onPress={handleCreateEvent}
           activeOpacity={0.8}
         >
-          <Ionicons name="add" size={28} color="#FFF" />
+          <LinearGradient
+            colors={['#6366F1', '#4F46E5']}
+            style={styles.fabGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <Ionicons name="add" size={28} color="#FFF" />
+          </LinearGradient>
         </TouchableOpacity>
       )}
     </View>
@@ -204,7 +187,7 @@ export const DashboardScreen = ({ userId, userEmail, onSignOut }: DashboardScree
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0f',
+    backgroundColor: '#FAFAFA',
   },
   header: {
     flexDirection: 'row',
@@ -213,18 +196,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 60,
     paddingBottom: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
     borderBottomWidth: 1,
-    borderBottomColor: '#1a1a24',
+    borderBottomColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
   greeting: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#fff',
+    color: '#1F2937',
     marginBottom: 4,
   },
   email: {
     fontSize: 14,
-    color: '#a8a8b3',
+    color: '#6B7280',
   },
   headerRight: {
     flexDirection: 'row',
@@ -237,7 +226,7 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: 10,
     backgroundColor: '#EEF2FF',
   },
   draftsButtonText: {
@@ -248,12 +237,11 @@ const styles = StyleSheet.create({
   signOutButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#6C63FF',
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
   },
   signOutText: {
-    color: '#6C63FF',
+    color: '#4B5563',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -271,12 +259,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 28,
     fontWeight: '800',
-    color: '#fff',
+    color: '#111827',
     marginBottom: 4,
   },
   sectionSubtitle: {
     fontSize: 14,
-    color: '#a8a8b3',
+    color: '#6B7280',
   },
   loadingContainer: {
     padding: 48,
@@ -285,7 +273,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     fontSize: 14,
-    color: '#a8a8b3',
+    color: '#6B7280',
   },
   emptyState: {
     paddingHorizontal: 24,
@@ -299,12 +287,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#fff',
+    color: '#111827',
     marginBottom: 8,
   },
   emptyText: {
     fontSize: 15,
-    color: '#a8a8b3',
+    color: '#6B7280',
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 24,
@@ -312,11 +300,16 @@ const styles = StyleSheet.create({
   createButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#6C63FF',
+    backgroundColor: '#6366F1',
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 12,
     gap: 8,
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   createButtonText: {
     color: '#fff',
@@ -330,14 +323,18 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#6C63FF',
-    alignItems: 'center',
-    justifyContent: 'center',
+    overflow: 'hidden',
     elevation: 8,
-    shadowColor: '#6C63FF',
+    shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowRadius: 12,
+  },
+  fabGradient: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   eventsList: {
     paddingHorizontal: 24,

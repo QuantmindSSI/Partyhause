@@ -11,20 +11,7 @@ import {
 import { useLocalSearchParams, Stack, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
-
-interface Event {
-  id: string;
-  title: string;
-  description: string;
-  template_type: string;
-  start_date: string;
-  end_date: string;
-  location: string;
-  privacy: 'public' | 'private' | 'unlisted';
-  host_id: string;
-  status: 'draft' | 'published' | 'cancelled' | 'completed';
-  settings?: Record<string, any>; // JSONB field containing template-specific data
-}
+import { Event, getEventLocation } from '@/types/event';
 
 interface EventStats {
   total_guests: number;
@@ -545,25 +532,27 @@ export default function EventDetailsScreen() {
               <View style={styles.detailContent}>
                 <Text style={styles.detailLabel}>Start Date</Text>
                 <Text style={styles.detailValue}>
-                  {new Date(event.start_date).toLocaleString()}
+                  {new Date(event.start_date || event.date || event.event_date || '').toLocaleString()}
                 </Text>
               </View>
             </View>
-            <View style={styles.detailRow}>
-              <Ionicons name="calendar-outline" size={20} color="#6b7280" />
-              <View style={styles.detailContent}>
-                <Text style={styles.detailLabel}>End Date</Text>
-                <Text style={styles.detailValue}>
-                  {new Date(event.end_date).toLocaleString()}
-                </Text>
+            {event.end_date && (
+              <View style={styles.detailRow}>
+                <Ionicons name="calendar-outline" size={20} color="#6b7280" />
+                <View style={styles.detailContent}>
+                  <Text style={styles.detailLabel}>End Date</Text>
+                  <Text style={styles.detailValue}>
+                    {new Date(event.end_date).toLocaleString()}
+                  </Text>
+                </View>
               </View>
-            </View>
+            )}
             {event.location && (
               <View style={styles.detailRow}>
                 <Ionicons name="location" size={20} color="#6b7280" />
                 <View style={styles.detailContent}>
                   <Text style={styles.detailLabel}>Location</Text>
-                  <Text style={styles.detailValue}>{event.location}</Text>
+                  <Text style={styles.detailValue}>{getEventLocation(event)}</Text>
                 </View>
               </View>
             )}
@@ -615,9 +604,28 @@ export default function EventDetailsScreen() {
         <View style={styles.actionsSection}>
           <Text style={styles.sectionTitle}>Manage Event</Text>
           
+          {/* Create Invites */}
+          <TouchableOpacity
+            style={styles.actionCard}
+            onPress={() => router.push(`/events/${id}/invites/templates` as any)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.actionIconContainer}>
+              <Ionicons name="mail" size={24} color="#9333ea" />
+            </View>
+            <View style={styles.actionContent}>
+              <Text style={styles.actionTitle}>Create Invitations</Text>
+              <Text style={styles.actionSubtitle}>
+                Design and send custom invites to guests
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
+          </TouchableOpacity>
+          
           <TouchableOpacity
             style={styles.actionCard}
             onPress={() => router.push(`/events/${id}/guests` as any)}
+            activeOpacity={0.7}
           >
             <View style={styles.actionIconContainer}>
               <Ionicons name="people" size={24} color="#9333ea" />
@@ -687,6 +695,20 @@ export default function EventDetailsScreen() {
             <View style={styles.actionContent}>
               <Text style={styles.actionTitle}>Activities</Text>
               <Text style={styles.actionSubtitle}>Plan games and activities</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionCard}
+            onPress={() => router.push(`/events/${id}/planning/collaborate` as any)}
+          >
+            <View style={styles.actionIconContainer}>
+              <Ionicons name="people-circle" size={24} color="#8B5CF6" />
+            </View>
+            <View style={styles.actionContent}>
+              <Text style={styles.actionTitle}>Collaboration Hub</Text>
+              <Text style={styles.actionSubtitle}>Polls, debates, and team decisions</Text>
             </View>
             <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
           </TouchableOpacity>

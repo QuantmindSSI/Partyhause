@@ -9,22 +9,11 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import { EventCard } from './EventCard';
 import { router } from 'expo-router';
+import { Event } from '@/types/event';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_SPACING = SCREEN_WIDTH * 0.88;
-
-interface Event {
-  id: string;
-  title: string;
-  description?: string;
-  template_type: string;
-  start_date: string;
-  end_date?: string;
-  location?: any;
-  status: 'draft' | 'published' | 'cancelled' | 'completed';
-  settings?: Record<string, any>;
-  host_id?: string;
-}
+const CARD_WIDTH = SCREEN_WIDTH * 0.85; // Match EventCard width
+const CARD_SPACING = SCREEN_WIDTH * 0.90; // Match EventCard spacing
 
 interface EventCardCarouselProps {
   events: Event[];
@@ -45,7 +34,10 @@ export const EventCardCarousel: React.FC<EventCardCarouselProps> = ({
   const velocity = useSharedValue(0);
 
   useEffect(() => {
-    const initialOffset = -events.length * CARD_SPACING;
+    // Position the middle set of cards at the center
+    // Card at index events.length should be centered on screen
+    const centerOffset = (SCREEN_WIDTH / 2) - (CARD_WIDTH / 2);
+    const initialOffset = -(events.length * CARD_SPACING) + centerOffset;
     translateX.value = initialOffset;
     offsetX.value = initialOffset;
   }, [events.length]);
@@ -77,45 +69,52 @@ export const EventCardCarousel: React.FC<EventCardCarouselProps> = ({
     .onEnd((event) => {
       const gestureVelocity = event.velocityX;
       velocity.value = gestureVelocity;
-      const currentPosition = translateX.value;
+      let currentPosition = translateX.value;
       
-      const rawIndex = Math.round(-currentPosition / CARD_SPACING);
+      // Calculate center offset for consistent positioning
+      const centerOffset = (SCREEN_WIDTH / 2) - (CARD_WIDTH / 2);
+      
+      // Immediately reposition if outside safe boundaries (infinite scroll)
+      const middleSetStart = -events.length * CARD_SPACING + centerOffset;
+      const middleSetEnd = -2 * events.length * CARD_SPACING + centerOffset;
+      
+      if (currentPosition > middleSetStart) {
+        currentPosition -= events.length * CARD_SPACING;
+        translateX.value = currentPosition;
+      } else if (currentPosition < middleSetEnd) {
+        currentPosition += events.length * CARD_SPACING;
+        translateX.value = currentPosition;
+      }
+      
+      // Adjust for center offset when calculating which card to snap to
+      const adjustedPosition = currentPosition - centerOffset;
+      const rawIndex = Math.round(-adjustedPosition / CARD_SPACING);
       let actualIndex = rawIndex % events.length;
       if (actualIndex < 0) actualIndex += events.length;
       
-      const targetPosition = -rawIndex * CARD_SPACING;
+      // Calculate target position in the middle set with centering offset
+      const normalizedIndex = (rawIndex % events.length) + events.length;
+      const targetPosition = -normalizedIndex * CARD_SPACING + centerOffset;
       
       translateX.value = withSpring(
         targetPosition,
         {
-          damping: 9,
-          stiffness: 10,
+          damping: 25,
+          stiffness: 250,
           mass: 0.5,
           overshootClamping: false,
-          velocity: gestureVelocity * 0.85,
+          velocity: gestureVelocity * 1.2,
         },
         (finished) => {
           if (finished) {
-            const middleSetStart = -events.length * CARD_SPACING;
-            const middleSetEnd = -2 * events.length * CARD_SPACING;
-            
-            let finalPosition = targetPosition;
-            
-            if (finalPosition > middleSetStart) {
-              finalPosition -= events.length * CARD_SPACING;
-            } else if (finalPosition < middleSetEnd) {
-              finalPosition += events.length * CARD_SPACING;
-            }
-            
-            translateX.value = finalPosition;
-            offsetX.value = finalPosition;
+            offsetX.value = targetPosition;
             
             if (onIndexChange) {
               runOnJS(onIndexChange)(actualIndex);
             }
             
             runOnJS(setCurrentIndex)(actualIndex);
-            velocity.value = withSpring(0, { damping: 8, stiffness: 10, mass: 0.5 });
+            velocity.value = withSpring(0, { damping: 20, stiffness: 200, mass: 0.4 });
             runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
           }
         }
@@ -173,17 +172,15 @@ export const EventCardCarousel: React.FC<EventCardCarouselProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 20,
   },
   cardsContainer: {
     width: SCREEN_WIDTH,
     height: '100%',
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
-    paddingTop: 40,
   },
   emptyContainer: {
     flex: 1,
@@ -194,7 +191,7 @@ const styles = StyleSheet.create({
   emptyCard: {
     width: SCREEN_WIDTH * 0.85,
     height: 200,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(100,100,120,0.08)',
     borderRadius: 24,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.2)',

@@ -21,25 +21,13 @@ import {
   getTemplateDisplayName,
   getTemplateIcon,
 } from '@/utils/templateBackgrounds';
+import { Event } from '@/types/event';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-const CARD_WIDTH = SCREEN_WIDTH * 0.82;
+const CARD_WIDTH = SCREEN_WIDTH * 0.85; // Slightly wider cards
 const CARD_HEIGHT = SCREEN_HEIGHT * 0.52;
-const CARD_SPACING = SCREEN_WIDTH * 0.88;
-
-interface Event {
-  id: string;
-  title: string;
-  description?: string;
-  template_type: string;
-  start_date: string;
-  end_date?: string;
-  location?: any;
-  status: 'draft' | 'published' | 'cancelled' | 'completed';
-  settings?: Record<string, any>;
-  host_id?: string;
-}
+const CARD_SPACING = SCREEN_WIDTH * 0.90; // Tighter spacing for better centering
 
 interface EventCardProps {
   event: Event;
@@ -74,8 +62,10 @@ export const EventCard: React.FC<EventCardProps> = ({
   const userRole = isHost ? 'HOST' : 'GUEST';
 
   const getCardOffsetX = () => {
-    const centerOffset = (SCREEN_WIDTH / 2) - (CARD_WIDTH / 2);
-    return (index * CARD_SPACING) + centerOffset;
+    // Cards are positioned with index * CARD_SPACING
+    // We just need to return the spacing-based position
+    // The translateX handles the centering
+    return index * CARD_SPACING;
   };
 
   const positionOffsetX = getCardOffsetX();
@@ -272,14 +262,14 @@ export const EventCard: React.FC<EventCardProps> = ({
               <View style={styles.detailRow}>
                 <Ionicons name="calendar" size={20} color="rgba(255,255,255,0.95)" />
                 <Text style={styles.detailText}>
-                  {formatDate(event.start_date)}
+                  {formatDate(event.start_date || event.date || event.event_date || '')}
                 </Text>
               </View>
 
               <View style={styles.detailRow}>
                 <Ionicons name="time" size={20} color="rgba(255,255,255,0.95)" />
                 <Text style={styles.detailText}>
-                  {formatTime(event.start_date)}
+                  {formatTime(event.start_date || event.date || event.event_date || '')}
                 </Text>
               </View>
 
@@ -303,6 +293,7 @@ export const EventCard: React.FC<EventCardProps> = ({
 const styles = StyleSheet.create({
   cardContainer: {
     position: 'absolute',
+    left: 0,
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
   },

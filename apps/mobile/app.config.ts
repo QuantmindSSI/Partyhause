@@ -6,7 +6,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
   return {
     ...config,
-    name: "PartyHause Mobile",
+    name: "PartyHause",
     slug: "partyhause-mobile",
     scheme: "partyhause",
     version: "1.0.0",
@@ -14,10 +14,30 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     userInterfaceStyle: "automatic",
     newArchEnabled: true,
     icon: "./assets/images/icon.png",
+    description: "PartyHause helps you create unforgettable events with friends. Easily manage guest lists, send invitations, track RSVPs, share photos, and create lasting memories for birthdays, weddings, and any celebration.",
     ios: {
-      supportsTablet: true
+      supportsTablet: true,
+      bundleIdentifier: "com.partyhause.mobile",
+      buildNumber: "1.0.0",
+      infoPlist: {
+        NSContactsUsageDescription: "PartyHause needs access to your contacts to help you easily invite friends and family to your events.",
+        NSPhotoLibraryUsageDescription: "PartyHause needs access to your photo library to let you share event photos and create lasting memories with your guests.",
+        NSPhotoLibraryAddUsageDescription: "PartyHause needs permission to save photos from your events to your photo library.",
+        NSCameraUsageDescription: "PartyHause needs camera access to let you capture and share special moments during your events.",
+        NSMicrophoneUsageDescription: "PartyHause needs microphone access to record videos during your events.",
+      }
     },
     android: {
+      package: "com.partyhause.mobile",
+      versionCode: 1,
+      permissions: [
+        "READ_CONTACTS",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO"
+      ],
       adaptiveIcon: {
         backgroundColor: "#E6F4FE",
         foregroundImage: "./assets/images/android-icon-foreground.png",

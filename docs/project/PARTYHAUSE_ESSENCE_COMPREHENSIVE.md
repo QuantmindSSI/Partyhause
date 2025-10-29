@@ -1,7 +1,7 @@
 # 🎉 PartyHause - Comprehensive Essence Document
 
-**Version:** 2.0  
-**Date:** October 21, 2025  
+**Version:** 2.1  
+**Date:** October 26, 2025  
 **Document Purpose:** Complete vision, strategy, and implementation guide for marketing, research, advertising, and strategic development
 
 ---
@@ -212,12 +212,17 @@ Lucide React 0.279.0  - Icons
 ```
 React Native 0.81.4   - Mobile framework
 Expo SDK 54.0.13      - Development platform
-React 19.1.0          - Latest React
+Expo Router 6.0.11    - File-based navigation
+React 19.1.0          - Latest React version
 Zustand 4.4.1         - State management
-React Query 5.66.0    - Data fetching
-Expo Router 6.0.11    - Navigation
-Reanimated 4.1.3      - Animations
-Expo AV 16.0.7        - Video/audio
+React Query 5.66.0    - Data fetching & caching
+Reanimated 4.1.3      - 60fps animations
+Gesture Handler 2.22.2 - Advanced touch interactions
+Linear Gradient 14.0.3 - Visual effects
+Expo AV 16.0.7        - Video/audio playback
+Expo Camera 16.0.8    - Photo capture
+Expo BarCodeScanner   - QR code scanning
+Ionicons              - Icon library
 ```
 
 #### Backend & Services
@@ -271,18 +276,20 @@ attachments (id, event_id, uploader_id, url, metadata)
 ## 🚀 Current Feature Set (Implemented)
 
 ### ✅ Core Event Management
-- **Event Creation Wizard:** Multi-step form with validation
-- **Event Dashboard:** Overview of all user events
-- **Event Details:** Full event information display
-- **Event Editing:** Update event details and settings
-- **Event Deletion:** Soft delete with confirmation
+- **Event Creation Wizard:** Multi-step form with validation and template selection
+- **Event Dashboard:** Interactive carousel with swipeable 3D cards
+- **Event Details:** Comprehensive event information with template-specific displays
+- **Event Editing:** Update event details, settings, and templates
+- **Event Deletion:** Soft delete with confirmation dialogs
+- **Template System:** Support for multiple event types (birthday, wedding, conference, etc.)
 
 ### ✅ Guest Management
 - **Guest Invitation:** Add guests manually or bulk import
-- **Email Invitations:** Beautiful HTML templates with tracking
-- **RSVP Tracking:** Monitor acceptances and declines
-- **Guest List:** View and manage all attendees
+- **Custom Email Invitations:** 6 professionally designed templates with customization
+- **RSVP Tracking:** Monitor acceptances, declines, and pending responses
+- **Guest List:** View and manage all attendees with status indicators
 - **Check-in System:** QR code-based guest verification
+- **Guest Communication:** Direct messaging and batch notifications
 
 ### ✅ Email System
 - **MailerSend Integration:** Production email delivery
@@ -292,30 +299,199 @@ attachments (id, event_id, uploader_id, url, metadata)
 - **Email Logs:** Complete audit trail in database
 
 ### ✅ Authentication & Security
-- **Supabase Auth:** Email/password and OAuth
-- **Row-Level Security:** Database-level access control
-- **Input Validation:** Zod schemas for all inputs
-- **Sanitization:** DOMPurify for HTML content
-- **Protected Routes:** Authentication-required pages
+- **Supabase Auth:** Email/password and OAuth (Google, Facebook, Apple)
+- **Row-Level Security:** Database-level access control policies
+- **Input Validation:** Zod schemas for all user inputs
+- **Sanitization:** DOMPurify for HTML content security
+- **Protected Routes:** Authentication-required pages with redirects
+- **Session Management:** Secure token handling and refresh
+- **Password Reset:** Email-based password recovery flow
+
+### ✅ Invitation System Architecture (Mobile)
+
+**User Flow:**
+```
+Event Details → Templates Gallery → Customize Design → Manage Recipients → Send Emails
+```
+
+**Technical Implementation:**
+
+1. **Template Selection (`/events/[id]/invites/templates.tsx`)**
+   - Grid layout showcasing 6 preset templates
+   - Visual previews with gradient backgrounds
+   - Template metadata: style, layout, colors, premium status
+   - Selection routing with template ID parameter
+
+2. **Design Customization (`/events/[id]/invites/create.tsx`)**
+   - Live preview component with horizontal scroll
+   - Real-time updates as user types
+   - Custom message input with 200-character limit
+   - Custom footer input with 150-character limit
+   - Toggle switches for display options:
+     - Show event details (date, time, location)
+     - Show location map integration
+     - Show RSVP button
+   - Character counters for UX feedback
+   - Validation before proceeding to send
+
+3. **Recipient Management (`/events/[id]/invites/send.tsx`)**
+   - Add new guests with name and email
+   - Email format validation
+   - Guest selection with checkboxes
+   - "Select All" / "Deselect All" batch operations
+   - Visual selection indicators
+   - Selected count display
+   - Batch email sending with progress tracking
+   - Success/error alerts with proper navigation
+
+4. **Preview Component (`/components/invites/InvitePreview.tsx`)**
+   - Reusable across all invite screens
+   - Support for multiple layouts:
+     - Classic: Traditional centered design
+     - Card: Modern card-based layout
+     - Photo-background: Image-centric design
+     - Split: Two-column layout
+     - Polaroid: Photo-frame style
+   - Dynamic color merging (template + custom)
+   - Conditional rendering based on settings
+   - Decorative elements (borders, lines, dots)
+   - Responsive sizing for different screens
+
+5. **Email Integration (`/lib/email.ts`)**
+   - `sendInviteEmails()` function for batch sending
+   - Accepts event data, template, recipients, customization
+   - Integrates with existing MailerSend API
+   - Error handling for failed sends
+   - Metadata tracking for analytics
+   - Returns success/failure results
+
+**Template Specifications:**
+
+| Template Name | Style | Layout | Primary Color | Use Case |
+|--------------|-------|--------|---------------|----------|
+| Elegant Gold | elegant | classic | Gold/Cream | Formal events, weddings |
+| Modern Gradient | modern | card | Purple/Pink | Tech events, modern parties |
+| Fun Confetti | fun | card | Multi-color | Birthdays, celebrations |
+| Minimal Clean | minimal | classic | Black/White | Professional events |
+| Festive Celebration | festive | photo-background | Red/Green | Holidays, festivals |
+| Formal Classic | formal | split | Navy/Gold | Corporate, galas |
+
+**Data Models:**
+```typescript
+interface InviteTemplate {
+  id: string;
+  name: string;
+  style: 'elegant' | 'modern' | 'fun' | 'minimal' | 'festive' | 'formal';
+  layout: 'classic' | 'card' | 'photo-background' | 'split' | 'polaroid';
+  colors: { primary, secondary, accent, background, text };
+  decorations: { showBorder, borderStyle, showLines, showDots };
+  isPremium: boolean;
+}
+
+interface InviteCustomization {
+  customMessage?: string;
+  customFooter?: string;
+  customColors?: Partial<InviteTemplate['colors']>;
+  showEventDetails: boolean;
+  showLocationMap: boolean;
+  showRsvpButton: boolean;
+}
+
+interface EventInvite {
+  id: string;
+  eventId: string;
+  templateId: string;
+  customization: InviteCustomization;
+  recipients: InviteRecipient[];
+  sentAt?: string;
+  stats: { sent, delivered, opened, clicked, rsvps };
+}
+```
+
+**Key Features:**
+- ✅ 6 professionally designed templates
+- ✅ Real-time live preview
+- ✅ Full customization options
+- ✅ Batch email sending
+- ✅ Character limits with counters
+- ✅ Email validation
+- ✅ Error handling and recovery
+- ✅ Loading states and feedback
+- ✅ Professional UX patterns
+- ✅ Mobile-optimized layouts
 
 ### ✅ Mobile Application
-- **Native Experience:** React Native + Expo
-- **Offline Support:** Local data persistence
-- **Push Notifications:** Event reminders
-- **Camera Integration:** Photo capture for events
+- **Native Experience:** React Native + Expo SDK 54
+- **Cinematic Landing:** Video-based splash screen with brand storytelling
+- **Gesture-Based Navigation:** Swipeable event card carousel with 3D transforms
+- **Advanced Animations:** react-native-reanimated for 60fps smooth interactions
+- **Infinite Scroll:** Looped event browsing with velocity-based physics
+- **Offline Support:** Local data persistence with React Query
+- **Push Notifications:** Event reminders and real-time updates
+- **Camera Integration:** Photo capture for events and memories
 - **QR Scanning:** Guest check-in capability
-- **Video Landing:** Cinematic experience matching web
+- **Invitation System:** Complete template-based invite creation and sending
+
+### ✅ Invitation Template System (NEW)
+- **6 Professional Templates:** Elegant Gold, Modern Gradient, Fun Confetti, Minimal Clean, Festive Celebration, Formal Classic
+- **Template Gallery:** Beautiful grid layout with gradient previews
+- **Live Customization:** Real-time preview of invite changes
+- **Custom Messaging:** Personalized invitation text (200 chars)
+- **Custom Footer:** Branded footer text (150 chars)
+- **Display Toggles:** Show/hide event details, location map, RSVP button
+- **Guest Management:** Add, select, and manage recipient lists
+- **Batch Email Sending:** Send to multiple recipients simultaneously
+- **Email Integration:** Seamless connection to existing email API
+- **Professional Layouts:** Classic, Card, Photo-background, Split, Polaroid styles
 
 ### ✅ User Interface
-- **Responsive Design:** Mobile-first approach
-- **Dark Mode Ready:** Theme switching support
-- **Animations:** Smooth transitions with Framer Motion
-- **Accessibility:** WCAG 2.1 AA compliance
-- **Modern Components:** shadcn/ui library
+- **Responsive Design:** Mobile-first approach with adaptive layouts
+- **Dark Mode Ready:** Theme switching support across platforms
+- **Advanced Animations:** Smooth 60fps transitions with Framer Motion (web) and Reanimated (mobile)
+- **Gesture Controls:** Swipe, pinch, pan interactions for intuitive navigation
+- **3D Transforms:** Depth-based card rotations and perspective effects
+- **Accessibility:** WCAG 2.1 AA compliance with screen reader support
+- **Modern Components:** shadcn/ui library (web) and custom components (mobile)
+- **Loading States:** Skeleton screens and shimmer effects
+- **Error Boundaries:** Graceful error handling with recovery options
+
+### ✅ Mobile-Specific Features
+- **Swipeable Event Cards:** Netflix-style carousel with physics-based animations
+- **Infinite Scroll:** Seamless looping through events with velocity tracking
+- **Pull-to-Refresh:** Native refresh gestures for data updates
+- **Haptic Feedback:** Tactile responses for button presses and gestures
+- **Bottom Sheet Modals:** Native-feeling action sheets and pickers
+- **Native Navigation:** File-based routing with deep linking support
+- **Optimized Images:** Lazy loading and caching for performance
+- **Offline-First:** Local data persistence with background sync
 
 ---
 
 ## 🔮 Future Roadmap
+
+### ✅ Phase 0: Foundation & Core Features (COMPLETED)
+**Status:** Implemented | **Timeline:** Q3-Q4 2025
+
+**Completed Features:**
+- ✅ Web application with React + TypeScript
+- ✅ Mobile application with React Native + Expo
+- ✅ Event management (create, edit, delete, dashboard)
+- ✅ Guest management with RSVP tracking
+- ✅ Email system with MailerSend integration
+- ✅ Invitation template system (6 templates)
+- ✅ Custom invitation designer with live preview
+- ✅ Batch email sending
+- ✅ Authentication and security
+- ✅ Swipeable event card carousel
+- ✅ Video landing pages
+- ✅ QR code check-in
+- ✅ Database schema and migrations
+
+**Business Impact:**
+- ✅ MVP ready for user acquisition
+- ✅ Core value proposition validated
+- ✅ Professional user experience
+- ✅ Ready for market testing
 
 ### Phase 1: Social Network (Q4 2025 - Q1 2026)
 **Status:** Planning Complete | **Priority:** High | **Timeline:** 12-18 weeks
@@ -346,11 +522,16 @@ attachments (id, event_id, uploader_id, url, metadata)
 - New monetization opportunities
 
 ### Phase 2: Advanced Collaboration (Q2 2026)
-**Status:** Documented | **Priority:** High | **Timeline:** 8-12 weeks
+**Status:** Partially Implemented | **Priority:** High | **Timeline:** 6-10 weeks
 
-**Features:**
+**Completed Features:**
+- ✅ Event-specific messaging foundations
+- ✅ Real-time data sync with Supabase
+- ✅ Collaborative guest management
+
+**Features In Progress:**
 - **PartyBoard:** Visual planning and mood boards
-- **Real-time Chat:** Event-specific messaging with threads
+- **Advanced Chat:** Threaded conversations and media sharing
 - **Live Polling:** On-the-fly voting during events
 - **Shared Itinerary:** Kanban-style task management
 - **Budget Splitter:** Transparent expense tracking
@@ -384,6 +565,172 @@ attachments (id, event_id, uploader_id, url, metadata)
 - Higher event engagement
 - Premium tier opportunity
 - Corporate training market
+
+---
+
+## 📱 Mobile Experience Innovation
+
+### Gesture-Based Event Discovery
+
+**The Problem:**
+Traditional event management apps use boring lists or static grids that don't engage users or convey the excitement of upcoming events.
+
+**Our Solution:**
+A **Netflix-inspired swipeable carousel** with physics-based animations that makes browsing events feel like an experience, not a chore.
+
+**Technical Highlights:**
+
+**1. 3D Card Transforms:**
+```typescript
+// Each card rotates and scales based on position
+// Creating depth and focus on the center card
+const rotation = interpolate(
+  position,
+  [-CARD_SPACING, 0, CARD_SPACING],
+  [15, 0, -15]  // Degrees of rotation
+);
+
+const scale = interpolate(
+  position,
+  [-CARD_SPACING, 0, CARD_SPACING],
+  [0.9, 1, 0.9]  // Scale factor
+);
+```
+
+**2. Velocity-Based Physics:**
+- Swipe velocity determines animation duration
+- Fast swipes = quick snaps to next card
+- Slow swipes = smooth, controlled movement
+- Velocity decay for natural feel
+
+**3. Infinite Scroll Loop:**
+- Events loop seamlessly
+- No "end" to the carousel
+- Boundary detection with automatic repositioning
+- Maintains performance with large event lists
+
+**4. Smart Centering:**
+- Cards automatically snap to center
+- Accounts for screen size variations
+- Works across all device sizes
+- Maintains position after scroll/swipe
+
+**5. Performance Optimizations:**
+- 60fps animations with Reanimated
+- Runs on UI thread (not JavaScript)
+- Efficient re-renders with React.memo
+- Lazy loading of off-screen cards
+
+**User Benefits:**
+- ✨ Engaging, fun way to browse events
+- 🎯 Clear focus on one event at a time
+- 👆 Natural touch interactions
+- 🔄 Smooth, fluid animations
+- 💫 Memorable first impression
+
+### Invitation Design Studio
+
+**The Problem:**
+Creating beautiful invitations typically requires graphic design skills or expensive tools like Canva Pro.
+
+**Our Solution:**
+An **in-app design studio** with professional templates and real-time preview that lets anyone create stunning invitations in minutes.
+
+**User Flow Design:**
+
+**Step 1: Template Gallery**
+- Visual grid of 6 preset templates
+- Gradient previews matching template style
+- Premium badges for special templates
+- One-tap selection with smooth transition
+
+**Step 2: Live Customization**
+- Side-by-side preview and controls
+- Horizontal scroll for full preview
+- Instant updates as you type
+- Character counters for message/footer
+- Toggle switches for display options
+- Visual feedback for all interactions
+
+**Step 3: Recipient Management**
+- Clean, organized guest list
+- Quick add with email validation
+- Checkbox selection with visual states
+- Batch operations (Select All/Deselect All)
+- Selected count always visible
+- One-tap send to all selected
+
+**Step 4: Sending & Confirmation**
+- Progress indicator during send
+- Success animation and message
+- Error handling with retry option
+- Automatic navigation back to event
+
+**Technical Excellence:**
+
+**1. Component Reusability:**
+```typescript
+<InvitePreview
+  template={selectedTemplate}
+  customization={userChanges}
+  event={eventData}
+  isPreview={true}
+/>
+// Used in: Templates, Customize, Send screens
+```
+
+**2. Type Safety:**
+```typescript
+interface InviteTemplate {
+  id: string;
+  name: string;
+  style: TemplateStyle;
+  layout: TemplateLayout;
+  colors: TemplateColors;
+  decorations: TemplateDecorations;
+  isPremium: boolean;
+}
+// Full TypeScript coverage = fewer bugs
+```
+
+**3. State Management:**
+```typescript
+// React Query for server state
+const { data: event } = useQuery(['event', eventId]);
+
+// Local state for customization
+const [customization, setCustomization] = useState<InviteCustomization>({
+  customMessage: '',
+  customFooter: '',
+  showEventDetails: true,
+  showLocationMap: true,
+  showRsvpButton: true,
+});
+```
+
+**4. Email Integration:**
+```typescript
+// Batch sending with error handling
+const sendInviteEmails = async (
+  eventId: string,
+  templateId: string,
+  recipients: InviteRecipient[],
+  customization: InviteCustomization
+) => {
+  // Send to multiple recipients
+  // Track successes and failures
+  // Return detailed results
+};
+```
+
+**Design Principles:**
+- 🎨 **Professional Quality:** Templates rival paid design tools
+- ⚡ **Instant Feedback:** All changes update immediately
+- 🧩 **Progressive Disclosure:** Show complexity only when needed
+- ✅ **Validation:** Prevent errors before they happen
+- 🔄 **Recovery:** Always provide a way to fix mistakes
+
+---
 
 ### Phase 4: AI & Automation (Q4 2026)
 **Status:** Research | **Priority:** Medium | **Timeline:** 16-20 weeks
@@ -1144,10 +1491,19 @@ In a world increasingly dominated by digital interactions, we're building tools 
 
 ---
 
-**Document Version:** 2.0  
-**Last Updated:** October 21, 2025  
+**Document Version:** 2.1  
+**Last Updated:** October 26, 2025  
 **Next Review:** January 2026  
 **Maintained By:** PartyHause Product Team
+
+**Major Updates in v2.1:**
+- ✅ Added Invitation Template System documentation
+- ✅ Documented Mobile Experience innovations (swipeable carousel, gesture controls)
+- ✅ Updated technology stack with current versions
+- ✅ Added Phase 0 (Foundation) as completed milestone
+- ✅ Expanded mobile-specific features section
+- ✅ Added technical architecture details for invitation system
+- ✅ Updated roadmap to reflect current progress
 
 *This document is a living resource and should be updated quarterly to reflect product evolution, market changes, and strategic pivots.*
 
