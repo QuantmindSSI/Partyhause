@@ -83,6 +83,22 @@ iconFiles.forEach(iconFile => {
   }
 });
 
+// Fix HTML to add type="module" to script tags
+console.log('🔧 Fixing HTML script tags...');
+const indexPath = path.join(distDir, 'index.html');
+if (fs.existsSync(indexPath)) {
+  let html = fs.readFileSync(indexPath, 'utf8');
+  
+  // Add type="module" to the main entry script
+  html = html.replace(
+    /<script src="\/_expo\/static\/js\/web\/entry-([^"]+)\.js" defer>/g,
+    '<script type="module" src="/_expo/static/js/web/entry-$1.js"></script>'
+  );
+  
+  fs.writeFileSync(indexPath, html);
+  console.log('  ✓ Added type="module" to script tags');
+}
+
 console.log('');
 console.log('✅ Build complete!');
 console.log('');
