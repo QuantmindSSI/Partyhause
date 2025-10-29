@@ -1,0 +1,56 @@
+{
+  "name": "PartyHause",
+  "short_name": "PartyHause",
+  "description": "Create unforgettable events with friends. Manage guest lists, send invitations, track RSVPs, and create lasting memories.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#6366F1",
+  "background_color": "#FFFFFF",
+  "categories": ["social", "lifestyle", "productivity"],
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Create Event",
+      "short_name": "New Event",
+      "description": "Create a new event",
+      "url": "/events/new",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "My Events",
+      "short_name": "Events",
+      "description": "View all your events",
+      "url": "/",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "display_override": ["window-controls-overlay", "standalone"],
+  "prefer_related_applications": false
+}

@@ -13,7 +13,9 @@
   ],
   "scripts": {
     "dev": "npx vite",
-    "build": "npx vite build",
+    "build": "bash ./scripts/build-mobile-pwa.sh",
+    "build:web": "npx vite build",
+    "build:mobile": "bash ./scripts/build-mobile-pwa.sh",
     "build:check": "npx tsc && npx vite build",
     "lint": "eslint .",
     "preview": "npx vite preview",

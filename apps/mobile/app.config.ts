@@ -49,7 +49,20 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     web: {
       output: "static",
-      favicon: "./assets/images/favicon.png"
+      favicon: "./assets/images/favicon.png",
+      bundler: "metro",
+      build: {
+        babel: {
+          include: ["@partyhause/core"]
+        }
+      },
+      config: {
+        firebase: {
+          apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+          authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+          projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID
+        }
+      }
     },
     plugins: [
       "expo-router",
