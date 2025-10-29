@@ -11,15 +11,16 @@ const path = require('path');
 
 console.log('🚀 Building PartyHause Mobile as PWA...');
 
-// Navigate to mobile app directory
-const mobileDir = path.join(__dirname, '../apps/mobile');
-const distDir = path.join(__dirname, '../dist');
+// Directories
+const rootDir = path.join(__dirname, '..');
+const mobileDir = path.join(rootDir, 'apps/mobile');
+const distDir = path.join(rootDir, 'dist');
 
-// Install dependencies
-console.log('📦 Installing dependencies...');
+// Install dependencies for the workspace (including mobile)
+console.log('📦 Installing workspace dependencies...');
 try {
-  execSync('npm install --legacy-peer-deps', { 
-    cwd: mobileDir, 
+  execSync('npm install --workspaces --legacy-peer-deps', { 
+    cwd: rootDir, 
     stdio: 'inherit' 
   });
 } catch (error) {
