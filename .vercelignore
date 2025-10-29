@@ -20,7 +20,12 @@ api/services/
 api/templates/
 
 # Ignore test files
-scripts/
+scripts/test-*.js
+scripts/test-*.ts
+scripts/smoke-test*.js
+scripts/seed-*.js
+scripts/supabase-setup.ps1
+scripts/deploy-to-vercel.ps1
 server/
 test-*.js
 test-*.ts
