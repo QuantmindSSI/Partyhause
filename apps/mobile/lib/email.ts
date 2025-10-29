@@ -390,3 +390,54 @@ export async function sendInvitationEmail(
     };
   }
 }
+
+/**
+ * Send custom invite emails using templates
+ */
+export async function sendInviteEmails(options: {
+  eventId: string;
+  templateId: string;
+  recipients: { name: string; email: string; guest_id?: string }[];
+  customization?: any;
+}): Promise<SendEmailResult> {
+  try {
+    // TODO: Build custom HTML from template and customization
+    // For now, use a placeholder
+    const results = await Promise.all(
+      options.recipients.map(async recipient => {
+        const html = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2>You're Invited!</h2>
+            <p>Hi ${recipient.name},</p>
+            <p>You've been invited to an event. More details coming soon!</p>
+            <p><a href="https://www.partyhause.com/events/${options.eventId}" style="display: inline-block; padding: 12px 24px; background-color: #6366F1; color: white; text-decoration: none; border-radius: 6px;">View Invitation</a></p>
+          </div>
+        `;
+
+        return sendEmail({
+          to: recipient.email,
+          subject: 'You\'re Invited!',
+          html,
+          metadata: {
+            eventId: options.eventId,
+            guestId: recipient.guest_id,
+          },
+        });
+      })
+    );
+
+    // Return success if all emails sent successfully
+    const allSuccess = results.every(r => r.success);
+    return {
+      success: allSuccess,
+      messageId: allSuccess ? 'batch-send-success' : undefined,
+      error: allSuccess ? undefined : 'Some emails failed to send',
+    };
+  } catch (error) {
+    console.error('[EmailService] Error in sendInviteEmails:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to send invites',
+    };
+  }
+}

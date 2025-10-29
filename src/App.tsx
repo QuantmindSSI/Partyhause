@@ -16,6 +16,7 @@ import { QRScanner } from "@/components/QRScanner";
 import { GuestView } from "@/components/GuestView";
 import { GamesPage } from "@/components/GamesPage";
 import TemplateManager from "@/components/TemplateManager";
+import { InstallPrompt } from "@/components/InstallPrompt";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { HardenedErrorBoundary } from '@/components/HardenedErrorBoundary';
@@ -169,6 +170,7 @@ const App = () => {
                 } />
               </Routes>
             </div>
+            <InstallPrompt />
             <Toaster />
             <Sonner />
           </HardenedErrorBoundary>

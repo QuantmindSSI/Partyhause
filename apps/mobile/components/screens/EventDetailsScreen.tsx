@@ -2,27 +2,8 @@ import { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-
-interface Event {
-  id: string;
-  name: string;
-  event_date: string;
-  location?: string;
-  venue?: string;
-  description?: string;
-  spotify_playlist_url?: string;
-  host_id: string;
-  created_at: string;
-}
-
-interface Guest {
-  id: string;
-  event_id: string;
-  name: string;
-  email: string;
-  is_checked_in: boolean;
-  created_at: string;
-}
+import { Event, getEventLocation } from '@/types/event';
+import { Guest } from '@/types/guest';
 
 interface EventDetailsScreenProps {
   event: Event;
@@ -97,7 +78,7 @@ export const EventDetailsScreen = ({ event, onBack, onViewGuests }: EventDetails
           <View style={styles.eventIcon}>
             <Text style={styles.eventIconText}>🎉</Text>
           </View>
-          <Text style={styles.eventName}>{event.name}</Text>
+          <Text style={styles.eventName}>{event.name || event.title}</Text>
           {event.description && (
             <Text style={styles.eventDescription}>{event.description}</Text>
           )}
@@ -109,8 +90,8 @@ export const EventDetailsScreen = ({ event, onBack, onViewGuests }: EventDetails
             <Text style={styles.infoIcon}>📅</Text>
             <View style={styles.infoContent}>
               <Text style={styles.infoLabel}>Date & Time</Text>
-              <Text style={styles.infoValue}>{formatDate(event.event_date)}</Text>
-              <Text style={styles.infoSubValue}>{formatTime(event.event_date)}</Text>
+              <Text style={styles.infoValue}>{formatDate(event.event_date || event.date || event.start_date || '')}</Text>
+              <Text style={styles.infoSubValue}>{formatTime(event.event_date || event.date || event.start_date || '')}</Text>
             </View>
           </View>
 
@@ -119,7 +100,7 @@ export const EventDetailsScreen = ({ event, onBack, onViewGuests }: EventDetails
               <Text style={styles.infoIcon}>📍</Text>
               <View style={styles.infoContent}>
                 <Text style={styles.infoLabel}>Location</Text>
-                <Text style={styles.infoValue}>{event.location || event.venue}</Text>
+                <Text style={styles.infoValue}>{getEventLocation(event)}</Text>
               </View>
             </View>
           )}
