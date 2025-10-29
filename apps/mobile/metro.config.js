@@ -19,4 +19,10 @@ config.resolver.nodeModulesPaths = [
 ];
 config.resolver.disableHierarchicalLookup = true;
 
+// Enable require.context for expo-router (needed for static rendering)
+config.transformer = {
+  ...config.transformer,
+  unstable_allowRequireContext: true,
+};
+
 module.exports = config;
