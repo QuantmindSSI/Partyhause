@@ -30,8 +30,8 @@ server/
 test-*.js
 test-*.ts
 
-# Ignore mobile app (separate deployment)
-apps/mobile/
+# Mobile app is now the main deployment - DO NOT ignore it
+# apps/mobile/
 
 # Ignore local files
 .env
