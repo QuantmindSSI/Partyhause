@@ -57,14 +57,8 @@ if (fs.existsSync(path.join(publicDir, 'manifest.json'))) {
   console.log('  ✓ Copied manifest.json');
 }
 
-// Copy index.html if it exists
-if (fs.existsSync(path.join(publicDir, 'index.html'))) {
-  fs.copyFileSync(
-    path.join(publicDir, 'index.html'),
-    path.join(distDir, 'index.html')
-  );
-  console.log('  ✓ Copied index.html');
-}
+// DON'T copy index.html - let Expo generate it
+// Our custom index.html doesn't have the necessary Expo script tags
 
 // Copy icons
 console.log('📱 Copying icons...');
