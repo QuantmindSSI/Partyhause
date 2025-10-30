@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   StatusBar,
   Platform,
 } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   useSharedValue,
@@ -34,25 +34,25 @@ const experienceArchetypes = [
     title: "The Intimate Curator",
     description: "You create meaningful moments through thoughtful details and personal connections.",
     icon: "❤️",
-    colors: ['#fb7185', '#fb923c'],
+    colors: ['#fb7185', '#fb923c'] as const,
   },
   {
     title: "The Bold Creator",
     description: "You transform spaces and experiences with innovative ideas and creative energy.",
     icon: "🪄",
-    colors: ['#a78bfa', '#ec4899'],
+    colors: ['#a78bfa', '#ec4899'] as const,
   },
   {
     title: "The Mindful Host",
     description: "You believe in quality over quantity, creating authentic experiences that nourish the soul.",
     icon: "💡",
-    colors: ['#34d399', '#14b8a6'],
+    colors: ['#34d399', '#14b8a6'] as const,
   },
   {
     title: "The Culture Catalyst",
     description: "You bring people together across communities, creating bridges through shared celebration.",
     icon: "☕",
-    colors: ['#fbbf24', '#fb923c'],
+    colors: ['#fbbf24', '#fb923c'] as const,
   },
 ];
 
@@ -80,9 +80,19 @@ const features = [
 ];
 
 export const LandingScreen = ({ onGetStarted, onSignIn }: LandingScreenProps) => {
-  const videoRef = useRef<Video>(null);
   const [videoLoaded, setVideoLoaded] = useState(false);
   const scrollY = useSharedValue(0);
+  
+  const player = useVideoPlayer(require('../../assets/videos/Video_concept_lively_202509130901.mp4'), player => {
+    player.loop = true;
+    player.muted = true;
+    player.play();
+  });
+
+  useEffect(() => {
+    // Set video as loaded since expo-video handles loading automatically
+    setVideoLoaded(true);
+  }, []);
 
   const headerAnimatedStyle = useAnimatedStyle(() => {
     const opacity = interpolate(
@@ -114,18 +124,11 @@ export const LandingScreen = ({ onGetStarted, onSignIn }: LandingScreenProps) =>
       
       {/* Video Background */}
       <View style={styles.videoBackground}>
-        <Video
-          ref={videoRef}
-          source={require('../../assets/videos/Video_concept_lively_202509130901.mp4')}
+        <VideoView
+          player={player}
+          contentFit="cover"
           style={styles.video}
-          resizeMode={ResizeMode.COVER}
-          shouldPlay
-          isLooping
-          isMuted
-          onLoad={() => setVideoLoaded(true)}
-        />
-        
-        {/* Video Overlays - matching web styling */}
+        />        {/* Video Overlays - matching web styling */}
         <LinearGradient
           colors={['rgba(0,0,0,0.3)', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.7)']}
           style={styles.videoOverlay}
