@@ -199,6 +199,11 @@ export default function PartyBoardScreen() {
 
   // Animated values for divider
   const dividerY = useSharedValue(canvasHeight);
+  
+  // Animated style for divider (must be at component level, not in render function)
+  const dividerAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: dividerY.value - canvasHeight }],
+  }));
 
   // Canvas state
   const [stickies, setStickies] = useState<StickyItem[]>([]);
@@ -426,16 +431,12 @@ export default function PartyBoardScreen() {
   };
 
   const renderDivider = () => {
-    const animatedStyle = useAnimatedStyle(() => ({
-      transform: [{ translateY: dividerY.value - canvasHeight }],
-    }));
-
     return (
       <PanGestureHandler
         onGestureEvent={onDividerGestureEvent}
         onEnded={onDividerGestureEnd}
       >
-        <Animated.View style={[styles.divider, animatedStyle]}>
+        <Animated.View style={[styles.divider, dividerAnimatedStyle]}>
           <View style={styles.dividerHandle}>
             <View style={styles.dividerDots} />
             <View style={styles.dividerDots} />

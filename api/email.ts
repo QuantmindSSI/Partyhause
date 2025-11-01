@@ -15,14 +15,6 @@ type MailerSendResponseShape = {
   status?: number;
 };
 
-interface MailerSendEmailRequest {
-  from: Sender;
-  to: Recipient[];
-  subject: string;
-  html: string;
-  metadata?: Record<string, string>;
-}
-
 const MAILERSEND_API_TOKEN = process.env.MAILERSEND_API_TOKEN || process.env.VITE_MAILERSEND_API_TOKEN || '';
 const MAILERSEND_FROM_EMAIL = process.env.MAILERSEND_FROM_EMAIL || process.env.VITE_MAILERSEND_FROM_EMAIL || '';
 
@@ -43,7 +35,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-  const { to, subject, html, guestId, eventId, metadata } = (req.body ?? {}) as EmailPayload;
+  const { to, subject, html } = (req.body ?? {}) as EmailPayload;
 
     if (!to || !subject || !html) {
       return res.status(400).json({ error: 'Missing required fields' });
