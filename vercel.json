@@ -8,18 +8,6 @@
       "memory": 128,
       "maxDuration": 5
     },
-    "api/email-webhook.ts": {
-      "memory": 512,
-      "maxDuration": 10
-    },
-    "api/event-templates.ts": {
-      "memory": 256,
-      "maxDuration": 10
-    },
-    "api/create-event-from-template.ts": {
-      "memory": 512,
-      "maxDuration": 10
-    },
     "api/events.ts": {
       "memory": 512,
       "maxDuration": 10
@@ -44,10 +32,6 @@
       "memory": 256,
       "maxDuration": 10
     },
-    "api/partycrew/requests.ts": {
-      "memory": 256,
-      "maxDuration": 10
-    },
     "api/users/[id].ts": {
       "memory": 256,
       "maxDuration": 10
@@ -69,18 +53,6 @@
     {
       "source": "/api/health",
       "destination": "/api/health"
-    },
-    {
-      "source": "/api/email-webhook",
-      "destination": "/api/email-webhook"
-    },
-    {
-      "source": "/api/event-templates",
-      "destination": "/api/event-templates"
-    },
-    {
-      "source": "/api/create-event-from-template",
-      "destination": "/api/create-event-from-template"
     },
     {
       "source": "/api/events/:id/guests",
