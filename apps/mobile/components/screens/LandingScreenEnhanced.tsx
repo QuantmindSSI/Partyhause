@@ -128,7 +128,8 @@ export const LandingScreen = ({ onGetStarted, onSignIn }: LandingScreenProps) =>
           player={player}
           contentFit="cover"
           style={styles.video}
-        />        {/* Video Overlays - matching web styling */}
+        />
+        {/* Video Overlays - matching web styling */}
         <LinearGradient
           colors={['rgba(0,0,0,0.3)', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.7)']}
           style={styles.videoOverlay}
