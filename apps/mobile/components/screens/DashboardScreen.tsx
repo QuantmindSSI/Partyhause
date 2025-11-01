@@ -106,6 +106,12 @@ export const DashboardScreen = ({ userId, userEmail, onSignOut }: DashboardScree
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity 
+            style={styles.profileButton} 
+            onPress={() => router.push(`/profile/${userId}` as any)}
+          >
+            <Ionicons name="person-circle-outline" size={24} color="#6366F1" />
+          </TouchableOpacity>
+          <TouchableOpacity 
             style={styles.draftsButton} 
             onPress={() => router.push('/events/drafts')}
           >
@@ -218,6 +224,14 @@ const styles = StyleSheet.create({
   headerRight: {
     flexDirection: 'row',
     gap: 8,
+    alignItems: 'center',
+  },
+  profileButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#EEF2FF',
+    justifyContent: 'center',
     alignItems: 'center',
   },
   draftsButton: {

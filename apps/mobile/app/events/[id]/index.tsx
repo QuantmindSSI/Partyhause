@@ -49,46 +49,100 @@ export default function EventDetailsScreen() {
     try {
       // Validate id parameter
       if (!id) {
+        console.error('[Event Details] Event ID is missing');
         Alert.alert('Error', 'Event ID is missing');
         setLoading(false);
         return;
       }
 
+      console.log('[Event Details] Fetching event:', id);
+
       // Get auth token from Supabase session
       if (!supabase) {
+        console.error('[Event Details] Supabase client not initialized');
         Alert.alert('Configuration Error', 'Supabase client not initialized');
+        setLoading(false);
         return;
       }
       
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('[Event Details] Session error:', sessionError);
+      }
+      
       const token = session?.access_token;
       
       if (!token) {
-        Alert.alert('Authentication Error', 'Please sign in to view event details');
+        console.error('[Event Details] No auth token found');
+        Alert.alert(
+          'Authentication Required', 
+          'Please sign in to view event details',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Sign In', onPress: () => router.push('/') }
+          ]
+        );
+        setLoading(false);
         return;
       }
+
+      console.log('[Event Details] Making API request to:', `${API_BASE_URL}/api/events?id=${id}`);
       
       const response = await fetch(`${API_BASE_URL}/api/events?id=${id}`, {
         headers: {
-          Authorization: `Bearer ${token}`,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
       });
 
+      console.log('[Event Details] Response status:', response.status);
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[Event Details] API error:', response.status, errorText);
+        
         if (response.status === 401 || response.status === 403) {
-          Alert.alert('Unauthorized', 'You do not have permission to view this event');
+          Alert.alert(
+            'Unauthorized', 
+            'You do not have permission to view this event',
+            [
+              { text: 'OK', onPress: () => router.back() }
+            ]
+          );
+        } else if (response.status === 404) {
+          Alert.alert(
+            'Event Not Found',
+            'This event does not exist or has been deleted',
+            [
+              { text: 'OK', onPress: () => router.back() }
+            ]
+          );
         } else {
-          throw new Error('Failed to fetch event details');
+          Alert.alert(
+            'Error',
+            `Failed to load event details (${response.status}). Please try again.`
+          );
         }
+        setLoading(false);
         return;
       }
 
       const data = await response.json();
+      console.log('[Event Details] Event loaded successfully:', data.event?.name || data.event?.title);
+      
       setEvent(data.event);
       setStats(data.stats || stats);
     } catch (error) {
-      console.error('Error fetching event details:', error);
-      Alert.alert('Error', 'Failed to load event details');
+      console.error('[Event Details] Exception:', error);
+      Alert.alert(
+        'Error', 
+        'Failed to load event details. Please check your connection and try again.',
+        [
+          { text: 'Retry', onPress: () => fetchEventDetails() },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
     } finally {
       setLoading(false);
     }

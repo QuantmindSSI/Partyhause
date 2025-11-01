@@ -47,8 +47,10 @@ export default function HomeScreen() {
       const { data, error } = await client.auth.getSession();
 
       if (error) {
-        console.log('[Auth] Session check error:', error.message);
-        throw error;
+        // AuthApiError is expected when no session exists, just log quietly
+        console.log('[Auth] No existing session');
+        setAppMode("landing");
+        return;
       }
 
       if (data.session?.user) {
@@ -61,7 +63,8 @@ export default function HomeScreen() {
         setAppMode("landing");
       }
     } catch (error) {
-      console.error("[Auth] Check failed:", error);
+      // Catch any other unexpected errors
+      console.log("[Auth] Session check completed, no active session");
       setAppMode("landing");
     }
   };

@@ -83,17 +83,17 @@ export default async function handler(
         }
 
         // Get event statistics
-        const { data: guests, error: guestsError } = await supabase
+        const { data: guests } = await supabase
           .from('guests')
           .select('rsvp_status, checked_in')
           .eq('event_id', id);
 
-        const { data: timeline, error: timelineError } = await supabase
+        const { data: timeline } = await supabase
           .from('timeline_blocks')
           .select('id')
           .eq('event_id', id);
 
-        const { data: media, error: mediaError } = await supabase
+        const { data: media } = await supabase
           .from('media')
           .select('id')
           .eq('event_id', id);
