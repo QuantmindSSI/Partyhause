@@ -1,38 +1,5 @@
-// Shared data models and interfaces for PartyHause
-// Use these types across both React Web and Expo Mobile platforms
-// These types match the database schema from template implementation Phase 1
-
-// ============================================================================
-// ENUMS
-// ============================================================================
-
-export type TemplateType =
-  | 'birthday_adult'
-  | 'birthday_kids'
-  | 'wedding_intimate'
-  | 'wedding_full'
-  | 'product_launch'
-  | 'fundraiser'
-  | 'music_festival'
-  | 'conference'
-  | 'group_travel'
-  | 'block_party'
-  | 'class_workshop'
-  | 'hackathon';
-
-export type EventStatus = 'draft' | 'published' | 'active' | 'completed' | 'cancelled' | 'archived';
-export type EventPrivacy = 'public' | 'private' | 'unlisted';
-export type RsvpStatus = 'pending' | 'accepted' | 'declined' | 'maybe' | 'waitlist';
-export type GuestRole = 'host' | 'co_host' | 'guest' | 'vendor' | 'volunteer' | 'vip';
-export type TimelineBlockType = 'activity' | 'meal' | 'speech' | 'performance' | 'break' | 'ceremony' | 'game' | 'custom';
-export type MediaType = 'photo' | 'video' | 'audio' | 'document';
-export type MediaStatus = 'pending' | 'processing' | 'approved' | 'rejected' | 'flagged';
-export type ActivityType = 'poll' | 'trivia' | 'scavenger' | 'vote' | 'quiz' | 'challenge' | 'leaderboard';
-export type ActivityStatus = 'draft' | 'scheduled' | 'active' | 'paused' | 'completed' | 'cancelled';
-
-// ============================================================================
-// CORE INTERFACES
-// ============================================================================
+// Shared data models and interfaces for PartyHaus
+// Use these types across both React Web and Flutter Mobile platforms
 
 export interface User {
   id: string;
@@ -43,328 +10,30 @@ export interface User {
   updatedAt: Date;
 }
 
-export interface Location {
-  name?: string;
-  address?: string;
-  coordinates?: {
-    lat: number;
-    lng: number;
-  };
-}
-
 export interface Event {
   id: string;
-  templateType?: TemplateType;
-  title: string;
-  description?: string;
-  startDate: Date;
-  endDate: Date;
-  timezone: string;
-  location?: Location;
-  privacy: EventPrivacy;
-  status: EventStatus;
+  name: string;
+  description: string;
+  location: string;
+  eventDate: Date;
   hostId: string;
-  settings: Record<string, any>;
-  coverImageUrl?: string;
+  hostName?: string;
+  imageUrl?: string;
   maxGuests?: number;
-  currentGuests: number;
+  isPublic: boolean;
   createdAt: Date;
   updatedAt: Date;
-  
-  // Legacy fields (for backward compatibility)
-  name?: string;
-  eventDate?: Date;
-  isPublic?: boolean;
-}
-
-export interface EventCoHost {
-  id: string;
-  eventId: string;
-  userId: string;
-  role: string;
-  permissions: {
-    can_edit?: boolean;
-    can_invite?: boolean;
-    can_moderate?: boolean;
-  };
-  invitedAt: Date;
-  acceptedAt?: Date;
-  createdAt: Date;
 }
 
 export interface Guest {
   id: string;
   eventId: string;
-  name: string;
-  email: string;
-  phone?: string;
-  rsvpStatus: RsvpStatus;
-  ticketType?: string;
-  ticketId?: string;
-  qrCode?: string;
-  plusOnes: number;
-  dietaryRestrictions?: string[];
-  customFields?: Record<string, any>;
-  isCheckedIn: boolean;
-  checkedInAt?: Date;
-  role: GuestRole;
-  notes?: string;
-  createdAt: Date;
-  updatedAt: Date;
-  
-  // Legacy fields (for backward compatibility)
-  userId?: string;
-  userName?: string;
-  userEmail?: string;
-  status?: 'pending' | 'confirmed' | 'declined';
-  joinedAt?: Date;
-}
-
-export interface Ticket {
-  id: string;
-  eventId: string;
-  type: string;
-  name: string;
-  description?: string;
-  price: number;
-  currency: string;
-  quantity: number;
-  sold: number;
-  settings: {
-    requires_approval?: boolean;
-    max_per_order?: number;
-  };
-  salesStartDate?: Date;
-  salesEndDate?: Date;
-  visible: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface TimelineBlock {
-  id: string;
-  eventId: string;
-  label: string;
-  description?: string;
-  startTime: Date;
-  duration: number; // minutes
-  type: TimelineBlockType;
-  hostNotes?: string;
-  guestVisible: boolean;
-  notifyBefore?: number; // minutes
-  notificationSent: boolean;
-  location?: string;
-  assignedTo?: string[]; // user IDs
-  orderIndex: number;
-  color?: string; // hex color
-  icon?: string;
-  metadata?: Record<string, any>;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface Media {
-  id: string;
-  eventId: string;
-  uploaderId: string;
-  type: MediaType;
-  url: string;
-  thumbnailUrl?: string;
-  width?: number;
-  height?: number;
-  duration?: number; // for videos/audio in seconds
-  fileSize?: number;
-  mimeType?: string;
-  tags: string[];
-  locationCoordinates?: {
-    lat: number;
-    lng: number;
-  };
-  capturedAt?: Date;
-  uploadedAt: Date;
-  status: MediaStatus;
-  moderationNotes?: string;
-  credits?: string;
-  metadata?: Record<string, any>;
-  perceptualHash?: string; // for deduplication
-  createdAt: Date;
-}
-
-export interface Album {
-  id: string;
-  eventId: string;
-  name: string;
-  description?: string;
-  coverMediaId?: string;
-  privacy: EventPrivacy | 'event_only';
-  createdBy: string;
-  mediaCount: number;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface AlbumMedia {
-  id: string;
-  albumId: string;
-  mediaId: string;
-  orderIndex: number;
-  addedAt: Date;
-}
-
-export interface Activity {
-  id: string;
-  eventId: string;
-  type: ActivityType;
-  title: string;
-  description?: string;
-  status: ActivityStatus;
-  startTime?: Date;
-  endTime?: Date;
-  duration?: number; // minutes
-  config: Record<string, any>; // type-specific configuration
-  results: Record<string, any>; // aggregated results
-  participantCount: number;
-  createdBy: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface ActivityParticipant {
-  id: string;
-  activityId: string;
   userId: string;
-  score: number;
-  completed: boolean;
-  responses: Record<string, any>; // user's responses/submissions
-  metadata?: Record<string, any>;
-  startedAt: Date;
-  completedAt?: Date;
-  createdAt: Date;
-  updatedAt: Date;
+  userName: string;
+  userEmail: string;
+  status: 'pending' | 'confirmed' | 'declined';
+  joinedAt: Date;
 }
-
-export interface Vendor {
-  id: string;
-  eventId: string;
-  name: string;
-  role: string; // caterer, photographer, venue, etc.
-  contactEmail?: string;
-  contactPhone?: string;
-  contactWebsite?: string;
-  contractUrl?: string;
-  notes?: string;
-  status: string;
-  metadata?: Record<string, any>;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface VendorTask {
-  id: string;
-  vendorId: string;
-  description: string;
-  dueDate?: Date;
-  completed: boolean;
-  completedAt?: Date;
-  assignedTo?: string;
-  priority: 'low' | 'medium' | 'high';
-  notes?: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface VendorPayment {
-  id: string;
-  vendorId: string;
-  amount: number;
-  currency: string;
-  description?: string;
-  dueDate?: Date;
-  paidDate?: Date;
-  status: 'pending' | 'paid' | 'overdue' | 'cancelled';
-  paymentMethod?: string;
-  transactionId?: string;
-  notes?: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface HighlightReel {
-  id: string;
-  eventId: string;
-  title?: string;
-  description?: string;
-  duration?: number; // seconds
-  videoUrl?: string;
-  thumbnailUrl?: string;
-  style?: string; // template style used
-  status: 'queued' | 'processing' | 'completed' | 'failed';
-  mediaIds: string[]; // array of media IDs used
-  config?: Record<string, any>;
-  errorMessage?: string;
-  createdBy?: string;
-  createdAt: Date;
-  completedAt?: Date;
-}
-
-export interface EventAnalytics {
-  id: string;
-  eventId: string;
-  metricDate: Date;
-  rsvpCount: number;
-  attendanceCount: number;
-  mediaUploads: number;
-  activityParticipation: number;
-  uniqueParticipants: number;
-  metrics: Record<string, any>; // detailed metrics
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-// ============================================================================
-// ACTIVITY CONFIG TYPES
-// ============================================================================
-
-export interface PollConfig {
-  question: string;
-  options: Array<{
-    id: string;
-    text: string;
-    votes: number;
-  }>;
-  allowMultiple: boolean;
-  showResultsLive: boolean;
-}
-
-export interface TriviaConfig {
-  questions: Array<{
-    id: string;
-    question: string;
-    options: string[];
-    correctAnswer: number;
-    points: number;
-  }>;
-  timePerQuestion: number; // seconds
-}
-
-export interface ScavengerConfig {
-  checkpoints: Array<{
-    id: string;
-    name: string;
-    description: string;
-    location?: {
-      lat: number;
-      lng: number;
-    };
-    points: number;
-    completedBy: string[];
-  }>;
-  requirePhoto: boolean;
-}
-
-// ============================================================================
-// LEGACY GAME INTERFACES (for backward compatibility)
-// ============================================================================
 
 export interface Game {
   id: string;
@@ -388,10 +57,6 @@ export interface EventGame {
   status: 'planned' | 'active' | 'completed';
   createdAt: Date;
 }
-
-// ============================================================================
-// API RESPONSE TYPES
-// ============================================================================
 
 // API Response Types
 export interface ApiResponse<T> {
@@ -535,6 +200,7 @@ export const EVENT_STATUSES = [
 
 // Utility Types
 export type GameCategory = typeof GAME_CATEGORIES[number];
+export type EventStatus = typeof EVENT_STATUSES[number];
 export type SortDirection = 'asc' | 'desc';
 
 export interface SortOptions {
