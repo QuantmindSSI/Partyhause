@@ -1,0 +1,155 @@
+# Netlify configuration for PartyCrew social network
+[build]
+  command = "npm run build"
+  functions = "netlify/functions"
+  publish = "dist"
+
+# Build settings
+[build.environment]
+  NODE_VERSION = "18"
+  NPM_VERSION = "8"
+
+# Headers for PWA and security
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+    Service-Worker-Allowed = "/"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+    Cache-Control = "public, max-age=3600"
+
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+    Cache-Control = "public, max-age=3600"
+
+[[headers]]
+  for = "/icons/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/images/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# API redirects - ALL 19 endpoints
+[[redirects]]
+  from = "/api/health"
+  to = "/.netlify/functions/health"
+  status = 200
+
+[[redirects]]
+  from = "/api/send-email"
+  to = "/.netlify/functions/email"
+  status = 200
+
+[[redirects]]
+  from = "/api/email-webhook"
+  to = "/.netlify/functions/email-webhook"
+  status = 200
+
+[[redirects]]
+  from = "/api/events/:id/guests"
+  to = "/.netlify/functions/guests?eventId=:id"
+  status = 200
+
+[[redirects]]
+  from = "/api/events/:id/timeline"
+  to = "/.netlify/functions/timeline?eventId=:id"
+  status = 200
+
+[[redirects]]
+  from = "/api/events/*"
+  to = "/.netlify/functions/events"
+  status = 200
+
+[[redirects]]
+  from = "/api/event-templates"
+  to = "/.netlify/functions/event-templates"
+  status = 200
+
+[[redirects]]
+  from = "/api/create-event-from-template"
+  to = "/.netlify/functions/create-event-from-template"
+  status = 200
+
+[[redirects]]
+  from = "/api/templates"
+  to = "/.netlify/functions/templates"
+  status = 200
+
+# PartyCrew endpoints
+[[redirects]]
+  from = "/api/partycrew/toggle"
+  to = "/.netlify/functions/partycrew-toggle"
+  status = 200
+
+[[redirects]]
+  from = "/api/partycrew/members"
+  to = "/.netlify/functions/partycrew-members"
+  status = 200
+
+[[redirects]]
+  from = "/api/partycrew/crewing-with"
+  to = "/.netlify/functions/partycrew-crewing-with"
+  status = 200
+
+[[redirects]]
+  from = "/api/partycrew/requests"
+  to = "/.netlify/functions/partycrew-requests"
+  status = 200
+
+# User endpoints
+[[redirects]]
+  from = "/api/users/:id"
+  to = "/.netlify/functions/users-by-id?id=:id"
+  status = 200
+
+[[redirects]]
+  from = "/api/users/suggested"
+  to = "/.netlify/functions/users-suggested"
+  status = 200
+
+# Feed endpoints
+[[redirects]]
+  from = "/api/feed/crew"
+  to = "/.netlify/functions/feed-crew"
+  status = 200
+
+# Test endpoints
+[[redirects]]
+  from = "/api/test"
+  to = "/.netlify/functions/test"
+  status = 200
+
+[[redirects]]
+  from = "/api/ping"
+  to = "/.netlify/functions/ping"
+  status = 200
+
+# Catch-all for SPA routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Environment variables (set in Netlify dashboard)
+# SUPABASE_URL
+# SUPABASE_ANON_KEY
+# SUPABASE_SERVICE_ROLE_KEY
+# MAILERSEND_API_KEY
+# JWT_SECRET
