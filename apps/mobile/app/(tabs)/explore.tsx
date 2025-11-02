@@ -64,7 +64,7 @@ export default function ExploreScreen() {
       if (!supabase || !userId) return;
 
       // For now, fetch public and network events
-      // When user_connections table is implemented, this will filter by crew connections
+      // TODO: When user_connections table is implemented, filter by crew connections instead of all public/network events
       const { data, error } = await supabase
         .from('events')
         .select(`
