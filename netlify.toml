@@ -1,0 +1,28 @@
+# Netlify configuration for PartyHause Mobile PWA
+[build]
+  # Build from root to access mobile workspace
+  base = "."
+  # Use the mobile PWA build script
+  command = "npm run build:mobile"
+  # Output directory from build-mobile-pwa.cjs
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "18"
+  # Use legacy peer deps for Expo compatibility
+  NPM_FLAGS = "--legacy-peer-deps"
+
+# Redirects for PWA/SPA routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Headers for security
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
