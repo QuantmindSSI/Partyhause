@@ -6,14 +6,6 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
 
-interface EventTemplate {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  image_url?: string;
-}
-
 interface NetworkEvent {
   id: string;
   name: string;
@@ -33,21 +25,20 @@ interface NetworkEvent {
 }
 
 export default function ExploreScreen() {
-  const [templates, setTemplates] = useState<EventTemplate[]>([]);
   const [networkEvents, setNetworkEvents] = useState<NetworkEvent[]>([]);
-  const [loading, setLoading] = useState(true);
   const [eventsLoading, setEventsLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     checkAuthStatus();
-    fetchEventTemplates();
   }, []);
 
   useEffect(() => {
     if (isAuthenticated && userId) {
       fetchNetworkEvents();
+    } else {
+      setEventsLoading(false);
     }
   }, [isAuthenticated, userId]);
 
@@ -64,27 +55,6 @@ export default function ExploreScreen() {
     } catch (error) {
       console.error('Error checking auth:', error);
       setIsAuthenticated(false);
-    }
-  };
-
-  const fetchEventTemplates = async () => {
-    try {
-      if (!supabase) return;
-      
-      const { data, error } = await supabase
-        .from('event_templates')
-        .select('*')
-        .limit(10);
-
-      if (error) {
-        console.error('Error fetching templates:', error);
-      } else {
-        setTemplates(data || []);
-      }
-    } catch (error) {
-      console.error('Error:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -132,21 +102,6 @@ export default function ExploreScreen() {
     }
   };
 
-  const handleTemplatePress = (template: EventTemplate) => {
-    if (!isAuthenticated) {
-      Alert.alert(
-        'Sign In Required',
-        'Please sign in to create events',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign In', onPress: () => router.push('/(tabs)') }
-        ]
-      );
-      return;
-    }
-    router.push(`/events/create?templateId=${template.id}` as any);
-  };
-
   const handleCreateFromScratch = () => {
     if (!isAuthenticated) {
       Alert.alert(
@@ -163,49 +118,48 @@ export default function ExploreScreen() {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-            color: '#1F2937',
-            fontSize: 28,
-            fontWeight: 'bold',
-          }}>
-          Explore Events
-        </ThemedText>
-        <ThemedText style={styles.subtitle}>
-          Discover event templates or create your own
-        </ThemedText>
-      </ThemedView>
-
-      {isAuthenticated && (
-        <ThemedView style={styles.section}>
+    <View style={styles.container}>
+      {/* Header with Plus Button */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerTitle}>Explore</Text>
+          <Text style={styles.headerSubtitle}>
+            {isAuthenticated 
+              ? 'Discover events from your crew' 
+              : 'Sign in to see events from your network'}
+          </Text>
+        </View>
+        {isAuthenticated && (
           <TouchableOpacity 
-            style={styles.createButton}
+            style={styles.plusButton}
             onPress={handleCreateFromScratch}
+            activeOpacity={0.7}
           >
-            <Text style={styles.createButtonText}>Create New Event</Text>
+            <Text style={styles.plusIcon}>+</Text>
           </TouchableOpacity>
-        </ThemedView>
-      )}
-      
-      {!isAuthenticated && (
-        <ThemedView style={styles.section}>
-          <View style={styles.signInPrompt}>
-            <Text style={styles.signInPromptText}>
-              Sign in to create your own events and see events from your crew
-            </Text>
-            <TouchableOpacity 
-              style={styles.signInButton}
-              onPress={() => router.push('/(tabs)')}
-            >
-              <Text style={styles.signInButtonText}>Sign In</Text>
-            </TouchableOpacity>
-          </View>
-        </ThemedView>
-      )}
+        )}
+      </View>
+
+      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {!isAuthenticated && (
+          <ThemedView style={styles.section}>
+            <View style={styles.signInPrompt}>
+              <Text style={styles.signInPromptIcon}>🎉</Text>
+              <Text style={styles.signInPromptTitle}>
+                Join the Party!
+              </Text>
+              <Text style={styles.signInPromptText}>
+                Sign in to discover amazing events from your crew and start creating your own unforgettable experiences
+              </Text>
+              <TouchableOpacity 
+                style={styles.signInButton}
+                onPress={() => router.push('/(tabs)')}
+              >
+                <Text style={styles.signInButtonText}>Sign In to Explore</Text>
+              </TouchableOpacity>
+            </View>
+          </ThemedView>
+        )}
 
       {isAuthenticated && (
         <ThemedView style={styles.section}>
@@ -279,42 +233,8 @@ export default function ExploreScreen() {
         </ThemedView>
       )}
 
-      <ThemedView style={styles.section}>
-        <ThemedText style={styles.sectionTitle}>Event Templates</ThemedText>
-        <ThemedText style={styles.sectionSubtitle}>
-          Start planning with our curated templates
-        </ThemedText>
-        
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#6366F1" />
-            <Text style={styles.loadingText}>Loading templates...</Text>
-          </View>
-        ) : (
-          <View style={styles.templatesGrid}>
-            {templates.length > 0 ? (
-              templates.map((template) => (
-                <TouchableOpacity
-                  key={template.id}
-                  style={styles.templateCard}
-                  onPress={() => handleTemplatePress(template)}
-                >
-                  <Text style={styles.templateName}>{template.name}</Text>
-                  <Text style={styles.templateDescription} numberOfLines={2}>
-                    {template.description}
-                  </Text>
-                  <Text style={styles.templateCategory}>{template.category}</Text>
-                </TouchableOpacity>
-              ))
-            ) : (
-              <Text style={styles.noTemplatesText}>
-                No templates available. Create your first event!
-              </Text>
-            )}
-          </View>
-        )}
-      </ThemedView>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -323,18 +243,54 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
-  titleContainer: {
-    padding: 20,
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
     paddingTop: 60,
+    paddingBottom: 20,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  subtitle: {
-    fontSize: 16,
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#1F2937',
+    fontFamily: Fonts.rounded,
+  },
+  headerSubtitle: {
+    fontSize: 14,
     color: '#6B7280',
-    marginTop: 8,
-    lineHeight: 24,
+    marginTop: 4,
+  },
+  plusButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#6366F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  plusIcon: {
+    fontSize: 32,
+    color: '#FFFFFF',
+    fontWeight: '300',
+    lineHeight: 32,
+  },
+  scrollContent: {
+    flex: 1,
   },
   section: {
     padding: 20,
@@ -352,18 +308,6 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginBottom: 16,
   },
-  createButton: {
-    backgroundColor: '#6366F1',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  createButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
   loadingContainer: {
     alignItems: 'center',
     paddingVertical: 40,
@@ -373,64 +317,51 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6B7280',
   },
-  templatesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  templateCard: {
-    backgroundColor: '#F3F4F6',
-    padding: 16,
-    borderRadius: 12,
-    width: '48%',
-    minHeight: 120,
-  },
-  templateName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 8,
-  },
-  templateDescription: {
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 20,
-    marginBottom: 8,
-  },
-  templateCategory: {
-    fontSize: 12,
-    color: '#6366F1',
-    fontWeight: '500',
-    textTransform: 'uppercase',
-  },
-  noTemplatesText: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-    paddingVertical: 40,
-  },
   signInPrompt: {
-    backgroundColor: '#EEF2FF',
-    padding: 20,
-    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    padding: 32,
+    borderRadius: 16,
     alignItems: 'center',
-    gap: 12,
+    margin: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  signInPromptIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  signInPromptTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 12,
+    textAlign: 'center',
   },
   signInPromptText: {
     fontSize: 16,
-    color: '#4B5563',
+    color: '#6B7280',
     textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 24,
   },
   signInButton: {
     backgroundColor: '#6366F1',
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 32,
-    borderRadius: 10,
+    borderRadius: 12,
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   signInButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   eventsGrid: {
     gap: 12,
