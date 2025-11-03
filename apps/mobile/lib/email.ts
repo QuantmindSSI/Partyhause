@@ -19,7 +19,7 @@ const isExpoGo = Constants.appOwnership === 'expo';
 // For Expo Go or production, use production URL
 // For development with simulators/emulators, use localhost
 const EMAIL_API_URL = isExpoGo || !__DEV__
-  ? 'https://www.partyhause.com/api/send-email' // Production Vercel (Expo Go always uses this)
+  ? 'https://www.partyhause.com/api/send-email' // Production Netlify (Expo Go always uses this)
   : Platform.select({
       ios: 'http://192.168.56.1:3001/api/send-email', // iOS simulator
       android: 'http://10.0.2.2:3001/api/send-email', // Android emulator
