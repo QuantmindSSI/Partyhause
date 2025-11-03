@@ -36,7 +36,7 @@ export default async function handler(
     }
 
     // Otherwise, list templates with filters
-    const filters: any = {};
+    const filters: Record<string, string | boolean> = {};
     if (category) filters.category = category as string;
     if (featured) filters.featured = featured === 'true';
     if (price_tier) filters.price_tier = price_tier as string;
@@ -59,11 +59,12 @@ export default async function handler(
     }));
 
     return res.status(200).json({ templates: templateSummaries });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Event templates API error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return res.status(500).json({
       error: 'Internal server error',
-      message: error.message,
+      message: errorMessage,
     });
   }
 }
