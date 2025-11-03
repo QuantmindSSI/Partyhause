@@ -1,16 +1,14 @@
-# Netlify configuration for PartyHause Mobile PWA
+# Netlify configuration for PartyHause Web PWA
 [build]
-  # Build from root to access mobile workspace
+  # Build from root directory
   base = "."
-  # Use the mobile PWA build script
-  command = "npm run build:mobile"
-  # Output directory from build-mobile-pwa.cjs
+  # Use the web PWA build script
+  command = "npm run build:web"
+  # Output directory from Vite build
   publish = "dist"
 
 [build.environment]
   NODE_VERSION = "18"
-  # Use legacy peer deps for Expo compatibility
-  NPM_FLAGS = "--legacy-peer-deps"
 
 # Redirects for PWA/SPA routing
 [[redirects]]
