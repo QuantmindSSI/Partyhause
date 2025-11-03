@@ -2,7 +2,7 @@
 // List all published event templates with optional filters
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { TemplateService } from './services/templateService';
+import { TemplateService } from './services/templateService.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || '';
@@ -44,7 +44,7 @@ export default async function handler(
     const templates = await templateService.getTemplates(filters);
 
     // Return summary info for list view
-    const templateSummaries = templates.map(t => ({
+    const templateSummaries = templates.map((t: any) => ({
       id: t.id,
       name: t.name,
       slug: t.slug,

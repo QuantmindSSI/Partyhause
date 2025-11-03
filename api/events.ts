@@ -265,7 +265,7 @@ export default async function handler(
 }
 
 // Helper: Get event IDs where user is co-host or guest  
-async function getEventIdsForUser(supabase: ReturnType<typeof createClient>, userId: string): Promise<string> {
+async function getEventIdsForUser(supabase: any, userId: string): Promise<string> {
   try {
     // Get events where user is co-host
     const { data: coHostEvents } = await supabase
@@ -280,17 +280,21 @@ async function getEventIdsForUser(supabase: ReturnType<typeof createClient>, use
       .eq('id', userId)
       .single();
 
+    type UserData = { email?: string } | null;
+    type GuestEvent = { event_id: string };
+
     // Get events where user is invited
-    const { data: guestEvents } = userData?.email
+    const userEmail = (userData as UserData)?.email;
+    const { data: guestEvents } = userEmail
       ? await supabase
           .from('guests')
           .select('event_id')
-          .eq('email', userData.email)
+          .eq('email', userEmail)
       : { data: [] };
 
     const eventIds = new Set<string>();
     coHostEvents?.forEach((e: any) => eventIds.add(e.event_id));
-    guestEvents?.forEach((e: any) => eventIds.add(e.event_id));
+    (guestEvents as GuestEvent[] | null)?.forEach((e: GuestEvent) => eventIds.add(e.event_id));
 
     return Array.from(eventIds).join(',') || 'none';
   } catch (error) {
