@@ -16,4 +16,8 @@ try {
       $_.Exception.Response | Write-Output
     }
   }
+
+
+
+  vercel logs partyhause --functions --since 30m
 }
