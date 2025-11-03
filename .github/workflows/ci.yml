@@ -1,4 +1,7 @@
-name: CI
+name: CI (Netlify Auto-Deploy)
+
+# Netlify auto-deploys on push to main
+# This workflow only runs tests and checks
 
 on:
   push:
@@ -9,9 +12,10 @@ on:
 env:
   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
   SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  # DISABLED: Vercel tokens no longer used
+  # VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  # VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  # VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 jobs:
   build-and-test:
@@ -43,29 +47,18 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
         run: npm run smoke-test:migration
 
-  deploy:
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Use Node.js 18
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Vercel CLI
-        if: ${{ env.VERCEL_TOKEN != '' }}
-        run: npm install --global vercel@latest
-
-      - name: Deploy to Vercel
-        if: ${{ env.VERCEL_TOKEN != '' }}
-        run: vercel deploy --prod --confirm --token "${VERCEL_TOKEN}"
-        env:
-          VERCEL_TOKEN: ${{ env.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ env.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ env.VERCEL_PROJECT_ID }}
+  # DISABLED: Vercel deployment discontinued
+  # Netlify auto-deploys via webhook (no manual deploy needed)
+  # 
+  # deploy:
+  #   needs: build-and-test
+  #   runs-on: ubuntu-latest
+  #   if: false  # Always skip
+  #   steps:
+  #     - name: ℹ️ Deployment Info
+  #       run: |
+  #         echo "✅ Netlify auto-deploys on push to main"
+  #         echo "🌐 Preview: https://partyhause.netlify.app"
+  #         echo "🌐 Production: https://www.partyhause.com"
+  #         echo "📊 Check deployment status:"
+  #         echo "   https://app.netlify.com/sites/partyhause/deploys"
