@@ -72,7 +72,12 @@ describe('Logout Userflow Integration Test', () => {
     id: 'test-event-id',
     host_id: 'test-user-id',
     name: 'Test Event',
-    event_date: '2025-01-01T12:00:00Z',
+    start_date: '2025-01-01T12:00:00Z',
+    end_date: '2025-01-01T18:00:00Z',
+    event_type: 'single_day' as const,
+    is_public: false,
+    created_at: '2024-12-01T00:00:00Z',
+    updated_at: '2024-12-01T00:00:00Z',
     location: 'Test Location',
     spotify_playlist_url: 'https://spotify.com/test'
   };

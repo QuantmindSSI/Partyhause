@@ -3,7 +3,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { TemplateService } from './services/templateService';
+import { TemplateService } from './services/templateService.js';
 import { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from './env-server.js';
 
 const supabaseAdmin = createClient(
