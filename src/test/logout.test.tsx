@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { BrowserRouter } from 'react-router-dom';
 import App from '@/App';
 import { usePartyStore } from '@/store/usePartyStore';
 import { supabase } from '@/lib/supabase';
@@ -33,6 +34,16 @@ vi.mock('@/lib/events', () => ({
   eventService: {
     getUserEvents: vi.fn(),
     createEvent: vi.fn()
+  }
+}));
+
+// Mock auth initialization
+vi.mock('@/lib/auth', () => ({
+  initializeAuthStateListener: vi.fn(),
+  authService: {
+    signIn: vi.fn(),
+    signUp: vi.fn(),
+    signOut: vi.fn()
   }
 }));
 
@@ -73,8 +84,15 @@ describe('Logout Userflow Integration Test', () => {
     host_id: 'test-user-id',
     name: 'Test Event',
     event_date: '2025-01-01T12:00:00Z',
+    start_date: '2025-01-01T12:00:00Z',
+    end_date: '2025-01-01T18:00:00Z',
     location: 'Test Location',
-    spotify_playlist_url: 'https://spotify.com/test'
+    event_type: 'single_day' as const,
+    is_public: true,
+    max_guests: 100,
+    spotify_playlist_url: 'https://spotify.com/test',
+    created_at: '2024-12-01T00:00:00Z',
+    updated_at: '2024-12-01T00:00:00Z'
   };
 
   beforeEach(() => {

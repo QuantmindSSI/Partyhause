@@ -17,6 +17,12 @@ export const PWAInstallBanner = () => {
   const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
+    // Check if matchMedia is available (not in test environments)
+    if (!window.matchMedia) {
+      setIsInstalled(true);
+      return;
+    }
+
     // Check if app is already installed
     if (window.matchMedia('(display-mode: standalone)').matches) {
       setIsInstalled(true);

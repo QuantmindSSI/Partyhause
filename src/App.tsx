@@ -22,6 +22,9 @@ import { useEffect, useState } from "react";
 import { HardenedErrorBoundary } from '@/components/HardenedErrorBoundary';
 import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom';
 import { initializeAuthStateListener } from '@/lib/auth';
+import ProfilePage from "@/pages/ProfilePage";
+import SocialFeedPage from "@/pages/SocialFeedPage";
+import ExplorePage from "@/pages/ExplorePage";
 
 const queryClient = new QueryClient();
 
@@ -155,6 +158,9 @@ const App = () => {
               <Routes>
                 <Route path="/event/:eventId/guest/:guestId" element={<GuestRoute />} />
                 <Route path="/templates" element={<ProtectedRoute><TemplateManager /></ProtectedRoute>} />
+                <Route path="/profile/:id" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+                <Route path="/feed" element={<ProtectedRoute><SocialFeedPage /></ProtectedRoute>} />
+                <Route path="/explore" element={<ProtectedRoute><ExplorePage /></ProtectedRoute>} />
                 <Route path="*" element={
                   <AnimatePresence mode="wait">
                     <motion.div

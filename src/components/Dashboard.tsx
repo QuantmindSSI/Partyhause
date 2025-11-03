@@ -211,6 +211,24 @@ export const Dashboard = () => {
               <Button
                 variant="ghost"
                 size="sm"
+                onClick={() => window.location.href = '/feed'}
+                className="text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                <Users className="h-4 w-4 mr-2" />
+                Feed
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => window.location.href = '/explore'}
+                className="text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                <Users className="h-4 w-4 mr-2" />
+                Explore
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   usePartyStore.getState().setCurrentPage('templates');
                 }}
