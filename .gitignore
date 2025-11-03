@@ -37,6 +37,9 @@ node_modules/
 # Local Netlify folder
 .netlify
 
-.vercel
-
-.vercel
+# Mobile app build artifacts (not deploying mobile version)
+apps/mobile/dist/
+apps/mobile/.expo/
+apps/mobile/node_modules/
+*.expo
+.expo-shared/
