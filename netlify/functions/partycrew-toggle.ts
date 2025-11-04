@@ -38,7 +38,7 @@ export const handler: Handler = async (event, context) => {
     // Mock Vercel response object
     let responseData: any = null;
     let statusCode = 200;
-    let responseHeaders = { ...headers };
+    let responseHeaders: Record<string, string> = { ...headers };
 
     const res = {
       status: (code: number) => {
@@ -61,8 +61,8 @@ export const handler: Handler = async (event, context) => {
       },
     };
 
-    // Call the Vercel handler
-    await vercelHandler(req, res);
+    // Call the Vercel handler (with type assertion to bypass strict typing)
+    await vercelHandler(req as any, res as any);
 
     return {
       statusCode,

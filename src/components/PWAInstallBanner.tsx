@@ -23,10 +23,15 @@ export const PWAInstallBanner = () => {
       return;
     }
 
-    // Check if app is already installed
-    if (window.matchMedia('(display-mode: standalone)').matches) {
-      setIsInstalled(true);
-      return;
+    // Check if app is already installed (defensive: some test mocks may return undefined)
+    try {
+      const mql = typeof window.matchMedia === 'function' ? window.matchMedia('(display-mode: standalone)') : null;
+      if (mql && mql.matches) {
+        setIsInstalled(true);
+        return;
+      }
+    } catch (e) {
+      // safest option in tests: assume not installed and continue
     }
 
     // Detect platform
