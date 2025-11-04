@@ -8,7 +8,24 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Sparkles } from 'lucide-react';
+import { ArrowLeft, Sparkles, ChevronRight } from 'lucide-react';
+import { EventTemplateSelection } from '@/components/templates/EventTemplateSelection';
+import TemplateFormRouter from '@/components/templates/forms/TemplateFormRouter';
+import InviteTemplateSelection from '@/components/invites/InviteTemplateSelection';
+import InviteCustomization from '@/components/invites/InviteCustomization';
+import { InviteTemplate, CustomInviteData } from '@/types/invites';
+import type { InviteCustomization as InviteCustomizationType } from '@/types/invites';
+import { TimelineManagement } from '@/features/timeline/components/TimelineManagement';
+import { TimelineBlock } from '@/features/timeline/types';
+
+interface EventTemplate {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  category: string;
+}
 
 
 export const EventCreation = () => {
@@ -26,7 +43,12 @@ export const EventCreation = () => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showLocationTip, setShowLocationTip] = useState(false);
   const [showPlaylistTip, setShowPlaylistTip] = useState(false);
-  const [step, setStep] = useState<'form' | 'invite' | 'curate'>('form');
+  const [step, setStep] = useState<'template' | 'details' | 'form' | 'timeline' | 'invite' | 'invite-template' | 'invite-customize' | 'curate'>('template');
+  const [selectedTemplate, setSelectedTemplate] = useState<EventTemplate | null>(null);
+  const [templateData, setTemplateData] = useState<Record<string, any>>({});
+  const [selectedInviteTemplate, setSelectedInviteTemplate] = useState<InviteTemplate | null>(null);
+  const [inviteData, setInviteData] = useState<CustomInviteData | null>(null);
+  const [timelineBlocks, setTimelineBlocks] = useState<TimelineBlock[]>([]);
   const [createdEvent, setCreatedEvent] = useState<any>(null);
   const [inviteFile, setInviteFile] = useState<File | null>(null);
   const [invitePreview, setInvitePreview] = useState<string | null>(null);
@@ -78,6 +100,8 @@ export const EventCreation = () => {
       end_date: endDateTime,
       location: formData.location,
       spotify_playlist_url: formData.spotify_playlist_url,
+      template_type: selectedTemplate?.id || null,
+      template_data: templateData,
       is_public: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
@@ -89,7 +113,7 @@ export const EventCreation = () => {
         const freshEvents = await eventService.getUserEvents(user.id);
         setEvents(freshEvents);
         setCreatedEvent(created);
-        setStep('invite');
+        setStep('timeline');
       } else {
         setError('Failed to create event. Please try again.');
       }
@@ -103,6 +127,56 @@ export const EventCreation = () => {
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleTemplateSelect = (template: EventTemplate) => {
+    setSelectedTemplate(template);
+    setStep('details');
+  };
+
+  const handleTemplateDataChange = (data: Record<string, any>) => {
+    setTemplateData(data);
+  };
+
+  const handleBackToTemplates = () => {
+    setSelectedTemplate(null);
+    setTemplateData({});
+    setStep('template');
+  };
+
+  const proceedToEventForm = () => {
+    setStep('form');
+  };
+
+  const handleInviteTemplateSelect = (template: InviteTemplate) => {
+    setSelectedInviteTemplate(template);
+    setStep('invite-customize');
+  };
+
+  const handleInviteCustomize = (customInviteData: CustomInviteData, customization: InviteCustomizationType) => {
+    setInviteData(customInviteData);
+    // Here you would typically save the invite and send it
+    console.log('Invite customized:', { customInviteData, customization });
+    // For now, go to curate step
+    setStep('curate');
+  };
+
+  const handleSaveInviteDraft = (customInviteData: CustomInviteData, customization: InviteCustomizationType) => {
+    setInviteData(customInviteData);
+    console.log('Invite draft saved:', { customInviteData, customization });
+    // Could show a success message here
+  };
+
+  const handleTimelineNext = (blocks: TimelineBlock[]) => {
+    setTimelineBlocks(blocks);
+    console.log('Timeline blocks saved:', blocks);
+    setStep('invite-template');
+  };
+
+  const handleTimelineSave = (blocks: TimelineBlock[]) => {
+    setTimelineBlocks(blocks);
+    console.log('Timeline saved as draft:', blocks);
+    // Could show a success message here
   };
 
   // Invite upload/creation handlers
@@ -209,6 +283,49 @@ export const EventCreation = () => {
   };
 
   // Step rendering
+  // Timeline Management Step
+  if (step === 'timeline' && createdEvent) {
+    return (
+      <TimelineManagement
+        eventName={createdEvent.name}
+        initialBlocks={timelineBlocks}
+        onBack={() => setStep('form')}
+        onNext={handleTimelineNext}
+        onSave={handleTimelineSave}
+      />
+    );
+  }
+
+  // Invite Template Selection Step
+  if (step === 'invite-template') {
+    return (
+      <InviteTemplateSelection
+        eventType={selectedTemplate?.category || 'casual'}
+        onSelectTemplate={handleInviteTemplateSelect}
+        onBack={() => setStep('curate')}
+      />
+    );
+  }
+
+  // Invite Customization Step
+  if (step === 'invite-customize' && selectedInviteTemplate && createdEvent) {
+    return (
+      <InviteCustomization
+        template={selectedInviteTemplate}
+        eventData={{
+          name: createdEvent.name,
+          date: formData.start_date,
+          time: formData.start_time,
+          location: createdEvent.location,
+          host: user?.email || 'Host',
+        }}
+        onBack={() => setStep('invite-template')}
+        onSend={handleInviteCustomize}
+        onSave={handleSaveInviteDraft}
+      />
+    );
+  }
+
   if (step === 'invite') {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background">
@@ -316,23 +433,125 @@ export const EventCreation = () => {
     );
   }
 
+  // Template Selection Step
+  if (step === 'template') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-6xl mx-auto">
+            {/* Header */}
+            <div className="text-center mb-8">
+              <motion.h1
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-4xl font-bold text-gray-900 mb-4"
+              >
+                Choose Your Event Template
+              </motion.h1>
+              <p className="text-gray-600 max-w-2xl mx-auto">
+                Start with a pre-designed template that matches your event type. We'll customize the details for you!
+              </p>
+            </div>
+
+            {/* Template Selection */}
+            <EventTemplateSelection onSelectTemplate={handleTemplateSelect} />
+
+            {/* Skip Option */}
+            <div className="text-center mt-8">
+              <Button
+                variant="ghost"
+                onClick={() => setStep('form')}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                Skip templates and create from scratch
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Template Details Step
+  if (step === 'details' && selectedTemplate) {
+    return (
+      <div className="min-h-screen bg-white">
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-2xl mx-auto">
+            {/* Header */}
+            <div className="flex items-center mb-6">
+              <Button
+                variant="ghost"
+                onClick={handleBackToTemplates}
+                className="mr-4"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {selectedTemplate.name} Details
+                </h1>
+                <p className="text-gray-600">
+                  Customize your {selectedTemplate.name.toLowerCase()} event
+                </p>
+              </div>
+            </div>
+
+            {/* Template-Specific Form */}
+            <TemplateFormRouter
+              templateId={selectedTemplate.id}
+              templateName={selectedTemplate.name}
+              initialData={templateData}
+              onChange={handleTemplateDataChange}
+              onBack={handleBackToTemplates}
+              onNext={proceedToEventForm}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Default: event creation form
   return (
     <div className="min-h-screen bg-white">
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-2xl mx-auto">
           {/* Header */}
-          <div className="text-center mb-8">
-            <motion.h1
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-4xl font-bold text-gray-900 mb-4"
-            >
-              Create New Event
-            </motion.h1>
-            <p className="text-gray-600">
-              Plan your perfect party and invite your guests
-            </p>
+          <div className="mb-8">
+            {selectedTemplate && (
+              <div className="flex items-center mb-6">
+                <Button
+                  variant="ghost"
+                  onClick={() => setStep('details')}
+                  className="mr-4"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">
+                    {selectedTemplate.name} Event Details
+                  </h1>
+                  <p className="text-gray-600">
+                    Complete your {selectedTemplate.name.toLowerCase()} event setup
+                  </p>
+                </div>
+              </div>
+            )}
+            {!selectedTemplate && (
+              <div className="text-center">
+                <motion.h1
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-4xl font-bold text-gray-900 mb-4"
+                >
+                  Create New Event
+                </motion.h1>
+                <p className="text-gray-600">
+                  Plan your perfect party and invite your guests
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Form */}

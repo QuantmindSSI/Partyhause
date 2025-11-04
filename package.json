@@ -13,7 +13,7 @@
   ],
   "scripts": {
     "dev": "npx vite",
-    "build": "node ./scripts/build-mobile-pwa.cjs",
+    "build": "npx vite build",
     "build:web": "npx vite build",
     "build:mobile": "node ./scripts/build-mobile-pwa.cjs",
     "build:check": "npx tsc && npx vite build",
