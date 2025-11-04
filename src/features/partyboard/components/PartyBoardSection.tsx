@@ -19,6 +19,9 @@ export const PartyBoardSection: React.FC<PartyBoardSectionProps> = ({ eventId })
     loading,
     error,
     createNote,
+    createIdea,
+    voteOnIdea,
+    convertToTask,
     updateStickyPosition,
     getStats,
   } = usePartyBoard({
@@ -34,6 +37,10 @@ export const PartyBoardSection: React.FC<PartyBoardSectionProps> = ({ eventId })
 
   const handleCreateNote = async (data: any) => {
     await createNote(data);
+  };
+
+  const handleCreateIdea = async (data: any) => {
+    await createIdea(data);
   };
 
   if (loading && stickies.length === 0) {
@@ -109,6 +116,8 @@ export const PartyBoardSection: React.FC<PartyBoardSectionProps> = ({ eventId })
               stickies={stickies}
               onUpdateStickyPosition={updateStickyPosition}
               onCreateSticky={handleCreateSticky}
+              onVoteOnIdea={voteOnIdea}
+              onConvertToTask={convertToTask}
             />
           </div>
         </CardContent>
@@ -119,6 +128,7 @@ export const PartyBoardSection: React.FC<PartyBoardSectionProps> = ({ eventId })
         open={showCreateDialog}
         onOpenChange={setShowCreateDialog}
         onCreateNote={handleCreateNote}
+        onCreateIdea={handleCreateIdea}
       />
     </>
   );
