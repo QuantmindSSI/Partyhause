@@ -11,6 +11,7 @@ import { Loading } from '@/components/ui/loading';
 import { ArrowLeft, Calendar, MapPin, Music, Plus, QrCode, Users, UserCheck, UserX, Mail, Clock } from 'lucide-react';
 import format from 'date-fns/format';
 import { GuestList } from './GuestList';
+import { PollsSection } from '@/features/polls';
 
 export const EventManagement = () => {
   const { currentEvent, events, setCurrentEvent, guests, setCurrentPage, isLoading } = usePartyStore();
@@ -211,6 +212,15 @@ export const EventManagement = () => {
                 <GuestList eventId={currentEvent.id} />
               </CardContent>
             </Card>
+
+            {/* Polls & Voting Section */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.3 }}
+            >
+              <PollsSection eventId={currentEvent.id} />
+            </motion.div>
 
             {/* Spotify Playlist */}
             {currentEvent.spotify_playlist_url && (
