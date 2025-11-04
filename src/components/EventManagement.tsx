@@ -12,6 +12,7 @@ import { ArrowLeft, Calendar, MapPin, Music, Plus, QrCode, Users, UserCheck, Use
 import format from 'date-fns/format';
 import { GuestList } from './GuestList';
 import { PollsSection } from '@/features/polls';
+import { PartyBoardSection } from '@/features/partyboard';
 
 export const EventManagement = () => {
   const { currentEvent, events, setCurrentEvent, guests, setCurrentPage, isLoading } = usePartyStore();
@@ -220,6 +221,15 @@ export const EventManagement = () => {
               transition={{ duration: 0.6, delay: 0.3 }}
             >
               <PollsSection eventId={currentEvent.id} />
+            </motion.div>
+
+            {/* PartyBoard Collaborative Canvas */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.4 }}
+            >
+              <PartyBoardSection eventId={currentEvent.id} />
             </motion.div>
 
             {/* Spotify Playlist */}
