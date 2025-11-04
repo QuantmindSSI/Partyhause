@@ -1,0 +1,162 @@
+{
+  "functions": {
+    "api/email.ts": {
+      "memory": 1024,
+      "maxDuration": 10
+    },
+    "api/health.ts": {
+      "memory": 128,
+      "maxDuration": 5
+    },
+    "api/events.ts": {
+      "memory": 512,
+      "maxDuration": 10
+    },
+    "api/guests.ts": {
+      "memory": 512,
+      "maxDuration": 10
+    },
+    "api/timeline.ts": {
+      "memory": 256,
+      "maxDuration": 10
+    },
+    "api/partycrew/toggle.ts": {
+      "memory": 256,
+      "maxDuration": 10
+    },
+    "api/partycrew/members.ts": {
+      "memory": 256,
+      "maxDuration": 10
+    },
+    "api/partycrew/crewing-with.ts": {
+      "memory": 256,
+      "maxDuration": 10
+    },
+    "api/users/[id].ts": {
+      "memory": 256,
+      "maxDuration": 10
+    },
+    "api/users/suggested.ts": {
+      "memory": 256,
+      "maxDuration": 10
+    },
+    "api/feed/crew.ts": {
+      "memory": 512,
+      "maxDuration": 10
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/send-email",
+      "destination": "/api/email"
+    },
+    {
+      "source": "/api/health",
+      "destination": "/api/health"
+    },
+    {
+      "source": "/api/events/:id/guests",
+      "destination": "/api/guests"
+    },
+    {
+      "source": "/api/events/:id/timeline",
+      "destination": "/api/timeline"
+    },
+    {
+      "source": "/api/events/:path*",
+      "destination": "/api/events"
+    },
+    {
+      "source": "/api/partycrew/toggle",
+      "destination": "/api/partycrew/toggle"
+    },
+    {
+      "source": "/api/partycrew/members",
+      "destination": "/api/partycrew/members"
+    },
+    {
+      "source": "/api/partycrew/crewing-with",
+      "destination": "/api/partycrew/crewing-with"
+    },
+    {
+      "source": "/api/partycrew/requests",
+      "destination": "/api/partycrew/requests"
+    },
+    {
+      "source": "/api/users/:id",
+      "destination": "/api/users/[id]"
+    },
+    {
+      "source": "/api/users/suggested",
+      "destination": "/api/users/suggested"
+    },
+    {
+      "source": "/api/feed/crew",
+      "destination": "/api/feed/crew"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/dist/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        },
+        {
+          "key": "Service-Worker-Allowed",
+          "value": "/"
+        }
+      ]
+    },
+    {
+      "source": "/manifest.webmanifest",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/manifest+json"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600"
+        }
+      ]
+    },
+    {
+      "source": "/manifest.json",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/manifest+json"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600"
+        }
+      ]
+    },
+    {
+      "source": "/icons/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/images/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
+  ],
+  "outputDirectory": "dist"
+}
