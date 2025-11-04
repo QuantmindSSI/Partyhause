@@ -86,8 +86,11 @@ export interface IdeaStickyData {
   content: string;
   category?: BoardCategory;
   estimated_cost?: number;
+  votes: number;
+  user_has_voted?: boolean;
   reactions: number;
   converted_to_task: boolean;
+  task_id?: string;
 }
 
 // Image Sticky Data

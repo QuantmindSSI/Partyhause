@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { StickyItem, CreateNoteData, UpdateStickyPosition, CanvasStats } from '../types';
+import { StickyItem, CreateNoteData, CreateIdeaData, UpdateStickyPosition, CanvasStats } from '../types';
 import { DEFAULT_STICKY_SIZE, STICKY_COLORS } from '../constants';
 
 interface UsePartyBoardOptions {
@@ -85,6 +85,133 @@ export const usePartyBoard = ({ eventId, sessionId, autoRefresh = false }: UsePa
       return null;
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Create a new idea sticky
+  const createIdea = async (ideaData: CreateIdeaData): Promise<StickyItem | null> => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/partyboard/stickies', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          event_id: eventId,
+          session_id: sessionId,
+          type: 'idea',
+          position: ideaData.position || { x: 100, y: 100 },
+          size: DEFAULT_STICKY_SIZE,
+          category: ideaData.category,
+          data: {
+            content: ideaData.content,
+            category: ideaData.category,
+            estimated_cost: ideaData.estimated_cost,
+            votes: 0,
+            user_has_voted: false,
+            reactions: 0,
+            converted_to_task: false,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create idea');
+      }
+
+      const data = await response.json();
+      const newSticky = data.sticky;
+
+      // Add to local state
+      setStickies((prev) => [...prev, newSticky]);
+
+      return newSticky;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create idea');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Vote on an idea
+  const voteOnIdea = async (stickyId: string): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/partyboard/stickies/${stickyId}/vote`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to vote on idea');
+      }
+
+      const data = await response.json();
+
+      // Update local state with optimistic update
+      setStickies((prev) =>
+        prev.map((sticky) =>
+          sticky.id === stickyId
+            ? {
+                ...sticky,
+                data: {
+                  ...sticky.data,
+                  votes: data.votes,
+                  user_has_voted: data.user_has_voted,
+                } as any,
+              }
+            : sticky
+        )
+      );
+
+      return true;
+    } catch (err) {
+      console.error('Failed to vote on idea:', err);
+      return false;
+    }
+  };
+
+  // Convert idea to task
+  const convertToTask = async (stickyId: string): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/partyboard/stickies/${stickyId}/convert-to-task`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to convert to task');
+      }
+
+      const data = await response.json();
+
+      // Update local state
+      setStickies((prev) =>
+        prev.map((sticky) =>
+          sticky.id === stickyId
+            ? {
+                ...sticky,
+                data: {
+                  ...sticky.data,
+                  converted_to_task: true,
+                  task_id: data.task_id,
+                } as any,
+              }
+            : sticky
+        )
+      );
+
+      return true;
+    } catch (err) {
+      console.error('Failed to convert to task:', err);
+      return false;
     }
   };
 
@@ -179,6 +306,9 @@ export const usePartyBoard = ({ eventId, sessionId, autoRefresh = false }: UsePa
     error,
     fetchStickies,
     createNote,
+    createIdea,
+    voteOnIdea,
+    convertToTask,
     updateStickyPosition,
     deleteSticky,
     getStats,

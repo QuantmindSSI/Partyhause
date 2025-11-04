@@ -14,7 +14,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { NoteSticky } from './NoteSticky';
-import { StickyItem, CanvasState } from '../types';
+import { IdeaSticky } from './IdeaSticky';
+import { StickyItem, CanvasState, NoteStickyData, IdeaStickyData } from '../types';
 import { CANVAS_CONFIG } from '../constants';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +25,8 @@ interface PartyBoardCanvasProps {
   onUpdateStickyPosition: (stickyId: string, position: { x: number; y: number }) => void;
   onCreateSticky: () => void;
   onSelectSticky?: (stickyId: string) => void;
+  onVoteOnIdea?: (stickyId: string) => void;
+  onConvertToTask?: (stickyId: string) => void;
 }
 
 export const PartyBoardCanvas: React.FC<PartyBoardCanvasProps> = ({
@@ -32,6 +35,8 @@ export const PartyBoardCanvas: React.FC<PartyBoardCanvasProps> = ({
   onUpdateStickyPosition,
   onCreateSticky,
   onSelectSticky,
+  onVoteOnIdea,
+  onConvertToTask,
 }) => {
   const [canvasState, setCanvasState] = useState<CanvasState>({
     zoom: CANVAS_CONFIG.DEFAULT_ZOOM,
@@ -196,14 +201,32 @@ export const PartyBoardCanvas: React.FC<PartyBoardCanvasProps> = ({
             }}
           >
             {/* Stickies */}
-            {stickies.map((sticky) => (
-              <NoteSticky
-                key={sticky.id}
-                sticky={sticky as any}
-                isSelected={selectedStickyId === sticky.id}
-                onSelect={handleSelectSticky}
-              />
-            ))}
+            {stickies.map((sticky) => {
+              switch (sticky.type) {
+                case 'note':
+                  return (
+                    <NoteSticky
+                      key={sticky.id}
+                      sticky={sticky as StickyItem & { data: NoteStickyData }}
+                      isSelected={selectedStickyId === sticky.id}
+                      onSelect={handleSelectSticky}
+                    />
+                  );
+                case 'idea':
+                  return (
+                    <IdeaSticky
+                      key={sticky.id}
+                      sticky={sticky as StickyItem & { data: IdeaStickyData }}
+                      currentUserId={''} // TODO: Get from auth context
+                      isSelected={selectedStickyId === sticky.id}
+                      onVote={onVoteOnIdea}
+                      onConvertToTask={onConvertToTask}
+                    />
+                  );
+                default:
+                  return null;
+              }
+            })}
           </div>
         </div>
 
@@ -217,7 +240,17 @@ export const PartyBoardCanvas: React.FC<PartyBoardCanvasProps> = ({
               }}
               className="opacity-80"
             >
-              <NoteSticky sticky={activeDragSticky as any} />
+              {activeDragSticky.type === 'note' && (
+                <NoteSticky sticky={activeDragSticky as StickyItem & { data: NoteStickyData }} />
+              )}
+              {activeDragSticky.type === 'idea' && (
+                <IdeaSticky 
+                  sticky={activeDragSticky as StickyItem & { data: IdeaStickyData }}
+                  currentUserId={''}
+                  onVote={onVoteOnIdea}
+                  onConvertToTask={onConvertToTask}
+                />
+              )}
             </div>
           )}
         </DragOverlay>
