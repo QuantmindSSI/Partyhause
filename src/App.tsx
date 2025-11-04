@@ -17,6 +17,7 @@ import { GuestView } from "@/components/GuestView";
 import { GamesPage } from "@/components/GamesPage";
 import TemplateManager from "@/components/TemplateManager";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
+import { JoinEventPage } from "@/components/JoinEventPage";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { HardenedErrorBoundary } from '@/components/HardenedErrorBoundary';
@@ -156,6 +157,7 @@ const App = () => {
           <HardenedErrorBoundary>
             <div className="min-h-screen bg-background text-foreground">
               <Routes>
+                <Route path="/join/:token" element={<JoinEventPage />} />
                 <Route path="/event/:eventId/guest/:guestId" element={<GuestRoute />} />
                 <Route path="/templates" element={<ProtectedRoute><TemplateManager /></ProtectedRoute>} />
                 <Route path="/profile/:id" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
