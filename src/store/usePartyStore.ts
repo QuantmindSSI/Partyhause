@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { eventService } from '@/lib/events';
 import { supabase } from '@/lib/supabase';
+import type { TimelineBlock } from '@/features/timeline/types';
 
 export interface User {
   id: string;
@@ -28,6 +29,11 @@ export interface Event {
   max_guests?: number;
   is_public: boolean;
   invite_image_url?: string;
+  // Template and customization data
+  template_type?: string;
+  template_data?: Record<string, any>;
+  timeline_blocks?: TimelineBlock[];
+  spotify_playlist_url?: string;
   created_at: string;
   updated_at: string;
 }

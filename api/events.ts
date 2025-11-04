@@ -128,6 +128,8 @@ export default async function handler(
     if (req.method === 'POST') {
       const {
         template_type,
+        template_data,
+        timeline_blocks,
         title,
         description,
         start_date,
@@ -148,6 +150,8 @@ export default async function handler(
 
       const eventData: Record<string, unknown> = {
         template_type,
+        template_data: template_data || {},
+        timeline_blocks: timeline_blocks || [],
         title,
         description: description || null,
         start_date,
@@ -196,6 +200,8 @@ export default async function handler(
         privacy,
         status,
         settings,
+        template_data,
+        timeline_blocks,
       } = req.body;
 
       const updateData: Record<string, unknown> = {};
@@ -208,6 +214,8 @@ export default async function handler(
       if (privacy !== undefined) updateData.privacy = privacy;
       if (status !== undefined) updateData.status = status;
       if (settings !== undefined) updateData.settings = settings;
+      if (template_data !== undefined) updateData.template_data = template_data;
+      if (timeline_blocks !== undefined) updateData.timeline_blocks = timeline_blocks;
 
       if (location) {
         if (location.name !== undefined) updateData.location_name = location.name;
