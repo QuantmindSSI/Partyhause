@@ -3,7 +3,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { TemplateService } from './services/templateService';
+import { TemplateService } from './services/templateService.js';
 import { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from './env-server.js';
 
 const supabaseAdmin = createClient(
@@ -77,28 +77,30 @@ export default async function handler(
     );
 
     return res.status(201).json(result);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Create event from template error:', error);
 
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
     // Handle validation errors
-    if (error.message.includes('Validation failed')) {
+    if (errorMessage.includes('Validation failed')) {
       return res.status(400).json({
         error: 'VALIDATION_ERROR',
-        message: error.message,
+        message: errorMessage,
       });
     }
 
     // Handle not found errors
-    if (error.message.includes('not found')) {
+    if (errorMessage.includes('not found')) {
       return res.status(404).json({
         error: 'NOT_FOUND',
-        message: error.message,
+        message: errorMessage,
       });
     }
 
     return res.status(500).json({
       error: 'Internal server error',
-      message: error.message,
+      message: errorMessage,
     });
   }
 }

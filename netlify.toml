@@ -1,8 +1,12 @@
-# Netlify configuration for PartyCrew social network
+# Netlify configuration for PartyHause Web PWA
 [build]
-  command = "npm run build"
-  functions = "netlify/functions"
+  # Build from root directory
+  base = "."
+  # Use the web PWA build script
+  command = "npm run build:web"
+  # Output directory from Vite build
   publish = "dist"
+  functions = "netlify/functions"
 
 # Build settings
 [build.environment]
@@ -141,15 +145,14 @@
   to = "/.netlify/functions/ping"
   status = 200
 
-# Catch-all for SPA routing
+# Catch-all for SPA routing (must be last)
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
 # Environment variables (set in Netlify dashboard)
-# SUPABASE_URL
-# SUPABASE_ANON_KEY
+# EXPO_PUBLIC_SUPABASE_ANON_KEY
+# NEXT_PUBLIC_SUPABASE_URL
 # SUPABASE_SERVICE_ROLE_KEY
-# MAILERSEND_API_KEY
-# JWT_SECRET
+# MAILERSEND_API_TOKEN

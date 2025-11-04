@@ -98,12 +98,13 @@ export default async function handler(
           .select('id')
           .eq('event_id', id);
 
+        type Guest = { rsvp_status?: string; checked_in?: boolean };
         const stats = {
           total_guests: guests?.length || 0,
-          guests_accepted: guests?.filter((g: any) => g.rsvp_status === 'accepted').length || 0,
-          guests_declined: guests?.filter((g: any) => g.rsvp_status === 'declined').length || 0,
-          guests_pending: guests?.filter((g: any) => g.rsvp_status === 'pending').length || 0,
-          guests_checked_in: guests?.filter((g: any) => g.checked_in).length || 0,
+          guests_accepted: guests?.filter((g: Guest) => g.rsvp_status === 'accepted').length || 0,
+          guests_declined: guests?.filter((g: Guest) => g.rsvp_status === 'declined').length || 0,
+          guests_pending: guests?.filter((g: Guest) => g.rsvp_status === 'pending').length || 0,
+          guests_checked_in: guests?.filter((g: Guest) => g.checked_in).length || 0,
           timeline_blocks: timeline?.length || 0,
           media_count: media?.length || 0,
         };
@@ -145,7 +146,7 @@ export default async function handler(
         });
       }
 
-      const eventData: any = {
+      const eventData: Record<string, unknown> = {
         template_type,
         title,
         description: description || null,
@@ -197,7 +198,7 @@ export default async function handler(
         settings,
       } = req.body;
 
-      const updateData: any = {};
+      const updateData: Record<string, unknown> = {};
 
       if (title !== undefined) updateData.title = title;
       if (description !== undefined) updateData.description = description;
@@ -253,16 +254,17 @@ export default async function handler(
 
     return res.status(405).json({ error: 'Method not allowed' });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Events API error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return res.status(500).json({
       error: 'Internal server error',
-      message: error.message,
+      message: errorMessage,
     });
   }
 }
 
-// Helper: Get event IDs where user is co-host or guest
+// Helper: Get event IDs where user is co-host or guest  
 async function getEventIdsForUser(supabase: any, userId: string): Promise<string> {
   try {
     // Get events where user is co-host
@@ -278,17 +280,21 @@ async function getEventIdsForUser(supabase: any, userId: string): Promise<string
       .eq('id', userId)
       .single();
 
+    type UserData = { email?: string } | null;
+    type GuestEvent = { event_id: string };
+
     // Get events where user is invited
-    const { data: guestEvents } = userData?.email
+    const userEmail = (userData as UserData)?.email;
+    const { data: guestEvents } = userEmail
       ? await supabase
           .from('guests')
           .select('event_id')
-          .eq('email', userData.email)
+          .eq('email', userEmail)
       : { data: [] };
 
     const eventIds = new Set<string>();
     coHostEvents?.forEach((e: any) => eventIds.add(e.event_id));
-    guestEvents?.forEach((e: any) => eventIds.add(e.event_id));
+    (guestEvents as GuestEvent[] | null)?.forEach((e: GuestEvent) => eventIds.add(e.event_id));
 
     return Array.from(eventIds).join(',') || 'none';
   } catch (error) {
