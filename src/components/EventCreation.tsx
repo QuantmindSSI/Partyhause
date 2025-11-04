@@ -17,6 +17,7 @@ import { InviteTemplate, CustomInviteData } from '@/types/invites';
 import type { InviteCustomization as InviteCustomizationType } from '@/types/invites';
 import { TimelineManagement } from '@/features/timeline/components/TimelineManagement';
 import { TimelineBlock } from '@/features/timeline/types';
+import { timelineService } from '@/lib/timeline';
 
 interface EventTemplate {
   id: string;
@@ -102,6 +103,7 @@ export const EventCreation = () => {
       spotify_playlist_url: formData.spotify_playlist_url,
       template_type: selectedTemplate?.id || null,
       template_data: templateData,
+      timeline_blocks: timelineBlocks,
       is_public: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
@@ -167,16 +169,41 @@ export const EventCreation = () => {
     // Could show a success message here
   };
 
-  const handleTimelineNext = (blocks: TimelineBlock[]) => {
+  const handleTimelineNext = async (blocks: TimelineBlock[]) => {
     setTimelineBlocks(blocks);
-    console.log('Timeline blocks saved:', blocks);
+    
+    if (createdEvent) {
+      try {
+        setIsSubmitting(true);
+        await timelineService.updateEventTimeline(createdEvent.id, blocks);
+        console.log('Timeline blocks saved to database:', blocks);
+      } catch (error) {
+        console.error('Failed to save timeline:', error);
+        setError('Failed to save timeline. You can continue and add it later.');
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
+    
     setStep('invite-template');
   };
 
-  const handleTimelineSave = (blocks: TimelineBlock[]) => {
+  const handleTimelineSave = async (blocks: TimelineBlock[]) => {
     setTimelineBlocks(blocks);
-    console.log('Timeline saved as draft:', blocks);
-    // Could show a success message here
+    
+    if (createdEvent) {
+      try {
+        setIsSubmitting(true);
+        await timelineService.updateEventTimeline(createdEvent.id, blocks);
+        console.log('Timeline saved as draft to database:', blocks);
+        // Could show a success message here
+      } catch (error) {
+        console.error('Failed to save timeline draft:', error);
+        setError('Failed to save timeline draft. Please try again.');
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
   };
 
   // Invite upload/creation handlers

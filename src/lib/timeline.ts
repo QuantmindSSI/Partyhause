@@ -1,0 +1,148 @@
+import { supabase } from './supabase';
+import { TimelineBlock } from '@/features/timeline/types';
+
+export const timelineService = {
+  // Get timeline blocks for an event
+  getEventTimeline: async (eventId: string): Promise<TimelineBlock[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .select('timeline_blocks')
+        .eq('id', eventId)
+        .single();
+
+      if (error) throw error;
+      return data?.timeline_blocks || [];
+    } catch (error) {
+      console.error('Error fetching timeline:', error);
+      return [];
+    }
+  },
+
+  // Update timeline blocks for an event
+  updateEventTimeline: async (eventId: string, timelineBlocks: TimelineBlock[]): Promise<TimelineBlock[]> => {
+    try {
+      // Sort blocks by start time
+      const sortedBlocks = timelineBlocks.sort((a, b) => {
+        return new Date(`1970-01-01 ${a.start_time}`).getTime() - 
+               new Date(`1970-01-01 ${b.start_time}`).getTime();
+      });
+
+      // Update order based on sort
+      const blocksWithOrder = sortedBlocks.map((block, index) => ({
+        ...block,
+        order: index
+      }));
+
+      const { data, error } = await supabase
+        .from('events')
+        .update({ 
+          timeline_blocks: blocksWithOrder,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', eventId)
+        .select('timeline_blocks')
+        .single();
+
+      if (error) throw error;
+      return data?.timeline_blocks || [];
+    } catch (error) {
+      console.error('Error updating timeline:', error);
+      throw error;
+    }
+  },
+
+  // Add a single timeline block to an event
+  addTimelineBlock: async (
+    eventId: string, 
+    blockData: Omit<TimelineBlock, 'id' | 'order'>
+  ): Promise<TimelineBlock[]> => {
+    try {
+      // Get current timeline
+      const currentTimeline = await timelineService.getEventTimeline(eventId);
+
+      // Create new block with unique ID
+      const newBlock: TimelineBlock = {
+        id: `block_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        label: blockData.label,
+        description: blockData.description || '',
+        start_time: blockData.start_time,
+        duration: blockData.duration,
+        type: blockData.type,
+        guest_visible: blockData.guest_visible !== undefined ? blockData.guest_visible : true,
+        notify_before: blockData.notify_before || 0,
+        order: currentTimeline.length,
+      };
+
+      // Add to timeline
+      const updatedTimeline = [...currentTimeline, newBlock];
+
+      // Update in database
+      return await timelineService.updateEventTimeline(eventId, updatedTimeline);
+    } catch (error) {
+      console.error('Error adding timeline block:', error);
+      throw error;
+    }
+  },
+
+  // Update a specific timeline block
+  updateTimelineBlock: async (
+    eventId: string, 
+    blockId: string, 
+    blockData: Partial<TimelineBlock>
+  ): Promise<TimelineBlock[]> => {
+    try {
+      // Get current timeline
+      const currentTimeline = await timelineService.getEventTimeline(eventId);
+
+      // Find and update the block
+      const blockIndex = currentTimeline.findIndex(block => block.id === blockId);
+      if (blockIndex === -1) {
+        throw new Error('Timeline block not found');
+      }
+
+      // Update the block
+      const updatedTimeline = currentTimeline.map(block =>
+        block.id === blockId
+          ? { ...block, ...blockData }
+          : block
+      );
+
+      // Update in database
+      return await timelineService.updateEventTimeline(eventId, updatedTimeline);
+    } catch (error) {
+      console.error('Error updating timeline block:', error);
+      throw error;
+    }
+  },
+
+  // Delete a timeline block
+  deleteTimelineBlock: async (eventId: string, blockId: string): Promise<TimelineBlock[]> => {
+    try {
+      // Get current timeline
+      const currentTimeline = await timelineService.getEventTimeline(eventId);
+
+      // Remove the block
+      const updatedTimeline = currentTimeline.filter(block => block.id !== blockId);
+
+      // Update in database
+      return await timelineService.updateEventTimeline(eventId, updatedTimeline);
+    } catch (error) {
+      console.error('Error deleting timeline block:', error);
+      throw error;
+    }
+  },
+
+  // Get timeline blocks visible to guests
+  getPublicTimeline: async (eventId: string): Promise<TimelineBlock[]> => {
+    try {
+      const timeline = await timelineService.getEventTimeline(eventId);
+      
+      // Filter for guest-visible blocks
+      return timeline.filter(block => block.guest_visible);
+    } catch (error) {
+      console.error('Error fetching public timeline:', error);
+      return [];
+    }
+  }
+};
