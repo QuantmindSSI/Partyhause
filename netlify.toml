@@ -134,6 +134,23 @@
   to = "/.netlify/functions/feed-crew"
   status = 200
 
+# Polls endpoints
+[[redirects]]
+  from = "/api/polls"
+  to = "/.netlify/functions/polls"
+  status = 200
+
+[[redirects]]
+  from = "/api/poll-actions"
+  to = "/.netlify/functions/poll-actions"
+  status = 200
+
+# PartyBoard endpoints
+[[redirects]]
+  from = "/api/partyboard/stickies"
+  to = "/.netlify/functions/partyboard-stickies"
+  status = 200
+
 # Test endpoints
 [[redirects]]
   from = "/api/test"
