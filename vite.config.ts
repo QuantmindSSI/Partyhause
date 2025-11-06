@@ -65,6 +65,25 @@ export default defineConfig({
       '@': resolve(__dirname, './src'),
     },
   },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        configure: (proxy, options) => {
+          // Return 404 JSON for missing API routes instead of HTML
+          proxy.on('error', (err, req, res) => {
+            console.log('Proxy error:', err);
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'API endpoint not found locally. Deploy to Vercel/Netlify to use serverless functions.' }));
+          });
+          proxy.on('proxyReq', (proxyReq, req, res) => {
+            console.log('Proxying:', req.method, req.url);
+          });
+        },
+      },
+    },
+  },
   build: {
     outDir: 'dist',
     sourcemap: false,
