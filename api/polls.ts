@@ -53,6 +53,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .order('created_at', { ascending: false });
 
       if (error) {
+        // If table doesn't exist yet, return empty array instead of error
+        if (error.code === 'PGRST204' || error.message.includes('relation') || error.message.includes('does not exist')) {
+          return res.status(200).json({ polls: [] });
+        }
         return res.status(500).json({ error: error.message });
       }
 
@@ -138,6 +142,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .single();
 
       if (pollError) {
+        // If table doesn't exist, return helpful error
+        if (pollError.message.includes('relation') || pollError.message.includes('does not exist')) {
+          return res.status(503).json({ 
+            error: 'Polls feature is not yet enabled. Please run database migration.',
+            details: pollError.message 
+          });
+        }
         return res.status(500).json({ error: pollError.message });
       }
 
