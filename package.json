@@ -12,7 +12,8 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npx vite",
+    "dev": "netlify dev",
+    "dev:vite": "npx vite",
     "build": "npx vite build",
     "build:web": "npx vite build",
     "build:mobile": "node ./scripts/build-mobile-pwa.cjs",
