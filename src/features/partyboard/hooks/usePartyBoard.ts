@@ -12,6 +12,8 @@ export const usePartyBoard = ({ eventId, sessionId, autoRefresh = false }: UsePa
   const [stickies, setStickies] = useState<StickyItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
   // Fetch stickies for the event/session
   const fetchStickies = useCallback(async () => {
@@ -24,7 +26,7 @@ export const usePartyBoard = ({ eventId, sessionId, autoRefresh = false }: UsePa
         params.append('session_id', sessionId);
       }
 
-      const response = await fetch(`/api/partyboard/stickies?${params}`, {
+      const response = await fetch(`${API_BASE}/api/partyboard/stickies?${params}`, {
         headers: {
           'Content-Type': 'application/json',
         },
@@ -49,7 +51,7 @@ export const usePartyBoard = ({ eventId, sessionId, autoRefresh = false }: UsePa
     setError(null);
 
     try {
-      const response = await fetch('/api/partyboard/stickies', {
+      const response = await fetch(\/api/partyboard/stickies', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -94,7 +96,7 @@ export const usePartyBoard = ({ eventId, sessionId, autoRefresh = false }: UsePa
     setError(null);
 
     try {
-      const response = await fetch('/api/partyboard/stickies', {
+      const response = await fetch(\/api/partyboard/stickies', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -140,7 +142,7 @@ export const usePartyBoard = ({ eventId, sessionId, autoRefresh = false }: UsePa
   // Vote on an idea
   const voteOnIdea = async (stickyId: string): Promise<boolean> => {
     try {
-      const response = await fetch(`/api/partyboard/stickies/${stickyId}/vote`, {
+      const response = await fetch(`${API_BASE}/api/partyboard/stickies/${stickyId}/vote`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -179,7 +181,7 @@ export const usePartyBoard = ({ eventId, sessionId, autoRefresh = false }: UsePa
   // Convert idea to task
   const convertToTask = async (stickyId: string): Promise<boolean> => {
     try {
-      const response = await fetch(`/api/partyboard/stickies/${stickyId}/convert-to-task`, {
+      const response = await fetch(`${API_BASE}/api/partyboard/stickies/${stickyId}/convert-to-task`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -218,7 +220,7 @@ export const usePartyBoard = ({ eventId, sessionId, autoRefresh = false }: UsePa
   // Update sticky position
   const updateStickyPosition = async (stickyId: string, position: { x: number; y: number }): Promise<boolean> => {
     try {
-      const response = await fetch(`/api/partyboard/stickies/${stickyId}/position`, {
+      const response = await fetch(`${API_BASE}/api/partyboard/stickies/${stickyId}/position`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -247,7 +249,7 @@ export const usePartyBoard = ({ eventId, sessionId, autoRefresh = false }: UsePa
   // Delete a sticky
   const deleteSticky = async (stickyId: string): Promise<boolean> => {
     try {
-      const response = await fetch(`/api/partyboard/stickies/${stickyId}`, {
+      const response = await fetch(`${API_BASE}/api/partyboard/stickies/${stickyId}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',

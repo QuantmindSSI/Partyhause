@@ -2,6 +2,8 @@
 [build]
   # Build from root directory
   base = "."
+  # Ignore monorepo subdirectories
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF apps/ packages/"
   # Use the web PWA build script
   command = "npm run build:web"
   # Output directory from Vite build
