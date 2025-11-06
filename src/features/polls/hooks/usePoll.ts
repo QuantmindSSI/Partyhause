@@ -13,6 +13,8 @@ export const usePoll = ({ eventId, pollId, autoRefresh = false }: UsePollOptions
   const [currentPoll, setCurrentPoll] = useState<Poll | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
   // Fetch polls for an event
   const fetchPolls = async (eventIdParam?: string) => {
@@ -25,7 +27,7 @@ export const usePoll = ({ eventId, pollId, autoRefresh = false }: UsePollOptions
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
-      const response = await fetch(`/api/polls?event_id=${id}`, {
+      const response = await fetch(`${API_BASE}/api/polls?event_id=${id}`, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token}`,
@@ -56,7 +58,7 @@ export const usePoll = ({ eventId, pollId, autoRefresh = false }: UsePollOptions
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
-      const response = await fetch(`/api/poll-actions?pollId=${id}`, {
+      const response = await fetch(`${API_BASE}/api/poll-actions?pollId=${id}`, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token}`,
@@ -84,7 +86,7 @@ export const usePoll = ({ eventId, pollId, autoRefresh = false }: UsePollOptions
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
-      const response = await fetch('/api/polls', {
+      const response = await fetch(`${API_BASE}/api/polls`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -125,7 +127,7 @@ export const usePoll = ({ eventId, pollId, autoRefresh = false }: UsePollOptions
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
-      const response = await fetch(`/api/poll-actions?pollId=${pollIdParam}&action=vote`, {
+      const response = await fetch(`${API_BASE}/api/poll-actions?pollId=${pollIdParam}&action=vote`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -168,7 +170,7 @@ export const usePoll = ({ eventId, pollId, autoRefresh = false }: UsePollOptions
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
-      const response = await fetch(`/api/poll-actions?pollId=${pollIdParam}&action=close`, {
+      const response = await fetch(`${API_BASE}/api/poll-actions?pollId=${pollIdParam}&action=close`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
