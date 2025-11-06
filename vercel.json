@@ -43,6 +43,18 @@
     "api/feed/crew.ts": {
       "memory": 512,
       "maxDuration": 10
+    },
+    "api/polls.ts": {
+      "memory": 512,
+      "maxDuration": 10
+    },
+    "api/poll-actions.ts": {
+      "memory": 512,
+      "maxDuration": 10
+    },
+    "api/partyboard/stickies.ts": {
+      "memory": 512,
+      "maxDuration": 10
     }
   },
   "rewrites": [
@@ -93,6 +105,18 @@
     {
       "source": "/api/feed/crew",
       "destination": "/api/feed/crew"
+    },
+    {
+      "source": "/api/polls",
+      "destination": "/api/polls"
+    },
+    {
+      "source": "/api/poll-actions",
+      "destination": "/api/poll-actions"
+    },
+    {
+      "source": "/api/partyboard/stickies",
+      "destination": "/api/partyboard/stickies"
     },
     {
       "source": "/(.*)",
