@@ -58,6 +58,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .single();
 
       if (error) {
+        // If table doesn't exist yet, return helpful error
+        if (error.message.includes('relation') || error.message.includes('does not exist')) {
+          return res.status(503).json({ 
+            error: 'Polls feature is not yet enabled. Please run database migration.' 
+          });
+        }
         return res.status(500).json({ error: error.message });
       }
 
