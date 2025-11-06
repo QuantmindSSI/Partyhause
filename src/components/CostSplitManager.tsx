@@ -204,7 +204,7 @@ export function CostSplitManager({ eventId }: CostSplitManagerProps) {
   return (
     <div className="space-y-6">
       {/* Summary Card */}
-      {summary && summary.split_enabled && (
+      {summary && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
