@@ -77,11 +77,11 @@ CREATE POLICY "Anyone can view polls for events they have access to"
       WHERE e.id = polls.event_id
       AND (
         e.host_id = auth.uid()
-        OR e.visibility = 'public'
         OR EXISTS (
           SELECT 1 FROM guests g
+          JOIN auth.users u ON u.email = g.email
           WHERE g.event_id = e.id
-          AND g.user_id = auth.uid()
+          AND u.id = auth.uid()
         )
       )
     )
@@ -98,9 +98,9 @@ CREATE POLICY "Event participants can create polls"
         e.host_id = auth.uid()
         OR EXISTS (
           SELECT 1 FROM guests g
+          JOIN auth.users u ON u.email = g.email
           WHERE g.event_id = e.id
-          AND g.user_id = auth.uid()
-          AND g.rsvp_status = 'confirmed'
+          AND u.id = auth.uid()
         )
       )
     )
@@ -138,11 +138,11 @@ CREATE POLICY "Anyone can view poll options for accessible polls"
       WHERE p.id = poll_options.poll_id
       AND (
         e.host_id = auth.uid()
-        OR e.visibility = 'public'
         OR EXISTS (
           SELECT 1 FROM guests g
+          JOIN auth.users u ON u.email = g.email
           WHERE g.event_id = e.id
-          AND g.user_id = auth.uid()
+          AND u.id = auth.uid()
         )
       )
     )
@@ -188,11 +188,11 @@ CREATE POLICY "Anyone can view votes for accessible polls"
       WHERE p.id = poll_votes.poll_id
       AND (
         e.host_id = auth.uid()
-        OR e.visibility = 'public'
         OR EXISTS (
           SELECT 1 FROM guests g
+          JOIN auth.users u ON u.email = g.email
           WHERE g.event_id = e.id
-          AND g.user_id = auth.uid()
+          AND u.id = auth.uid()
         )
       )
     )
@@ -211,9 +211,9 @@ CREATE POLICY "Event participants can vote"
         e.host_id = auth.uid()
         OR EXISTS (
           SELECT 1 FROM guests g
+          JOIN auth.users u ON u.email = g.email
           WHERE g.event_id = e.id
-          AND g.user_id = auth.uid()
-          AND g.rsvp_status = 'confirmed'
+          AND u.id = auth.uid()
         )
       )
     )
