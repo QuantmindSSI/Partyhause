@@ -100,13 +100,12 @@ export const EventCreation = () => {
       start_date: startDateTime,
       end_date: endDateTime,
       location: formData.location,
-      spotify_playlist_url: formData.spotify_playlist_url,
+      spotify_playlist_url: formData.spotify_playlist_url || null,
       template_type: selectedTemplate?.id || null,
-      template_data: templateData,
-      timeline_blocks: timelineBlocks,
-      is_public: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      template_data: templateData || {},
+      timeline_blocks: timelineBlocks || [],
+      is_public: false
+      // created_at and updated_at will be set automatically by the database
     };
 
     try {
