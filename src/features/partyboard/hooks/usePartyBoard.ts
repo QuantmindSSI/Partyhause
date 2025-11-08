@@ -51,7 +51,7 @@ export const usePartyBoard = ({ eventId, sessionId, autoRefresh = false }: UsePa
     setError(null);
 
     try {
-      const response = await fetch(\/api/partyboard/stickies', {
+      const response = await fetch(`${API_BASE}/api/partyboard/stickies`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -96,7 +96,7 @@ export const usePartyBoard = ({ eventId, sessionId, autoRefresh = false }: UsePa
     setError(null);
 
     try {
-      const response = await fetch(\/api/partyboard/stickies', {
+      const response = await fetch(`${API_BASE}/api/partyboard/stickies`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
