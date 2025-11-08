@@ -105,12 +105,11 @@ export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate
         console.log('sendEmailWithTracking - created log payload:', insertPayload);
       } catch (e) { /* ignore logging errors */ }
 
-    // Use Vercel serverless function in production, fallback to localhost in development
-    const apiUrl = process.env.NODE_ENV === 'production'
-      ? '/api/email'
-      : 'http://localhost:3001/api/send-email';
-    // Allow a client-side override for the From header in dev when configured via Vite env vars.
+    // Use deployed Netlify API if VITE_API_BASE_URL is set, otherwise use relative path
     const metaEnv = (import.meta as unknown) as { env?: Record<string, string> };
+    const apiBase = metaEnv.env?.VITE_API_BASE_URL || '';
+    const apiUrl = apiBase ? `${apiBase}/api/email` : '/api/email';
+    // Allow a client-side override for the From header in dev when configured via Vite env vars.
     const allowFromOverride = metaEnv.env?.VITE_ALLOW_FROM_OVERRIDE === 'true';
     const fromOverride = allowFromOverride ? metaEnv.env?.VITE_FROM_OVERRIDE : undefined;
 
@@ -226,9 +225,9 @@ export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate
 // Fallback for existing email function (backward compatibility)
 export const sendEmail = async ({ to, subject, html }: EmailTemplate) => {
   try {
-    const apiUrl = process.env.NODE_ENV === 'production' 
-      ? '/api/email' 
-      : 'http://localhost:3001/api/send-email';
+    const metaEnv = (import.meta as unknown) as { env?: Record<string, string> };
+    const apiBase = metaEnv.env?.VITE_API_BASE_URL || '';
+    const apiUrl = apiBase ? `${apiBase}/api/email` : '/api/email';
       
     const response = await fetch(apiUrl, {
       method: 'POST',

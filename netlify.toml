@@ -59,6 +59,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/email"
+  to = "/.netlify/functions/email"
+  status = 200
+
+[[redirects]]
   from = "/api/send-email"
   to = "/.netlify/functions/email"
   status = 200
