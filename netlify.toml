@@ -74,8 +74,18 @@
   status = 200
 
 [[redirects]]
+  from = "/api/guests"
+  to = "/.netlify/functions/guests"
+  status = 200
+
+[[redirects]]
   from = "/api/events/:id/guests"
   to = "/.netlify/functions/guests?eventId=:id"
+  status = 200
+
+[[redirects]]
+  from = "/api/timeline"
+  to = "/.netlify/functions/timeline"
   status = 200
 
 [[redirects]]
@@ -156,6 +166,37 @@
 [[redirects]]
   from = "/api/partyboard/stickies"
   to = "/.netlify/functions/partyboard-stickies"
+  status = 200
+
+# Guest/Crew Management
+[[redirects]]
+  from = "/api/convert-guest-to-crew"
+  to = "/.netlify/functions/convert-guest-to-crew"
+  status = 200
+
+[[redirects]]
+  from = "/api/cost-split"
+  to = "/.netlify/functions/cost-split"
+  status = 200
+
+[[redirects]]
+  from = "/api/generate-invite"
+  to = "/.netlify/functions/generate-invite"
+  status = 200
+
+[[redirects]]
+  from = "/api/join-event"
+  to = "/.netlify/functions/join-event"
+  status = 200
+
+[[redirects]]
+  from = "/api/send-email"
+  to = "/.netlify/functions/send-email"
+  status = 200
+
+[[redirects]]
+  from = "/api/user-connections"
+  to = "/.netlify/functions/user-connections"
   status = 200
 
 # Test endpoints
