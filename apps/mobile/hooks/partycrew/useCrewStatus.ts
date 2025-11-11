@@ -53,7 +53,7 @@ export function useCrewStatus(creatorId: string | undefined): UseCrewStatusResul
     setError(null);
 
     try {
-      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://partyhause.vercel.app';
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://www.partyhause.com';
       const response = await fetch(
         `${apiUrl}/api/partycrew/toggle?creatorId=${creatorId}`,
         {

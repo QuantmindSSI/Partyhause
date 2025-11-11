@@ -38,6 +38,8 @@ interface BirthdayFormProps {
   onChange: (data: BirthdayFormData) => void;
   onBack: () => void;
   onNext: () => void;
+  eventDescription: string;
+  onDescriptionChange: (value: string) => void;
 }
 
 const THEME_PRESETS = [
@@ -101,7 +103,9 @@ export default function BirthdayForm({
   initialData = {}, 
   onChange, 
   onBack, 
-  onNext 
+  onNext,
+  eventDescription,
+  onDescriptionChange
 }: BirthdayFormProps) {
   const [formData, setFormData] = useState<BirthdayFormData>(initialData);
 
@@ -441,6 +445,26 @@ export default function BirthdayForm({
         </CardContent>
       </Card>
 
+      {/* Event Description */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Event Description *</CardTitle>
+          <CardDescription>
+            Share a brief overview your guests will see in invites and on the dashboard
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            id="event-description"
+            placeholder="Describe your birthday event—what makes it special?"
+            value={eventDescription}
+            onChange={(e) => onDescriptionChange(e.target.value)}
+            rows={4}
+            required
+          />
+        </CardContent>
+      </Card>
+
       {/* Action Buttons */}
       <div className="flex gap-4">
         <Button variant="outline" onClick={onBack} className="flex-1">
@@ -449,7 +473,7 @@ export default function BirthdayForm({
         <Button 
           onClick={onNext} 
           className="flex-1"
-          disabled={!isValid()}
+          disabled={!isValid() || !eventDescription.trim()}
         >
           Continue to Event Details
           <ChevronRight className="h-4 w-4 ml-2" />

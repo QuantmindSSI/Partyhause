@@ -41,7 +41,7 @@ export function usePartyCrew(): UsePartyCrewResult {
       throw new Error('Not authenticated');
     }
 
-    const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://partyhause.vercel.app';
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://www.partyhause.com';
     const response = await fetch(`${apiUrl}/api/partycrew/toggle`, {
       method: 'POST',
       headers: {

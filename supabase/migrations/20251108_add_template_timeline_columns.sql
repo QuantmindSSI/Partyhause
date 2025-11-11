@@ -1,6 +1,19 @@
 -- Add template_data and timeline_blocks columns to events table
 -- These columns store template configurations and timeline block data
 
+-- Add template_type column (VARCHAR for template identifier)
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'events' 
+    AND column_name = 'template_type'
+  ) THEN
+    ALTER TABLE public.events ADD COLUMN template_type VARCHAR(100);
+  END IF;
+END $$;
+
 -- Add template_data column (JSONB for flexible template configuration)
 DO $$ 
 BEGIN

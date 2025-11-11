@@ -48,7 +48,7 @@ export const PartyBoardSection: React.FC<PartyBoardSectionProps> = ({ eventId })
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Layers className="h-5 w-5 text-violet-600" />
+            <Layers className="h-5 w-5 text-orange-600" />
             PartyBoard
           </CardTitle>
           <CardDescription>Collaborative planning canvas</CardDescription>
@@ -65,7 +65,7 @@ export const PartyBoardSection: React.FC<PartyBoardSectionProps> = ({ eventId })
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Layers className="h-5 w-5 text-violet-600" />
+            <Layers className="h-5 w-5 text-orange-600" />
             PartyBoard
           </CardTitle>
           <CardDescription>Collaborative planning canvas</CardDescription>
@@ -92,7 +92,7 @@ export const PartyBoardSection: React.FC<PartyBoardSectionProps> = ({ eventId })
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              <Layers className="h-5 w-5 text-violet-600" />
+              <Layers className="h-5 w-5 text-orange-600" />
               PartyBoard
             </CardTitle>
             <CardDescription>

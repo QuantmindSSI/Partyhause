@@ -177,7 +177,7 @@ export const Dashboard = () => {
 
   return (
     <MotionDiv 
-      className="min-h-screen bg-white"
+      className="min-h-screen relative"
       {...(process.env.NODE_ENV !== 'test' && {
         initial: "initial",
         animate: "animate",
@@ -185,19 +185,22 @@ export const Dashboard = () => {
         variants: fadeIn
       })}
     >
+      {/* Liquid Metal Background */}
+      <div className="liquid-bg" />
+      
   {(() => { console.log('🎯 DASHBOARD RENDER: before header'); return null })()}
-      {/* Header */}
+      {/* Header with Glass Nav */}
       <MotionHeader 
         {...(process.env.NODE_ENV !== 'test' && {
           variants: fadeIn
         })}
-        className="border-b border-gray-200 bg-white/80 backdrop-blur-sm sticky top-0 z-10 shadow-soft"
+        className="glass-nav sticky top-0 z-10"
       >
         <div className="container mx-auto px-4 py-4">
             <div className="flex items-center justify-between">
             <div>
               <MotionH1 
-                className="text-2xl font-bold text-gray-900"
+                className="text-2xl font-bold text-orange-600"
                 {...(process.env.NODE_ENV !== 'test' && {
                   variants: pulseAnimation,
                   animate: "animate"
@@ -205,14 +208,14 @@ export const Dashboard = () => {
               >
                 PartyHause
               </MotionH1>
-              <p className="text-gray-600">Welcome back, {user?.name || user?.email || 'User'}!</p>
+              <p className="text-gray-800 font-medium">Welcome back, {user?.name || user?.email || 'User'}!</p>
             </div>
             <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => window.location.href = '/feed'}
-                className="text-gray-600 hover:text-gray-900 transition-colors"
+                className="text-gray-700 hover:text-orange-600 transition-colors font-medium"
               >
                 <Users className="h-4 w-4 mr-2" />
                 Feed
@@ -221,7 +224,7 @@ export const Dashboard = () => {
                 variant="ghost"
                 size="sm"
                 onClick={() => window.location.href = '/explore'}
-                className="text-gray-600 hover:text-gray-900 transition-colors"
+                className="text-gray-700 hover:text-orange-600 transition-colors font-medium"
               >
                 <Users className="h-4 w-4 mr-2" />
                 Explore
@@ -232,19 +235,17 @@ export const Dashboard = () => {
                 onClick={() => {
                   usePartyStore.getState().setCurrentPage('templates');
                 }}
-                className="text-gray-600 hover:text-gray-900 transition-colors"
+                className="text-gray-700 hover:text-orange-600 transition-colors font-medium"
               >
                 Templates
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
+              <button
                 onClick={signOut}
-                className="text-gray-600 hover:text-gray-900 transition-colors"
+                className="icon-btn-iridescent"
+                title="Logout"
               >
-                <LogOut className="h-4 w-4 mr-2" />
-                Logout
-              </Button>
+                <LogOut className="h-5 w-5" />
+              </button>
             </div>
           </div>
         </div>
@@ -257,23 +258,22 @@ export const Dashboard = () => {
           {...(process.env.NODE_ENV !== 'test' && {
             variants: fadeIn
           })}
-          className="mb-8"
+          className="mb-8 flex justify-center"
         >
           {(() => { console.log('🎯 DASHBOARD RENDER: before create button'); return null })()}
-          <Button
+          <button
             onClick={() => setCurrentPage('create-event')}
-            className="btn-floating h-16 px-8 text-lg font-semibold"
-            size="lg"
+            className="btn-iridescent h-16 px-8 text-lg font-semibold"
           >
             <Plus className="h-6 w-6 mr-3" />
             Create New Event
-          </Button>
+          </button>
         </MotionDiv>
   {(() => { console.log('🎯 DASHBOARD RENDER: after create button'); return null })()}
 
-        {/* Events Grid */}
+        {/* Events Grid with 3D Liquid Metal */}
         <MotionDiv 
-          className="grid gap-6 md:grid-cols-2 lg:grid-cols-3"
+          className="event-grid-3d"
           {...(process.env.NODE_ENV !== 'test' && {
             variants: staggerContainer
           })}
@@ -299,30 +299,35 @@ export const Dashboard = () => {
                 whileHover: "hover"
               })}
             >
-              <Card 
+              <div 
                 onClick={() => handleEventClick(event)}
                 className={cn(
-                  "modern-card hover-lift cursor-pointer group overflow-hidden",
-                  currentEvent?.id === event.id ? 'ring-2 ring-orange-400' : ''
+                  "event-card-enhanced cursor-pointer group relative",
+                  currentEvent?.id === event.id ? 'border-holographic' : ''
                 )}
               >
-                <div className="absolute inset-0 bg-orange-500 opacity-0 group-hover:opacity-5 transition-opacity duration-300 pointer-events-none" />
-                <CardHeader className="relative">
+                <div className="card-shine" />
+                <div className="relative">
                   <div className="flex items-start justify-between">
                     <div className="flex-1" onClick={() => handleEventClick(event)} style={{ cursor: 'pointer' }}>
-                      <CardTitle className="text-xl text-gray-900 group-hover:text-orange-600 transition-colors">
+                      <h3 className="text-xl font-bold text-gray-900 group-hover:text-orange-600 transition-colors">
                         {event.name}
-                      </CardTitle>
-                      <div className="mt-2 text-sm text-gray-600">
+                      </h3>
+                      <div className="mt-2 text-sm text-gray-700">
                         <span className="flex items-center mb-1">
                           <Calendar className="h-4 w-4 mr-2 text-orange-500" />
                           {safeFormat(event.start_date || event.date, 'PPP p', 'Invalid date')}
                         </span>
                         <span className="flex items-center">
-                          <MapPin className="h-4 w-4 mr-2 text-orange-400" />
+                          <MapPin className="h-4 w-4 mr-2 text-orange-500" />
                           {event.location}
                         </span>
                       </div>
+                        {event.description && (
+                          <p className="mt-3 text-sm text-gray-600 whitespace-pre-line max-h-20 overflow-hidden">
+                            {event.description}
+                          </p>
+                        )}
                     </div>
                     <div className="flex flex-col items-end gap-2">
                       <MotionDiv 
@@ -331,71 +336,78 @@ export const Dashboard = () => {
                           animate: "animate"
                         })}
                       >
-                        <Music className="h-6 w-6 text-orange-500" />
+                        <Music className="h-6 w-6 text-orange-400" />
                       </MotionDiv>
-                      <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); handleInviteClick(event); }}>
+                      <button 
+                        className="btn-glass px-4 py-2 text-sm"
+                        onClick={(e) => { e.stopPropagation(); handleInviteClick(event); }}
+                      >
                         <Mail className="h-4 w-4 mr-1" /> Invite
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
+                      </button>
+                      <button 
+                        className="btn-iridescent px-4 py-2 text-sm"
                         onClick={(e) => {
                           e.stopPropagation();
                           setCurrentEvent(event);
                           setCurrentPage('games');
                         }}
-                        className="border-green-500 text-green-600 hover:bg-green-50"
                       >
                         <Gamepad2 className="h-4 w-4 mr-1" /> Games
-                      </Button>
+                      </button>
                     </div>
                   </div>
-                </CardHeader>
-                <CardContent className="relative">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Users className="h-4 w-4 mr-2" />
-                      <span>Guest List</span>
-                    </div>
-                    <div className="w-12 h-12 rounded-full bg-orange-100 flex-center group-hover:bg-orange-200 transition-all duration-300">
-                      <Users className="h-6 w-6 text-orange-600" />
+                  
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center text-sm text-gray-700 font-medium">
+                        <Users className="h-4 w-4 mr-2 text-orange-500" />
+                        <span>Guest List</span>
+                      </div>
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex-center">
+                        <Users className="h-5 w-5 text-white" />
+                      </div>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </MotionDiv>
           ))}
   {(() => { console.log('🎯 DASHBOARD RENDER: after events grid'); return null })()}
       {/* Invite Upload Modal */}
       {inviteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <Card className="max-w-lg w-full">
-            <CardHeader>
-              <CardTitle>Upload or Create Invite for {inviteEvent?.name}</CardTitle>
-              <CardDescription>
-                Upload an invite image/PDF for your event, or skip for later.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="glass-panel-liquid max-w-lg w-full mx-4">
+            <div className="p-6">
+              <h2 className="text-2xl font-bold text-orange-600 mb-2">Upload or Create Invite</h2>
+              <p className="text-gray-800 font-medium mb-4">
+                For {inviteEvent?.name} - Upload an invite image/PDF for your event, or skip for later.
+              </p>
+            </div>
+            <div className="px-6 pb-6">
               <form onSubmit={handleInviteSubmit} className="space-y-4">
-                <input type="file" accept="image/*,application/pdf" onChange={handleInviteFileChange} />
+                <input 
+                  type="file" 
+                  accept="image/*,application/pdf" 
+                  onChange={handleInviteFileChange}
+                  className="input-liquid w-full"
+                />
                 {invitePreview && (
                   <div className="mt-2">
-                    <span className="font-semibold">Preview:</span>
+                    <span className="font-semibold text-white">Preview:</span>
                     {inviteFile?.type.startsWith('image') ? (
-                      <img src={invitePreview} alt="Invite Preview" className="max-h-48 mt-2 rounded shadow" />
+                      <img src={invitePreview} alt="Invite Preview" className="max-h-48 mt-2 rounded-xl shadow-liquid-lg" />
                     ) : (
-                      <a href={invitePreview} target="_blank" rel="noopener noreferrer" className="text-primary underline">View PDF</a>
+                      <a href={invitePreview} target="_blank" rel="noopener noreferrer" className="text-orange-400 underline hover:text-orange-300">View PDF</a>
                     )}
                   </div>
                 )}
-                <div className="flex gap-2 mt-4">
-                  <Button type="submit" className="flex-1">Save</Button>
-                  <Button type="button" variant="outline" className="flex-1" onClick={() => setInviteModalOpen(false)}>Cancel</Button>
+                <div className="flex gap-3 mt-6">
+                  <button type="submit" className="btn-liquid-metal flex-1">Save</button>
+                  <button type="button" className="btn-glass flex-1" onClick={() => setInviteModalOpen(false)}>Cancel</button>
                 </div>
               </form>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       )}
         </MotionDiv>
@@ -407,26 +419,26 @@ export const Dashboard = () => {
             })}
             className="text-center py-12"
           >
-            <div className="max-w-md mx-auto">
+            <div className="glass-panel-liquid max-w-md mx-auto p-8">
               <MotionDiv
                 {...(process.env.NODE_ENV !== 'test' && {
                   variants: pulseAnimation,
                   animate: "animate"
                 })}
               >
-                <Music className="h-16 w-16 mx-auto text-orange-300 mb-4" />
+                <Music className="h-16 w-16 mx-auto text-orange-400 mb-4" />
               </MotionDiv>
               <h3 className="text-xl font-semibold mb-2 text-gray-900">No events yet</h3>
-              <p className="text-gray-600 mb-6">
+              <p className="text-gray-700 font-medium mb-6">
                 Ready to throw an amazing party? Create your first event to get started!
               </p>
-              <Button
+              <button
                 onClick={() => setCurrentPage('create-event')}
-                className="btn-floating"
+                className="btn-iridescent"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Create Your First Event
-              </Button>
+              </button>
             </div>
           </MotionDiv>
         )}

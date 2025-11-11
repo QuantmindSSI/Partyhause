@@ -76,6 +76,7 @@ export default function ExploreScreen() {
           location,
           event_date,
           start_date,
+          end_date,
           template_type,
           visibility,
           host_id,
@@ -86,8 +87,8 @@ export default function ExploreScreen() {
         `)
         .in('visibility', ['public', 'network'])
         .neq('host_id', userId) // Don't show user's own events
-        .gte('event_date', new Date().toISOString())
-        .order('event_date', { ascending: true })
+        .gte('start_date', new Date().toISOString())
+        .order('start_date', { ascending: true })
         .limit(20);
 
       if (error) {
