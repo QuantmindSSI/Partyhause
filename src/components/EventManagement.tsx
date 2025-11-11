@@ -58,7 +58,7 @@ export const EventManagement = () => {
   });
 
   const eventGuests = currentEvent ? guests.filter(guest => guest.event_id === currentEvent.id) : [];
-  const checkedInCount = eventGuests.filter(guest => guest.is_checked_in).length;
+  const checkedInCount = eventGuests.filter(guest => (guest as any).is_checked_in).length;
 
   if (isLoading) {
     return (
