@@ -156,7 +156,7 @@ export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate
       // Update email log with failure
       const parsed = extractApiResult(data);
       await supabase
-        .from<EmailLogRow>('email_logs')
+        .from('email_logs')
         .update({
           status: 'failed',
           error_message: parsed.error || `HTTP error! status: ${response.status}`
@@ -170,7 +170,7 @@ export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate
     if (!parsed.success) {
       // Update email log with failure
       await supabase
-        .from<EmailLogRow>('email_logs')
+        .from('email_logs')
         .update({
           status: 'failed',
           error_message: parsed.error || 'Email sending failed'
@@ -183,7 +183,7 @@ export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate
     // Update email log with success and MailerSend message ID
   const mailerSendId = parsed.id || null;
     await supabase
-      .from<EmailLogRow>('email_logs')
+      .from('email_logs')
       .update({
         status: 'sent',
         resend_email_id: mailerSendId, // Keep column name for backward compatibility
