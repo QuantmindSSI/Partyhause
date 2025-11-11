@@ -33,7 +33,7 @@ export const handler: Handler = async (event, context) => {
 
     let responseData: any = null;
     let statusCode = 200;
-    let responseHeaders = { ...headers };
+    let responseHeaders: Record<string, string> = { ...headers };
 
     const res = {
       status: (code: number) => {
