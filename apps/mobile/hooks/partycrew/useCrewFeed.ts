@@ -66,7 +66,7 @@ export function useCrewFeed(
         return;
       }
 
-      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://partyhause.vercel.app';
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://www.partyhause.com';
       let url = `${apiUrl}/api/feed/crew?limit=${limit}`;
       
       if (contentType) {

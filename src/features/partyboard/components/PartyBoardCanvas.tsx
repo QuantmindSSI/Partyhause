@@ -124,7 +124,7 @@ export const PartyBoardCanvas: React.FC<PartyBoardCanvasProps> = ({
           onClick={handleZoomOut}
           disabled={canvasState.zoom <= CANVAS_CONFIG.MIN_ZOOM}
         >
-          <ZoomOut className="h-4 w-4" />
+          <ZoomOut className="h-4 w-4 text-orange-600" />
         </Button>
         <span className="text-sm font-medium px-2 min-w-[60px] text-center">
           {Math.round(canvasState.zoom * 100)}%
@@ -135,18 +135,18 @@ export const PartyBoardCanvas: React.FC<PartyBoardCanvasProps> = ({
           onClick={handleZoomIn}
           disabled={canvasState.zoom >= CANVAS_CONFIG.MAX_ZOOM}
         >
-          <ZoomIn className="h-4 w-4" />
+          <ZoomIn className="h-4 w-4 text-orange-600" />
         </Button>
         <div className="w-px h-6 bg-gray-200 mx-1" />
         <Button variant="ghost" size="icon" onClick={handleResetView}>
-          <Maximize2 className="h-4 w-4" />
+          <Maximize2 className="h-4 w-4 text-orange-600" />
         </Button>
       </div>
 
       {/* Add Sticky Button */}
       <div className="absolute top-4 right-4 z-10">
-        <Button onClick={onCreateSticky} className="bg-violet-600 hover:bg-violet-700 shadow-md">
-          <Plus className="h-4 w-4 mr-2" />
+        <Button onClick={onCreateSticky} className="bg-orange-600 hover:bg-orange-700 shadow-md font-semibold">
+          <Plus className="h-4 w-4 mr-2 text-white" />
           Add Sticky
         </Button>
       </div>
@@ -260,8 +260,8 @@ export const PartyBoardCanvas: React.FC<PartyBoardCanvasProps> = ({
       {stickies.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center max-w-md">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-violet-100 mb-4">
-              <Plus className="w-8 h-8 text-violet-600" />
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-orange-100 mb-4">
+              <Plus className="w-8 h-8 text-orange-600" />
             </div>
             <h3 className="text-lg font-semibold mb-2">Start Your PartyBoard</h3>
             <p className="text-gray-500">

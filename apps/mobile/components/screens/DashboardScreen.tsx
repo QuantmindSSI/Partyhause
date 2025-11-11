@@ -34,7 +34,7 @@ export const DashboardScreen = ({ userId, userEmail, onSignOut }: DashboardScree
         .from('events')
         .select('*')
         .eq('host_id', userId)
-        .order('event_date', { ascending: true });
+        .order('start_date', { ascending: true });
       
       if (error) {
         console.error('[Dashboard] Error fetching events:', error);
@@ -42,7 +42,12 @@ export const DashboardScreen = ({ userId, userEmail, onSignOut }: DashboardScree
       }
       
       console.log('[Dashboard] Fetched', data?.length || 0, 'events');
-      return data || [];
+      // Ensure backward compatibility for events with event_date instead of start_date
+      return (data || []).map((event: any) => ({
+        ...event,
+        start_date: event.start_date || event.event_date,
+        end_date: event.end_date || event.event_date,
+      })) as Event[];
     },
     enabled: !!userId && !!supabase,
   });

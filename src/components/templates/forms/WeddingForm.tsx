@@ -37,6 +37,8 @@ interface WeddingFormProps {
   onChange: (data: WeddingFormData) => void;
   onBack: () => void;
   onNext: () => void;
+  eventDescription: string;
+  onDescriptionChange: (value: string) => void;
 }
 
 const WEDDING_STYLES = [
@@ -102,7 +104,9 @@ export default function WeddingForm({
   initialData = {}, 
   onChange, 
   onBack, 
-  onNext 
+  onNext,
+  eventDescription,
+  onDescriptionChange
 }: WeddingFormProps) {
   const [formData, setFormData] = useState<WeddingFormData>({
     has_ceremony: true,
@@ -437,6 +441,26 @@ export default function WeddingForm({
         </CardContent>
       </Card>
 
+      {/* Event Description */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Event Description *</CardTitle>
+          <CardDescription>
+            Share a brief overview your guests will see in invites and on the dashboard
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            id="event-description"
+            placeholder="Describe your wedding—share what makes your celebration special"
+            value={eventDescription}
+            onChange={(e) => onDescriptionChange(e.target.value)}
+            rows={4}
+            required
+          />
+        </CardContent>
+      </Card>
+
       {/* Action Buttons */}
       <div className="flex gap-4">
         <Button variant="outline" onClick={onBack} className="flex-1">
@@ -445,7 +469,7 @@ export default function WeddingForm({
         <Button 
           onClick={onNext} 
           className="flex-1"
-          disabled={!isValid()}
+          disabled={!isValid() || !eventDescription.trim()}
         >
           Continue to Event Details
           <ChevronRight className="h-4 w-4 ml-2" />

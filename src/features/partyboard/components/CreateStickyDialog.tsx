@@ -156,7 +156,7 @@ export const CreateStickyDialog: React.FC<CreateStickyDialogProps> = ({
                       className={cn(
                         'w-12 h-12 rounded-lg border-2 transition-all',
                         color === colorOption.id
-                          ? 'border-violet-600 ring-2 ring-violet-200 scale-110'
+                          ? 'border-orange-600 ring-2 ring-orange-200 scale-110'
                           : 'border-gray-300 hover:border-gray-400'
                       )}
                       style={{ backgroundColor: colorOption.color }}
@@ -228,7 +228,7 @@ export const CreateStickyDialog: React.FC<CreateStickyDialogProps> = ({
               </Button>
               <Button
                 type="submit"
-                className="bg-violet-600 hover:bg-violet-700"
+                className="bg-orange-600 hover:bg-orange-700"
                 disabled={loading}
               >
                 {loading ? 'Creating...' : `Create ${stickyType === 'note' ? 'Note' : 'Idea'}`}

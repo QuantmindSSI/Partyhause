@@ -18,7 +18,7 @@ export interface Event {
   id: string;
   host_id: string;
   name: string;
-  description?: string;
+  description?: string | null;
   // Legacy field - maintained for backward compatibility
   date?: string;
   // New multi-day support fields
@@ -146,6 +146,10 @@ export const usePartyStore = create<PartyState>()(
       },
 
       setEvents: (events) => set((state) => {
+        const normalizedEvents = events.map(event => ({
+          ...event,
+          description: event.description ?? null
+        }));
         // Preserve the currently selected event when possible. Important safety:
         // - If the user already has a currentEvent selected and it still appears in the
         //   incoming events list, keep it.
@@ -154,12 +158,12 @@ export const usePartyStore = create<PartyState>()(
         //   the user's selection unexpectedly. Leave currentEvent null and let the UI
         //   or explicit user action pick an event.
         const currentId = state.currentEvent?.id;
-        const currentStillPresent = currentId && events.some(e => e.id === currentId);
+        const matchedCurrent = currentId ? normalizedEvents.find(e => e.id === currentId) : undefined;
         return {
-          events,
+          events: normalizedEvents,
           // If the previously selected event is still present, keep it.
           // Otherwise clear currentEvent to avoid pointing at a stale/removed event.
-          currentEvent: currentStillPresent ? state.currentEvent : null
+          currentEvent: matchedCurrent ? matchedCurrent : null
         };
       }),
 
@@ -186,15 +190,17 @@ export const usePartyStore = create<PartyState>()(
           return;
         }
 
-        console.log('    setCurrentEvent: proceeding to set and fetch guests for', event.id);
-        set({ currentEvent: event, fetchingEventId: event.id, isLoading: true });
+        const normalizedEvent = { ...event, description: event.description ?? null };
+
+        console.log('    setCurrentEvent: proceeding to set and fetch guests for', normalizedEvent.id);
+        set({ currentEvent: normalizedEvent, fetchingEventId: normalizedEvent.id, isLoading: true });
 
         try {
-          const guests = await eventService.getEventGuests(event.id);
+          const guests = await eventService.getEventGuests(normalizedEvent.id);
           set((s) => ({
             ...s,
             guests,
-            loadedEventIds: new Set([...s.loadedEventIds, event.id]),
+            loadedEventIds: new Set([...s.loadedEventIds, normalizedEvent.id]),
             fetchingEventId: null,
             isLoading: false
           }));
@@ -258,6 +264,13 @@ export const usePartyStore = create<PartyState>()(
           
           if (state.currentEvent && (!state.events || state.events.length === 0)) {
             state.currentEvent = null;
+          }
+
+          if (state.events) {
+            state.events = state.events.map(event => ({
+              ...event,
+              description: event.description ?? null
+            }));
           }
         }
       }

@@ -79,22 +79,83 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       keyframes: {
+        // UI Component Animations
         "accordion-down": {
-          from: {
-            height: "0",
-          },
-          to: {
-            height: "var(--radix-accordion-content-height)",
-          },
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
         },
         "accordion-up": {
-          from: {
-            height: "var(--radix-accordion-content-height)",
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
+        },
+        
+        // Liquid Metal Animations
+        "liquid-ripple": {
+          "0%": { transform: "scale(0.95)", opacity: "1" },
+          "50%": { transform: "scale(1.05)", opacity: "0.8" },
+          "100%": { transform: "scale(0.95)", opacity: "1" },
+        },
+        "liquid-flow": {
+          "0%, 100%": { backgroundPosition: "0% 50%" },
+          "50%": { backgroundPosition: "100% 50%" },
+        },
+        "liquid-morph": {
+          "0%, 100%": { 
+            transform: "translate(0, 0) scale(1)",
+            borderRadius: "60% 40% 30% 70% / 60% 30% 70% 40%"
           },
-          to: {
-            height: "0",
+          "33%": { 
+            transform: "translate(50px, -30px) scale(1.1)",
+            borderRadius: "30% 60% 70% 40% / 50% 60% 30% 60%"
+          },
+          "66%": { 
+            transform: "translate(-40px, 20px) scale(0.95)",
+            borderRadius: "50% 60% 30% 60% / 30% 70% 50% 40%"
           },
         },
+        "metal-shimmer": {
+          "0%": { backgroundPosition: "-200% center" },
+          "100%": { backgroundPosition: "200% center" },
+        },
+        "float-smooth": {
+          "0%, 100%": { transform: "translateY(0px) rotate(0deg)" },
+          "33%": { transform: "translateY(-8px) rotate(2deg)" },
+          "66%": { transform: "translateY(-4px) rotate(-2deg)" },
+        },
+        "float-gentle": {
+          "0%, 100%": { transform: "translateY(0px)" },
+          "50%": { transform: "translateY(-8px)" },
+        },
+        "glow-pulse-liquid": {
+          "0%, 100%": {
+            boxShadow: "0 0 20px hsla(233, 81%, 71%, 0.2), 0 0 40px hsla(233, 81%, 71%, 0.1)",
+          },
+          "50%": {
+            boxShadow: "0 0 40px hsla(233, 81%, 71%, 0.4), 0 0 80px hsla(233, 81%, 71%, 0.2)",
+          },
+        },
+        "gradient-shift": {
+          "0%, 100%": { backgroundPosition: "0% 50%" },
+          "50%": { backgroundPosition: "100% 50%" },
+        },
+        "particle-float": {
+          "0%, 100%": {
+            transform: "translateY(0) translateX(0) scale(1)",
+            opacity: "0",
+          },
+          "10%": { opacity: "0.6" },
+          "90%": { opacity: "0.6" },
+          "100%": {
+            transform: "translateY(-100vh) translateX(50px) scale(0)",
+            opacity: "0",
+          },
+        },
+        "light-sweep": {
+          "0%, 100%": { left: "-5%", opacity: "0" },
+          "50%": { left: "105%", opacity: "1" },
+        },
+        
+        // Legacy Animations
         "orange-pulse": {
           "0%, 100%": {
             transform: "scale(1)",
@@ -106,53 +167,43 @@ export default {
           },
         },
         "orange-glow": {
-          "0%, 100%": { 
-            filter: "drop-shadow(0 2px 8px hsl(var(--orange-500) / 0.4))" 
-          },
-          "50%": { 
-            filter: "drop-shadow(0 4px 16px hsl(var(--orange-400) / 0.6))" 
-          },
+          "0%, 100%": { filter: "drop-shadow(0 2px 8px hsl(var(--orange-500) / 0.4))" },
+          "50%": { filter: "drop-shadow(0 4px 16px hsl(var(--orange-400) / 0.6))" },
         },
         "slide-up": {
-          "0%": {
-            transform: "translateY(100%)",
-            opacity: "0",
-          },
-          "100%": {
-            transform: "translateY(0)",
-            opacity: "1",
-          },
+          "0%": { transform: "translateY(100%)", opacity: "0" },
+          "100%": { transform: "translateY(0)", opacity: "1" },
         },
         "bounce-in": {
-          "0%": {
-            transform: "scale(0.3)",
-            opacity: "0",
-          },
-          "50%": {
-            transform: "scale(1.05)",
-            opacity: "1",
-          },
-          "70%": {
-            transform: "scale(0.9)",
-          },
-          "100%": {
-            transform: "scale(1)",
-          },
+          "0%": { transform: "scale(0.3)", opacity: "0" },
+          "50%": { transform: "scale(1.05)", opacity: "1" },
+          "70%": { transform: "scale(0.9)" },
+          "100%": { transform: "scale(1)" },
         },
         "fade-in": {
-          "0%": {
-            opacity: "0",
-            transform: "translateY(10px)",
-          },
-          "100%": {
-            opacity: "1",
-            transform: "translateY(0)",
-          },
+          "0%": { opacity: "0", transform: "translateY(10px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
         },
       },
       animation: {
+        // UI Components
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        
+        // Liquid Metal Effects
+        "liquid-ripple": "liquid-ripple 3s ease-in-out infinite",
+        "liquid-flow": "liquid-flow 8s ease infinite",
+        "liquid-morph": "liquid-morph 20s ease-in-out infinite",
+        "metal-shimmer": "metal-shimmer 3s linear infinite",
+        "float-smooth": "float-smooth 6s ease-in-out infinite",
+        "float-gentle": "float-gentle 4s ease-in-out infinite",
+        "glow-pulse-liquid": "glow-pulse-liquid 2s ease-in-out infinite",
+        "gradient-shift": "gradient-shift 8s ease infinite",
+        "gradient-holographic": "gradient-shift 10s ease infinite",
+        "particle-float": "particle-float 6s ease-in-out infinite",
+        "light-sweep": "light-sweep 4s ease-in-out infinite",
+        
+        // Legacy Animations
         "orange-pulse": "orange-pulse 2s ease-in-out infinite",
         "orange-glow": "orange-glow 3s ease-in-out infinite",
         "slide-up": "slide-up 0.5s ease-out",

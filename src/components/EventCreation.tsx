@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { usePartyStore } from '@/store/usePartyStore';
 import { eventService } from '@/lib/events';
 import { uploadImage, validateImageFile } from '@/lib/image-utils';
@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Sparkles, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Sparkles, ChevronRight, PartyPopper, Send, Check, Users } from 'lucide-react';
 import { EventTemplateSelection } from '@/components/templates/EventTemplateSelection';
 import TemplateFormRouter from '@/components/templates/forms/TemplateFormRouter';
 import InviteTemplateSelection from '@/components/invites/InviteTemplateSelection';
@@ -18,6 +18,8 @@ import type { InviteCustomization as InviteCustomizationType } from '@/types/inv
 import { TimelineManagement } from '@/features/timeline/components/TimelineManagement';
 import { TimelineBlock } from '@/features/timeline/types';
 import { timelineService } from '@/lib/timeline';
+import { ProgressStepper, CompactProgressBar, Step } from '@/components/ui/progress-stepper';
+import { FlowTip } from '@/components/ui/flow-tip';
 
 interface EventTemplate {
   id: string;
@@ -34,6 +36,7 @@ export const EventCreation = () => {
   const [formData, setFormData] = useState({
     name: '',
     event_type: 'single_day' as 'single_day' | 'multi_day',
+    description: '',
     start_date: '',
     start_time: '',
     end_date: '',
@@ -55,6 +58,19 @@ export const EventCreation = () => {
   const [invitePreview, setInvitePreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [descriptionError, setDescriptionError] = useState<string | null>(null);
+  const [completedSteps, setCompletedSteps] = useState<string[]>([]);
+
+  // Define the event creation flow steps
+  const EVENT_CREATION_STEPS: Step[] = [
+    { id: 'template', label: 'Choose Template', description: 'Pick your event type' },
+    { id: 'details', label: 'Event Details', description: 'Fill in information' },
+    { id: 'form', label: 'Basic Info', description: 'Date, time, location' },
+    { id: 'timeline', label: 'Timeline', description: 'Schedule activities' },
+    { id: 'invite-template', label: 'Invite Design', description: 'Choose invitation style' },
+    { id: 'invite-customize', label: 'Customize Invite', description: 'Personalize message' },
+    { id: 'curate', label: 'Final Review', description: 'Ready to publish' },
+  ];
 
   // Effect to auto-set end_date when switching from multi_day to single_day
   useEffect(() => {
@@ -87,16 +103,17 @@ export const EventCreation = () => {
     setIsSubmitting(true);
     setError(null);
 
-    // Calculate start and end dates
-    const startDateTime = `${formData.start_date}T${formData.start_time}:00Z`;
+    // Calculate start and end dates - use proper ISO format
+    const startDateTime = `${formData.start_date}T${formData.start_time}:00`;
     const endDateTime = formData.event_type === 'multi_day' 
-      ? `${formData.end_date}T${formData.end_time}:00Z`
-      : `${formData.start_date}T${formData.end_time}:00Z`;
+      ? `${formData.end_date}T${formData.end_time}:00`
+      : `${formData.start_date}T${formData.end_time}:00`;
 
     const newEvent = {
       host_id: user.id,
       name: formData.name,
       event_type: formData.event_type,
+      description: formData.description.trim() || null,
       start_date: startDateTime,
       end_date: endDateTime,
       location: formData.location,
@@ -104,8 +121,9 @@ export const EventCreation = () => {
       template_type: selectedTemplate?.id || null,
       template_data: templateData || {},
       timeline_blocks: timelineBlocks || [],
-      is_public: false
-      // created_at and updated_at will be set automatically by the database
+      is_public: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     };
 
     try {
@@ -114,6 +132,7 @@ export const EventCreation = () => {
         const freshEvents = await eventService.getUserEvents(user.id);
         setEvents(freshEvents);
         setCreatedEvent(created);
+        setCompletedSteps(prev => [...new Set([...prev, 'form'])]);
         setStep('timeline');
       } else {
         setError('Failed to create event. Please try again.');
@@ -128,10 +147,14 @@ export const EventCreation = () => {
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    if (field === 'description' && descriptionError) {
+      setDescriptionError(null);
+    }
   };
 
   const handleTemplateSelect = (template: EventTemplate) => {
     setSelectedTemplate(template);
+    setCompletedSteps(prev => [...new Set([...prev, 'template'])]);
     setStep('details');
   };
 
@@ -146,11 +169,18 @@ export const EventCreation = () => {
   };
 
   const proceedToEventForm = () => {
+    if (!formData.description.trim()) {
+      setDescriptionError('Please add a short event description before continuing.');
+      return;
+    }
+    setDescriptionError(null);
+    setCompletedSteps(prev => [...new Set([...prev, 'details'])]);
     setStep('form');
   };
 
   const handleInviteTemplateSelect = (template: InviteTemplate) => {
     setSelectedInviteTemplate(template);
+    setCompletedSteps(prev => [...new Set([...prev, 'invite-template'])]);
     setStep('invite-customize');
   };
 
@@ -158,6 +188,7 @@ export const EventCreation = () => {
     setInviteData(customInviteData);
     // Here you would typically save the invite and send it
     console.log('Invite customized:', { customInviteData, customization });
+    setCompletedSteps(prev => [...new Set([...prev, 'invite-customize'])]);
     // For now, go to curate step
     setStep('curate');
   };
@@ -184,6 +215,7 @@ export const EventCreation = () => {
       }
     }
     
+    setCompletedSteps(prev => [...new Set([...prev, 'timeline'])]);
     setStep('invite-template');
   };
 
@@ -443,18 +475,130 @@ export const EventCreation = () => {
 
   if (step === 'curate') {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-background">
-        <Card className="max-w-lg w-full">
-          <CardHeader>
-            <CardTitle>Curate Your Event Experience</CardTitle>
-            <CardDescription>
-              Add agenda, music, guest list, and more to make your event special!
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={() => setCurrentPage('dashboard')}>Finish & Go to Dashboard</Button>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen relative">
+        <div className="liquid-bg" />
+        <div className="container mx-auto px-4 py-8 relative z-10">
+          <div className="max-w-4xl mx-auto">
+            {/* Success Celebration */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5 }}
+              className="text-center mb-12"
+            >
+              <motion.div
+                initial={{ scale: 0, rotate: -180 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ 
+                  delay: 0.2,
+                  duration: 0.6,
+                  type: "spring",
+                  stiffness: 200
+                }}
+                className="inline-block mb-6"
+              >
+                <div className="relative">
+                  <div className="absolute inset-0 bg-gradient-to-r from-orange-400 to-pink-400 rounded-full blur-2xl opacity-60 animate-pulse" />
+                  <div className="relative w-24 h-24 bg-gradient-to-br from-orange-500 to-pink-500 rounded-full flex items-center justify-center">
+                    <PartyPopper className="w-12 h-12 text-white" />
+                  </div>
+                </div>
+              </motion.div>
+
+              <motion.h1
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className="text-5xl font-bold text-white mb-4"
+              >
+                🎉 Event Created Successfully!
+              </motion.h1>
+
+              <motion.p
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 }}
+                className="text-xl text-gray-800 font-medium mb-8"
+              >
+                {createdEvent?.name} is ready to go! Now let's make it unforgettable.
+              </motion.p>
+            </motion.div>
+
+            {/* Next Steps Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 }}
+              >
+                <Card className="modern-card hover:shadow-xl transition-shadow cursor-pointer h-full" onClick={() => setStep('invite-template')}>
+                  <CardHeader>
+                    <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-pink-500 rounded-lg flex items-center justify-center mb-4">
+                      <Send className="w-6 h-6 text-white" />
+                    </div>
+                    <CardTitle className="text-lg">Send Invitations</CardTitle>
+                    <CardDescription>
+                      Choose a template and invite your guests
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.7 }}
+              >
+                <Card className="modern-card hover:shadow-xl transition-shadow cursor-pointer h-full" onClick={() => setCurrentPage('event-management')}>
+                  <CardHeader>
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg flex items-center justify-center mb-4">
+                      <Users className="w-6 h-6 text-white" />
+                    </div>
+                    <CardTitle className="text-lg">Manage Event</CardTitle>
+                    <CardDescription>
+                      Add timeline, music, and guest list
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.8 }}
+              >
+                <Card className="modern-card hover:shadow-xl transition-shadow cursor-pointer h-full" onClick={() => setCurrentPage('dashboard')}>
+                  <CardHeader>
+                    <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg flex items-center justify-center mb-4">
+                      <Check className="w-6 h-6 text-white" />
+                    </div>
+                    <CardTitle className="text-lg">View Dashboard</CardTitle>
+                    <CardDescription>
+                      See all your events and analytics
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              </motion.div>
+            </div>
+
+            {/* Primary Action */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.9 }}
+              className="text-center"
+            >
+              <Button 
+                onClick={() => setCurrentPage('dashboard')}
+                size="lg"
+                className="bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white font-bold px-8 py-6 text-lg"
+              >
+                Go to Dashboard
+                <ChevronRight className="ml-2 w-5 h-5" />
+              </Button>
+            </motion.div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -462,36 +606,101 @@ export const EventCreation = () => {
   // Template Selection Step
   if (step === 'template') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
-        <div className="container mx-auto px-4 py-8">
+      <div className="min-h-screen relative">
+        <div className="liquid-bg" />
+        <div className="container mx-auto px-4 py-8 relative z-10">
           <div className="max-w-6xl mx-auto">
+            {/* Back Button */}
+            <div className="mb-6 flex items-center justify-between">
+              <button
+                onClick={() => setCurrentPage('dashboard')}
+                className="icon-btn-liquid"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <CompactProgressBar 
+                current={completedSteps.length + 1} 
+                total={EVENT_CREATION_STEPS.length}
+                label="Event Creation"
+              />
+            </div>
+
+            {/* Progress Stepper */}
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-8 bg-white/10 backdrop-blur-sm rounded-xl p-6"
+            >
+              <ProgressStepper 
+                steps={EVENT_CREATION_STEPS}
+                currentStep={step}
+                completedSteps={completedSteps}
+              />
+            </motion.div>
+
+            {/* Flow Tip */}
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+            >
+              <FlowTip currentStep={step} />
+            </motion.div>
+            
             {/* Header */}
             <div className="text-center mb-8">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.2 }}
+                className="inline-block mb-4"
+              >
+                <Sparkles className="w-12 h-12 text-orange-500 mx-auto" />
+              </motion.div>
               <motion.h1
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="text-4xl font-bold text-gray-900 mb-4"
+                transition={{ delay: 0.3 }}
+                className="text-4xl font-bold text-white mb-4"
               >
                 Choose Your Event Template
               </motion.h1>
-              <p className="text-gray-600 max-w-2xl mx-auto">
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.4 }}
+                className="text-gray-800 font-medium max-w-2xl mx-auto"
+              >
                 Start with a pre-designed template that matches your event type. We'll customize the details for you!
-              </p>
+              </motion.p>
             </div>
 
             {/* Template Selection */}
-            <EventTemplateSelection onSelectTemplate={handleTemplateSelect} />
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+            >
+              <EventTemplateSelection onSelectTemplate={handleTemplateSelect} />
+            </motion.div>
 
             {/* Skip Option */}
-            <div className="text-center mt-8">
-              <Button
-                variant="ghost"
-                onClick={() => setStep('form')}
-                className="text-gray-500 hover:text-gray-700"
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.6 }}
+              className="text-center mt-8"
+            >
+              <button
+                onClick={() => {
+                  setCompletedSteps(prev => [...new Set([...prev, 'template'])]);
+                  setStep('form');
+                }}
+                className="btn-glass px-6 py-3"
               >
                 Skip templates and create from scratch
-              </Button>
-            </div>
+              </button>
+            </motion.div>
           </div>
         </div>
       </div>
@@ -501,23 +710,23 @@ export const EventCreation = () => {
   // Template Details Step
   if (step === 'details' && selectedTemplate) {
     return (
-      <div className="min-h-screen bg-white">
-        <div className="container mx-auto px-4 py-8">
+      <div className="min-h-screen relative">
+        <div className="liquid-bg" />
+        <div className="container mx-auto px-4 py-8 relative z-10">
           <div className="max-w-2xl mx-auto">
             {/* Header */}
             <div className="flex items-center mb-6">
-              <Button
-                variant="ghost"
+              <button
                 onClick={handleBackToTemplates}
-                className="mr-4"
+                className="icon-btn-liquid mr-4"
               >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
+                <ArrowLeft className="h-5 w-5" />
+              </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">
+                <h1 className="text-2xl font-bold text-orange-600">
                   {selectedTemplate.name} Details
                 </h1>
-                <p className="text-gray-600">
+                <p className="text-gray-800 font-medium">
                   Customize your {selectedTemplate.name.toLowerCase()} event
                 </p>
               </div>
@@ -531,7 +740,14 @@ export const EventCreation = () => {
               onChange={handleTemplateDataChange}
               onBack={handleBackToTemplates}
               onNext={proceedToEventForm}
+              eventDescription={formData.description}
+              onDescriptionChange={(value) => handleInputChange('description', value)}
             />
+            {descriptionError && (
+              <div className="mt-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+                <p className="text-destructive text-sm">{descriptionError}</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -540,25 +756,25 @@ export const EventCreation = () => {
 
   // Default: event creation form
   return (
-    <div className="min-h-screen bg-white">
-      <div className="container mx-auto px-4 py-8">
+    <div className="min-h-screen relative">
+      <div className="liquid-bg" />
+      <div className="container mx-auto px-4 py-8 relative z-10">
         <div className="max-w-2xl mx-auto">
           {/* Header */}
           <div className="mb-8">
             {selectedTemplate && (
               <div className="flex items-center mb-6">
-                <Button
-                  variant="ghost"
+                <button
                   onClick={() => setStep('details')}
-                  className="mr-4"
+                  className="icon-btn-liquid mr-4"
                 >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
+                  <ArrowLeft className="h-5 w-5" />
+                </button>
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">
+                  <h1 className="text-2xl font-bold text-orange-600">
                     {selectedTemplate.name} Event Details
                   </h1>
-                  <p className="text-gray-600">
+                  <p className="text-gray-800 font-medium">
                     Complete your {selectedTemplate.name.toLowerCase()} event setup
                   </p>
                 </div>
@@ -569,11 +785,11 @@ export const EventCreation = () => {
                 <motion.h1
                   initial={{ opacity: 0, y: -20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="text-4xl font-bold text-gray-900 mb-4"
+                  className="text-4xl font-bold text-orange-600 mb-4"
                 >
                   Create New Event
                 </motion.h1>
-                <p className="text-gray-600">
+                <p className="text-gray-800 font-medium">
                   Plan your perfect party and invite your guests
                 </p>
               </div>
@@ -586,17 +802,17 @@ export const EventCreation = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
           >
-            <Card className="modern-card">
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Sparkles className="h-6 w-6 mr-2 text-orange-500" />
+            <div className="form-container-liquid">
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold text-gray-900 flex items-center">
+                  <Sparkles className="h-6 w-6 mr-2 text-orange-400" />
                   Event Details
-                </CardTitle>
-                <CardDescription>
+                </h2>
+                <p className="text-gray-700 font-medium mt-2">
                   Fill in the information for your event
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
+                </p>
+              </div>
+              <div>
                 <form onSubmit={handleSubmit} className="space-y-6">
                   {/* Error Display */}
                   {error && (
@@ -607,8 +823,8 @@ export const EventCreation = () => {
 
                   {/* Event Name */}
                   <div className="space-y-2">
-                    <Label htmlFor="name">Event Name *</Label>
-                    <Input
+                    <Label htmlFor="name" className="text-gray-800 font-medium">Event Name *</Label>
+                    <input
                       id="name"
                       type="text"
                       placeholder="e.g., John's Birthday Party"
@@ -616,14 +832,15 @@ export const EventCreation = () => {
                       onChange={(e) => handleInputChange('name', e.target.value)}
                       required
                       disabled={isSubmitting}
+                      className="input-shimmer w-full"
                     />
                   </div>
 
                   {/* Event Type */}
                   <div className="space-y-2">
-                    <Label htmlFor="event_type">Event Type *</Label>
+                    <Label htmlFor="event_type" className="text-gray-800 font-medium">Event Type *</Label>
                     <div className="flex gap-4">
-                      <label className="flex items-center space-x-2 cursor-pointer">
+                      <label className="flex items-center space-x-2 cursor-pointer text-gray-700 hover:text-orange-600 transition-colors font-medium">
                         <input
                           type="radio"
                           name="event_type"
@@ -631,11 +848,11 @@ export const EventCreation = () => {
                           checked={formData.event_type === 'single_day'}
                           onChange={(e) => handleInputChange('event_type', e.target.value)}
                           disabled={isSubmitting}
-                          className="text-primary"
+                          className="text-orange-400 focus:ring-orange-400"
                         />
                         <span className="text-sm">Single Day Event</span>
                       </label>
-                      <label className="flex items-center space-x-2 cursor-pointer">
+                      <label className="flex items-center space-x-2 cursor-pointer text-gray-700 hover:text-orange-600 transition-colors font-medium">
                         <input
                           type="radio"
                           name="event_type"
@@ -643,11 +860,25 @@ export const EventCreation = () => {
                           checked={formData.event_type === 'multi_day'}
                           onChange={(e) => handleInputChange('event_type', e.target.value)}
                           disabled={isSubmitting}
-                          className="text-primary"
+                          className="text-orange-400 focus:ring-orange-400"
                         />
                         <span className="text-sm">Multi-Day Event</span>
                       </label>
                     </div>
+                  </div>
+
+                  {/* Event Description */}
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Event Description *</Label>
+                    <Textarea
+                      id="description"
+                      placeholder="Share details your guests should know"
+                      value={formData.description}
+                      onChange={(e) => handleInputChange('description', e.target.value)}
+                      disabled={isSubmitting}
+                      rows={4}
+                      required
+                    />
                   </div>
 
                   {/* Start Date and Time */}
@@ -762,10 +993,10 @@ export const EventCreation = () => {
                       <ArrowLeft className="h-4 w-4 mr-2" />
                       Back to Dashboard
                     </Button>
-                    <Button
+                    <button
                       type="submit"
                       disabled={isSubmitting || !formData.name || !formData.start_date || !formData.start_time || !formData.end_time || !formData.location || (formData.event_type === 'multi_day' && !formData.end_date)}
-                      className="flex-1 btn-floating"
+                      className="flex-1 btn-liquid-metal disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isSubmitting ? (
                         <>
@@ -778,11 +1009,11 @@ export const EventCreation = () => {
                           Create Event
                         </>
                       )}
-                    </Button>
+                    </button>
                   </div>
                 </form>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </motion.div>
         </div>
       </div>

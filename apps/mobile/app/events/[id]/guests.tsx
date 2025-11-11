@@ -39,7 +39,7 @@ interface GuestStats {
   checked_in: number;
 }
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://www.partyhause.com';
 
 export default function EventGuestsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -63,38 +63,134 @@ export default function EventGuestsScreen() {
 
   const fetchGuests = async () => {
     try {
+      setLoading(true);
+      
+      // Validate id parameter
+      if (!id) {
+        console.error('[Guest List] Event ID is missing');
+        Alert.alert('Error', 'Event ID is missing');
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      console.log('[Guest List] Fetching guests for event:', id);
+
       // Get auth token from Supabase session
       if (!supabase) {
+        console.error('[Guest List] Supabase client not initialized');
         Alert.alert('Configuration Error', 'Supabase client not initialized');
+        setLoading(false);
+        setRefreshing(false);
         return;
       }
       
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('[Guest List] Session error:', sessionError);
+      }
+      
       const token = session?.access_token;
       
       if (!token) {
-        Alert.alert('Authentication Error', 'Please sign in to view guests');
+        console.error('[Guest List] No auth token found');
+        Alert.alert(
+          'Authentication Required', 
+          'Please sign in to view guests',
+          [
+            { text: 'OK', style: 'cancel' }
+          ]
+        );
+        setLoading(false);
+        setRefreshing(false);
         return;
       }
+
+      console.log('[Guest List] Making API request to:', `${API_BASE_URL}/api/guests?eventId=${id}`);
       
       const response = await fetch(`${API_BASE_URL}/api/guests?eventId=${id}`, {
         headers: {
-          Authorization: `Bearer ${token}`,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
       });
 
+      console.log('[Guest List] Response status:', response.status);
+
       if (!response.ok) {
-        if (response.status === 401) {
-          Alert.alert('Unauthorized', 'You do not have permission to view this guest list');
-        } else if (response.status === 403) {
-          Alert.alert('Forbidden', 'Only event hosts can view the guest list');
+        const errorText = await response.text();
+        console.error('[Guest List] API error:', response.status, errorText);
+        
+        if (response.status === 401 || response.status === 403) {
+          Alert.alert(
+            'Unauthorized', 
+            'You do not have permission to view this guest list. Only event hosts can view guests.',
+            [
+              { text: 'OK', style: 'cancel' }
+            ]
+          );
+        } else if (response.status === 404) {
+          Alert.alert(
+            'Event Not Found',
+            'This event does not exist or has been deleted',
+            [
+              { text: 'OK', style: 'cancel' }
+            ]
+          );
         } else {
-          throw new Error('Failed to fetch guests');
+          Alert.alert(
+            'Error',
+            `Failed to load guest list (${response.status}). Please try again.`
+          );
         }
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      // Check content type before parsing JSON
+      const contentType = response.headers.get('content-type');
+      console.log('[Guest List] Content-Type:', contentType);
+      
+      if (!contentType || !contentType.includes('application/json')) {
+        const responseText = await response.text();
+        console.error('[Guest List] Non-JSON response received:');
+        console.error('[Guest List] First 500 chars:', responseText.substring(0, 500));
+        console.error('[Guest List] URL was:', `${API_BASE_URL}/api/guests?eventId=${id}`);
+        
+        // Check if it's an HTML error page
+        if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+          Alert.alert(
+            'API Error',
+            'The server returned an HTML page instead of data. This might be:\n\n' +
+            '1. API endpoint not deployed\n' +
+            '2. Route configuration issue\n' +
+            '3. Server error page\n\n' +
+            'Check console logs for details.',
+            [
+              { text: 'Retry', onPress: () => fetchGuests() },
+              { text: 'Cancel', style: 'cancel' }
+            ]
+          );
+        } else {
+          Alert.alert(
+            'Error',
+            'Server returned invalid response format.',
+            [
+              { text: 'Retry', onPress: () => fetchGuests() },
+              { text: 'Cancel', style: 'cancel' }
+            ]
+          );
+        }
+        setLoading(false);
+        setRefreshing(false);
         return;
       }
 
       const data = await response.json();
+      console.log('[Guest List] Loaded successfully:', data.guests?.length || 0, 'guests');
+      
       setGuests(data.guests || []);
       
       // Map API response stats (camelCase) to component stats (snake_case)
@@ -107,10 +203,20 @@ export default function EventGuestsScreen() {
           maybe: data.stats.maybe || 0,
           checked_in: data.stats.checkedIn || 0,
         });
+        console.log('[Guest List] Stats:', data.stats);
+      } else {
+        console.log('[Guest List] No stats found in response');
       }
     } catch (error) {
-      console.error('Error fetching guests:', error);
-      Alert.alert('Error', 'Failed to load guest list');
+      console.error('[Guest List] Exception:', error);
+      Alert.alert(
+        'Error', 
+        'Failed to load guest list. Please check your connection and try again.',
+        [
+          { text: 'Retry', onPress: () => fetchGuests() },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -124,19 +230,30 @@ export default function EventGuestsScreen() {
 
   const handleCheckIn = async (guestId: string, currentStatus: boolean) => {
     try {
+      console.log('[Guest List] Checking in guest:', guestId, 'Current status:', currentStatus);
+      
       // Get auth token from Supabase session
       if (!supabase) {
+        console.error('[Guest List] Supabase client not initialized');
         Alert.alert('Configuration Error', 'Supabase client not initialized');
         return;
       }
       
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('[Guest List] Session error:', sessionError);
+      }
+      
       const token = session?.access_token;
       
       if (!token) {
-        Alert.alert('Authentication Error', 'Please sign in to check in guests');
+        console.error('[Guest List] No auth token found');
+        Alert.alert('Authentication Required', 'Please sign in to check in guests');
         return;
       }
+
+      console.log('[Guest List] Updating check-in status to:', !currentStatus);
       
       const response = await fetch(`${API_BASE_URL}/api/guests?id=${guestId}`, {
         method: 'PATCH',
@@ -149,14 +266,21 @@ export default function EventGuestsScreen() {
         }),
       });
 
+      console.log('[Guest List] Check-in response status:', response.status);
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[Guest List] Check-in API error:', response.status, errorText);
+        
         if (response.status === 401 || response.status === 403) {
           Alert.alert('Unauthorized', 'You do not have permission to check in guests');
         } else {
-          throw new Error('Failed to update check-in status');
+          Alert.alert('Error', `Failed to update check-in status (${response.status})`);
         }
         return;
       }
+
+      console.log('[Guest List] Check-in updated successfully');
 
       // Update local state
       setGuests((prev) =>
@@ -173,8 +297,14 @@ export default function EventGuestsScreen() {
         checked_in: prev.checked_in + (!currentStatus ? 1 : -1),
       }));
     } catch (error) {
-      console.error('Error updating check-in:', error);
-      Alert.alert('Error', 'Failed to update check-in status');
+      console.error('[Guest List] Check-in exception:', error);
+      Alert.alert(
+        'Error', 
+        'Failed to update check-in status. Please try again.',
+        [
+          { text: 'OK', style: 'cancel' }
+        ]
+      );
     }
   };
 

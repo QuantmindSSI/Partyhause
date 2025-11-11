@@ -9,6 +9,8 @@ interface TemplateFormRouterProps {
   onChange: (data: Record<string, any>) => void;
   onBack: () => void;
   onNext: () => void;
+  eventDescription: string;
+  onDescriptionChange: (value: string) => void;
 }
 
 export default function TemplateFormRouter({
@@ -17,7 +19,9 @@ export default function TemplateFormRouter({
   initialData = {},
   onChange,
   onBack,
-  onNext
+  onNext,
+  eventDescription,
+  onDescriptionChange
 }: TemplateFormRouterProps) {
   // Route to specific template forms
   switch (templateId) {
@@ -29,6 +33,8 @@ export default function TemplateFormRouter({
           onChange={onChange}
           onBack={onBack}
           onNext={onNext}
+          eventDescription={eventDescription}
+          onDescriptionChange={onDescriptionChange}
         />
       );
 
@@ -52,6 +58,8 @@ export default function TemplateFormRouter({
           onChange={onChange}
           onBack={onBack}
           onNext={onNext}
+          eventDescription={eventDescription}
+          onDescriptionChange={onDescriptionChange}
         />
       );
 

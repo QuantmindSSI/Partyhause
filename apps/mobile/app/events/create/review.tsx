@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 
 // Get API URL from environment variable
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://www.partyhause.com';
 
 export default function ReviewScreen() {
   const router = useRouter();

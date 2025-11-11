@@ -70,7 +70,8 @@ export const PollCard: React.FC<PollCardProps> = ({
   const showConsensusBar = poll.auto_close_on_consensus;
 
   const handleCardPress = () => {
-    router.push(`/events/${poll.event_id}/planning/collaborate/polls/${poll.id}`);
+    // Navigate to PartyBoard (polls are now integrated into the board)
+    router.push(`/events/${poll.event_id}/planning/partyhub/partyboard`);
   };
 
   if (compact) {

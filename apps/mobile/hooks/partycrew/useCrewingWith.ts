@@ -55,7 +55,7 @@ export function useCrewingWith(
       const targetUserId = userId || session.user.id;
       const currentOffset = reset ? 0 : offset;
 
-      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://partyhause.vercel.app';
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://www.partyhause.com';
       const response = await fetch(
         `${apiUrl}/api/partycrew/crewing-with?userId=${targetUserId}&limit=${limit}&offset=${currentOffset}`,
         {

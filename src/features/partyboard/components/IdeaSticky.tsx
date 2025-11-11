@@ -100,9 +100,9 @@ export const IdeaSticky: React.FC<IdeaStickyProps> = ({
     <div ref={setNodeRef} style={style}>
       <Card
         className={cn(
-          'h-full flex flex-col overflow-hidden shadow-lg border-2 border-yellow-300 bg-white',
+          'h-full flex flex-col overflow-hidden shadow-lg border-2 border-orange-300 bg-white',
           sticky.data.converted_to_task && 'border-green-500 opacity-95',
-          isSelected && 'ring-2 ring-violet-500',
+          isSelected && 'ring-2 ring-orange-500',
           isDragging && 'cursor-grabbing'
         )}
       >
@@ -123,7 +123,7 @@ export const IdeaSticky: React.FC<IdeaStickyProps> = ({
             <div className="flex items-center gap-1">
               <Lightbulb 
                 size={16} 
-                className={sticky.data.converted_to_task ? 'text-green-500' : 'text-yellow-400'} 
+                className={sticky.data.converted_to_task ? 'text-green-500' : 'text-orange-500'} 
                 fill={sticky.data.converted_to_task ? 'currentColor' : 'currentColor'}
               />
               <span className="text-[10px] font-bold text-amber-500 tracking-wider">
@@ -154,9 +154,9 @@ export const IdeaSticky: React.FC<IdeaStickyProps> = ({
           {/* Cost & Votes Row */}
           <div className="flex items-center justify-between mb-2">
             {sticky.data.estimated_cost && (
-              <div className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded-md">
-                <DollarSign size={12} className="text-gray-600" />
-                <span className="text-[11px] font-semibold text-gray-600">
+              <div className="flex items-center gap-1 bg-orange-50 px-2 py-1 rounded-md">
+                <DollarSign size={12} className="text-orange-600" />
+                <span className="text-[11px] font-semibold text-orange-700">
                   {formatCost(sticky.data.estimated_cost)}
                 </span>
               </div>
@@ -171,12 +171,12 @@ export const IdeaSticky: React.FC<IdeaStickyProps> = ({
             >
               <Heart 
                 size={14} 
-                className={sticky.data.user_has_voted ? 'text-red-500' : 'text-gray-600'}
+                className={sticky.data.user_has_voted ? 'text-orange-600' : 'text-gray-600'}
                 fill={sticky.data.user_has_voted ? 'currentColor' : 'none'}
               />
               <span className={cn(
                 'text-xs font-semibold',
-                sticky.data.user_has_voted ? 'text-red-500' : 'text-gray-600'
+                sticky.data.user_has_voted ? 'text-orange-600' : 'text-gray-600'
               )}>
                 {sticky.data.votes}
               </span>
@@ -206,10 +206,10 @@ export const IdeaSticky: React.FC<IdeaStickyProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={handleConvertToTask}
-                className="flex items-center justify-center gap-1 bg-violet-50 hover:bg-violet-100 border-violet-200 p-2 mb-2 h-auto"
+                className="flex items-center justify-center gap-1 bg-orange-50 hover:bg-orange-100 border-orange-200 p-2 mb-2 h-auto"
               >
-                <CheckCircle2 size={14} className="text-violet-600" />
-                <span className="text-[11px] font-semibold text-violet-600">
+                <CheckCircle2 size={14} className="text-orange-600" />
+                <span className="text-[11px] font-semibold text-orange-600">
                   Convert to task
                 </span>
               </Button>
@@ -228,10 +228,10 @@ export const IdeaSticky: React.FC<IdeaStickyProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={() => onReact(sticky.id)}
-                  className="p-1 h-auto"
+                  className="p-1 h-auto hover:bg-orange-50"
                   disabled={!isInteractive}
                 >
-                  <Smile size={14} className="text-gray-600" />
+                  <Smile size={14} className="text-orange-600" />
                 </Button>
               )}
               {onComment && (
@@ -239,10 +239,10 @@ export const IdeaSticky: React.FC<IdeaStickyProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={() => onComment(sticky.id)}
-                  className="p-1 h-auto"
+                  className="p-1 h-auto hover:bg-orange-50"
                   disabled={!isInteractive}
                 >
-                  <MessageCircle size={14} className="text-gray-600" />
+                  <MessageCircle size={14} className="text-orange-600" />
                 </Button>
               )}
             </div>

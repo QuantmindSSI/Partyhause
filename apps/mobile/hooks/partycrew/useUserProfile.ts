@@ -65,7 +65,7 @@ export function useUserProfile(userId: string | undefined): UseUserProfileResult
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
-      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://partyhause.vercel.app';
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://www.partyhause.com';
       const headers: any = {};
       
       if (session?.access_token) {

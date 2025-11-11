@@ -16,6 +16,7 @@ export const eventService = {
       // Ensure backward compatibility for events without new fields
       return events.map(event => ({
         ...event,
+        description: event.description ?? null,
         start_date: event.start_date || event.event_date,
         end_date: event.end_date || event.event_date,
         event_type: event.event_type || 'single_day'
@@ -107,6 +108,7 @@ export const eventService = {
       // Ensure backward compatibility for events without new fields
       return {
         ...data,
+        description: data.description ?? null,
         start_date: data.start_date || data.event_date,
         end_date: data.end_date || data.event_date,
         event_type: data.event_type || 'single_day'

@@ -23,7 +23,7 @@ interface EventStats {
   media_count: number;
 }
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://www.partyhause.com';
 
 export default function EventDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -695,13 +695,14 @@ export default function EventDetailsScreen() {
 
           <TouchableOpacity
             style={styles.actionCard}
-            onPress={() => {/* TODO: Navigate to timeline */}}
+            onPress={() => router.push(`/events/${id}/activities` as any)}
+            activeOpacity={0.7}
           >
             <View style={styles.actionIconContainer}>
-              <Ionicons name="time" size={24} color="#9333ea" />
+              <Ionicons name="calendar" size={24} color="#9333ea" />
             </View>
             <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Timeline</Text>
+              <Text style={styles.actionTitle}>Activities</Text>
               <Text style={styles.actionSubtitle}>
                 {stats.timeline_blocks} scheduled activities
               </Text>
@@ -741,28 +742,30 @@ export default function EventDetailsScreen() {
 
           <TouchableOpacity
             style={styles.actionCard}
-            onPress={() => {/* TODO: Navigate to activities */}}
+            onPress={() => router.push(`/events/${id}/games` as any)}
+            activeOpacity={0.7}
           >
             <View style={styles.actionIconContainer}>
               <Ionicons name="game-controller" size={24} color="#9333ea" />
             </View>
             <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Activities</Text>
-              <Text style={styles.actionSubtitle}>Plan games and activities</Text>
+              <Text style={styles.actionTitle}>Games</Text>
+              <Text style={styles.actionSubtitle}>Interactive party games</Text>
             </View>
             <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.actionCard}
-            onPress={() => router.push(`/events/${id}/planning/collaborate` as any)}
+            onPress={() => router.push(`/events/${id}/planning/partyhub` as any)}
+            activeOpacity={0.7}
           >
             <View style={styles.actionIconContainer}>
               <Ionicons name="people-circle" size={24} color="#8B5CF6" />
             </View>
             <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Collaboration Hub</Text>
-              <Text style={styles.actionSubtitle}>Polls, debates, and team decisions</Text>
+              <Text style={styles.actionTitle}>PartyHub</Text>
+              <Text style={styles.actionSubtitle}>Collaborative planning board</Text>
             </View>
             <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
           </TouchableOpacity>

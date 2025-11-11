@@ -106,12 +106,11 @@ export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate
       } catch (e) { /* ignore logging errors */ }
 
     // Use deployed Netlify API if VITE_API_BASE_URL is set, otherwise use relative path
-    const metaEnv = (import.meta as unknown) as { env?: Record<string, string> };
-    const apiBase = metaEnv.env?.VITE_API_BASE_URL || '';
+    const apiBase = import.meta.env.VITE_API_BASE_URL || '';
     const apiUrl = apiBase ? `${apiBase}/api/email` : '/api/email';
     // Allow a client-side override for the From header in dev when configured via Vite env vars.
-    const allowFromOverride = metaEnv.env?.VITE_ALLOW_FROM_OVERRIDE === 'true';
-    const fromOverride = allowFromOverride ? metaEnv.env?.VITE_FROM_OVERRIDE : undefined;
+    const allowFromOverride = import.meta.env.VITE_ALLOW_FROM_OVERRIDE === 'true';
+    const fromOverride = allowFromOverride ? import.meta.env.VITE_FROM_OVERRIDE : undefined;
 
     console.log('sendEmailWithTracking - sending to apiUrl:', apiUrl);
     console.log('sendEmailWithTracking - payload:', { to: to, subject, html, from: fromOverride, metadata: {
@@ -225,8 +224,7 @@ export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate
 // Fallback for existing email function (backward compatibility)
 export const sendEmail = async ({ to, subject, html }: EmailTemplate) => {
   try {
-    const metaEnv = (import.meta as unknown) as { env?: Record<string, string> };
-    const apiBase = metaEnv.env?.VITE_API_BASE_URL || '';
+    const apiBase = import.meta.env.VITE_API_BASE_URL || '';
     const apiUrl = apiBase ? `${apiBase}/api/email` : '/api/email';
       
     const response = await fetch(apiUrl, {
