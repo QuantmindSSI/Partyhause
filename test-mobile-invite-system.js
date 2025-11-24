@@ -3,8 +3,8 @@
  * Tests the complete flow of sending invitations from mobile app
  */
 
-const PRODUCTION_API = 'https://www.partyhause.com/api/send-email';
-const HEALTH_API = 'https://www.partyhause.com/api/health';
+const PRODUCTION_API = 'https://partyhause.netlify.app/api/send-email';
+const HEALTH_API = 'https://partyhause.netlify.app/api/health';
 
 async function testHealthEndpoint() {
   console.log('\n📊 Step 1: Testing Health Endpoint');
@@ -118,7 +118,7 @@ async function testMobileInvitationFlow() {
     description: 'Testing invitation emails from PartyHause mobile app',
   };
   
-  const invitationUrl = `https://www.partyhause.com/event/${eventData.id}/guest/test-guest-456`;
+  const invitationUrl = `https://partyhause.netlify.app/event/${eventData.id}/guest/test-guest-456`;
   
   const invitationHtml = `
 <!DOCTYPE html>
@@ -249,7 +249,7 @@ async function checkEnvironmentVariables() {
   console.log('   ✓ SUPABASE_SERVICE_ROLE_KEY (Production, Preview, Development)');
   console.log('');
   console.log('Mobile app configuration:');
-  console.log('   ✓ Production API: https://www.partyhause.com/api/send-email');
+  console.log('   ✓ Production API: https://partyhause.netlify.app/api/send-email');
   console.log('   ✓ Development iOS: http://192.168.56.1:3001/api/send-email');
   console.log('   ✓ Development Android: http://10.0.2.2:3001/api/send-email');
   console.log('');
@@ -304,7 +304,7 @@ async function runAllTests() {
       console.log('   6. Tap "Add Guest" to save and send invitation');
       console.log('');
       console.log('🔍 Email will be sent via:');
-      console.log('   • Production: https://www.partyhause.com/api/send-email');
+      console.log('   • Production: https://partyhause.netlify.app/api/send-email');
       console.log('   • MailerSend API for delivery');
       console.log('   • Tracked in Supabase email_logs table');
       console.log('');

@@ -3,7 +3,7 @@
  * Run this to verify the production endpoint works
  */
 
-const PRODUCTION_API = 'https://www.partyhause.com/api/send-email';
+const PRODUCTION_API = 'https://partyhause.netlify.app/api/send-email';
 
 console.log('🧪 Testing Expo Go Email Configuration\n');
 console.log('This simulates what happens when sending email from Expo Go...\n');
@@ -72,7 +72,7 @@ async function testExpoGoEmail() {
       console.log('  2. Try adding a guest with "Send Email" enabled');
       console.log('  3. Check Metro logs for:');
       console.log('     [EmailService] Is Expo Go: true');
-      console.log('     [EmailService] API URL: https://www.partyhause.com/api/send-email');
+      console.log('     [EmailService] API URL: https://partyhause.netlify.app/api/send-email');
       console.log('');
       return true;
     } else {
@@ -100,7 +100,7 @@ async function testExpoGoEmail() {
     console.error('');
     console.error('Try:');
     console.error('  1. Check internet connection');
-    console.error('  2. curl https://www.partyhause.com/api/health');
+    console.error('  2. curl https://partyhause.netlify.app/api/health');
     console.error('  3. Check Vercel dashboard');
     console.error('');
     return false;

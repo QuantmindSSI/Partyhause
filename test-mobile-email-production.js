@@ -3,7 +3,7 @@
  * Simulates mobile app sending email via production Vercel endpoint
  */
 
-const PRODUCTION_EMAIL_API = 'https://www.partyhause.com/api/send-email';
+const PRODUCTION_EMAIL_API = 'https://partyhause.netlify.app/api/send-email';
 
 async function testMobileEmailIntegration() {
   console.log('🧪 Testing Mobile App Email Integration\n');
@@ -30,7 +30,7 @@ async function testMobileEmailIntegration() {
     description: 'Testing email invitations from PartyHause mobile app',
   };
 
-  const invitationUrl = 'https://www.partyhause.com/event/test-123/guest/test-456';
+  const invitationUrl = 'https://partyhause.netlify.app/event/test-123/guest/test-456';
 
   // Build the HTML email content (same as mobile app)
   const emailHtml = `
