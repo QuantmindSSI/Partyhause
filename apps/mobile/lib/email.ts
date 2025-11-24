@@ -19,7 +19,7 @@ const isExpoGo = Constants.appOwnership === 'expo';
 // For Expo Go or production, use production URL
 // For development with simulators/emulators, use localhost
 const EMAIL_API_URL = isExpoGo || !__DEV__
-  ? 'https://www.partyhause.com/api/send-email' // Production Netlify (Expo Go always uses this)
+  ? 'https://partyhause.netlify.app/api/send-email' // Production Netlify (Expo Go always uses this)
   : Platform.select({
       ios: 'http://192.168.56.1:3001/api/send-email', // iOS simulator
       android: 'http://10.0.2.2:3001/api/send-email', // Android emulator
@@ -142,11 +142,11 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
  * Generate invitation URL
  */
 export function generateInvitationUrl(eventId: string, guestId: string): string {
-  // Expo Go always uses production URL
+  // Use Netlify domain for production invitations
   const baseUrl = isExpoGo || !__DEV__
-    ? 'https://www.partyhause.com'
+    ? 'https://partyhause.netlify.app'
     : 'http://localhost:5173';
-  
+
   return `${baseUrl}/event/${eventId}/guest/${guestId}`;
 }
 
@@ -410,7 +410,7 @@ export async function sendInviteEmails(options: {
             <h2>You're Invited!</h2>
             <p>Hi ${recipient.name},</p>
             <p>You've been invited to an event. More details coming soon!</p>
-            <p><a href="https://www.partyhause.com/events/${options.eventId}" style="display: inline-block; padding: 12px 24px; background-color: #6366F1; color: white; text-decoration: none; border-radius: 6px;">View Invitation</a></p>
+            <p><a href="https://partyhause.netlify.app/events/${options.eventId}" style="display: inline-block; padding: 12px 24px; background-color: #6366F1; color: white; text-decoration: none; border-radius: 6px;">View Invitation</a></p>
           </div>
         `;
 
