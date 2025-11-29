@@ -1,6 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { MailerSend, EmailParams, Sender, Recipient } from "mailersend";
-import { MAILERSEND_API_TOKEN, MAILERSEND_FROM_EMAIL, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from './env-server.js';
+import { sendZohoEmail, type ZohoEmailOptions } from './zoho-email.js';
+import { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from './env-server.js';
 import sanitizeHtml from 'sanitize-html';
 import { createClient } from '@supabase/supabase-js';
 
@@ -45,8 +45,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const metadataRecord: EmailMetadata | undefined =
     metadata && typeof metadata === 'object' ? (metadata as EmailMetadata) : undefined;
 
-  console.log('api/send-email - env MAILERSEND_API_TOKEN present:', !!MAILERSEND_API_TOKEN);
-  console.log('api/send-email - env MAILERSEND_FROM_EMAIL present:', !!MAILERSEND_FROM_EMAIL);
+  console.log('api/send-email - Using Zoho Mail SMTP');
+  console.log('api/send-email - env ZOHO_SMTP_USER present:', !!process.env.ZOHO_SMTP_USER);
+  console.log('api/send-email - env ZOHO_FROM_EMAIL present:', !!process.env.ZOHO_FROM_EMAIL);
     console.log('api/send-email - incoming body:', JSON.stringify({ to, subject, html, guestId, eventId, metadata }));
 
     // Server-side Supabase admin client for updating email_logs
@@ -74,25 +75,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Check if API key is available
-    if (!MAILERSEND_API_TOKEN) {
-      console.error('MAILERSEND_API_TOKEN environment variable is not set');
+    // Check if Zoho credentials are available
+    if (!process.env.ZOHO_SMTP_USER || !process.env.ZOHO_SMTP_PASS) {
+      console.error('Zoho Mail credentials not configured');
       return res.status(500).json({
         success: false,
-        error: 'Email service configuration error'
+        error: 'Email service configuration error: Zoho credentials missing'
       });
     }
 
-      // Ensure a verified FROM address is configured and always use it.
-      if (!MAILERSEND_FROM_EMAIL) {
-  console.error('MAILERSEND_FROM_EMAIL environment variable must be set to a verified sending address (e.g. dara@partyhause.com)');
-          return res.status(500).json({ success: false, error: 'Server configuration error: MAILERSEND_FROM_EMAIL not set' });
+      // Ensure a verified FROM address is configured
+      if (!process.env.ZOHO_FROM_EMAIL) {
+  console.error('ZOHO_FROM_EMAIL environment variable must be set to a verified sending address (e.g. dara@partyhause.com)');
+          return res.status(500).json({ success: false, error: 'Server configuration error: ZOHO_FROM_EMAIL not set' });
         }
-
-        // Initialize MailerSend inside handler to avoid module-level failures
-        const mailerSend = new MailerSend({
-          apiKey: MAILERSEND_API_TOKEN,
-        });
 
     // Sanitize the HTML content before sending
     const sanitizedHtml = sanitizeHtml(contentHtml, {
@@ -104,62 +100,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     // Determine 'from' header; allow client override if explicitly enabled
-    let effectiveFromEmail = MAILERSEND_FROM_EMAIL;
+    let effectiveFromEmail = process.env.ZOHO_FROM_EMAIL || '';
+    let effectiveFromName = process.env.ZOHO_FROM_NAME || 'PartyHause';
+    
     if (from && process.env.ALLOW_FROM_OVERRIDE === 'true') {
       effectiveFromEmail = String(from);
       console.log('api/send-email - Using overridden from header from request:', effectiveFromEmail);
     } else {
-      // Always log the app display name followed by the configured sender address
-      console.log('api/send-email - Using configured from header: PartyHause <' + String(MAILERSEND_FROM_EMAIL) + '>');
+      console.log('api/send-email - Using configured from header:', effectiveFromName, '<' + effectiveFromEmail + '>');
     }
 
-    const sentFrom = new Sender(effectiveFromEmail, "PartyHause");
-    const recipients = [new Recipient(to, to)]; // MailerSend expects array of Recipient objects
-
-    const emailParams = new EmailParams()
-      .setFrom(sentFrom)
-      .setTo(recipients)
-      .setSubject(subject)
-      .setHtml(sanitizedHtml);
-
-    // Attach metadata when provided so webhook events can be correlated
-    const meta: Record<string, string> = {};
-    if (guestId) meta.guestId = String(guestId);
-    if (eventId) meta.eventId = String(eventId);
+    // Prepare metadata for Zoho email
+    const emailMetadata: Record<string, any> = {};
+    if (guestId) emailMetadata.guestId = String(guestId);
+    if (eventId) emailMetadata.eventId = String(eventId);
     if (metadataRecord) {
       Object.entries(metadataRecord).forEach(([k, v]) => {
         if (v != null) {
-          meta[k] = String(v);
+          emailMetadata[k] = v;
         }
       });
     }
-    // Note: MailerSend doesn't support metadata in the same way as Resend
-    // You may need to use tags or variables instead
 
-    const data: unknown = await mailerSend.email.send(emailParams);
-    // Avoid throwing if the SDK response contains circular refs or non-serializable values
-    try {
-      const serial = typeof data === 'string' ? data : JSON.stringify(data);
-      console.log('api/send-email - MailerSend response:', serial);
-    } catch (e) {
-      console.log('api/send-email - MailerSend response (non-serializable):', String(data));
-    }
-
-    // Normalize MailerSend message id (MailerSend returns different structure than Resend)
-    const extractMailerSendId = (d: unknown): string | null => {
-      if (d && typeof d === 'object') {
-        const obj = d as Record<string, unknown>;
-        const body = obj['body'];
-        if (body && typeof body === 'object') {
-          const bodyObj = body as Record<string, unknown>;
-          if (typeof bodyObj['message_id'] === 'string') return bodyObj['message_id'] as string;
-        }
-        if (typeof obj['message_id'] === 'string') return obj['message_id'] as string;
-      }
-      return null;
+    // Send email via Zoho Mail
+    const zohoOptions: ZohoEmailOptions = {
+      to: to,
+      subject: subject,
+      html: sanitizedHtml,
+      from: {
+        email: effectiveFromEmail,
+        name: effectiveFromName,
+      },
+      metadata: emailMetadata,
     };
 
-    const messageId = extractMailerSendId(data);
+    const result = await sendZohoEmail(zohoOptions);
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to send email via Zoho');
+    }
+
+    console.log('api/send-email - Zoho Mail response:', {
+      messageId: result.messageId,
+      accepted: result.accepted,
+      rejected: result.rejected,
+    });
+
+    const messageId = result.messageId;
 
     // If we have an emailLogId from metadata, update the email_logs record with template info and resend id
     const emailLogIdRaw = metadataRecord?.emailLogId;
