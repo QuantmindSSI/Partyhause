@@ -1,0 +1,25 @@
+{
+  "scan_id": "5afba41b-8440-4b12-9aeb-c0a6bbc51d42",
+  "timestamp": "2025-11-26T20:14:00.327269",
+  "target": ".",
+  "files": {
+    "total": 186,
+    "scanned": 186,
+    "skipped": 0,
+    "ai_generated": 97,
+    "ai_percentage": 52.15
+  },
+  "confidence": {
+    "overall": 0.4183,
+    "level": "medium"
+  },
+  "patterns": {
+    "total": 4397,
+    "average_per_file": 23.64
+  },
+  "performance": {
+    "duration_seconds": 43.27,
+    "files_per_second": 4.3
+  },
+  "errors": 0
+}
