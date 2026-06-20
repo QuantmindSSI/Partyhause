@@ -26,13 +26,22 @@ export const handler: Handler = async (event, context) => {
     // Convert Netlify event to Vercel-like request
     const body = event.body ? (event.isBase64Encoded ? 
       Buffer.from(event.body, 'base64').toString() : event.body) : null;
+
+    // Extract path params — Netlify puts them in event.path, not queryStringParameters
+    // Path format: /api/users/{id} or /users/{id}
+    const pathSegments = (event.path || '').split('/').filter(Boolean);
+    const userIdFromPath = pathSegments.length >= 2 ? pathSegments[pathSegments.length - 1] : null;
+    const query = { ...(event.queryStringParameters || {}) };
+    if (userIdFromPath && !query.id) {
+      query.id = userIdFromPath;
+    }
     
     const req = {
       method: event.httpMethod,
       url: event.path,
       headers: event.headers || {},
       body: body ? JSON.parse(body) : null,
-      query: event.queryStringParameters || {},
+      query,
     };
 
     // Mock Vercel response object

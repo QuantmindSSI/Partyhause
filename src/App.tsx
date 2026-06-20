@@ -26,6 +26,13 @@ import { initializeAuthStateListener } from '@/lib/auth';
 import ProfilePage from "@/pages/ProfilePage";
 import SocialFeedPage from "@/pages/SocialFeedPage";
 import ExplorePage from "@/pages/ExplorePage";
+import UserDashboard from "@/pages/UserDashboard";
+import CreatorDashboard from "@/pages/CreatorDashboard";
+import VendorDashboard from "@/pages/VendorDashboard";
+import { RoleSelection } from "@/components/RoleSelection";
+import { RoleGuard } from "@/components/RoleGuard";
+import Logout from "@/components/Logout";
+import SettingsPage from "@/pages/SettingsPage";
 
 const queryClient = new QueryClient();
 
@@ -111,6 +118,10 @@ const App = () => {
     }
 
     // Handle special pages for all users
+    if (currentPage === 'logout') {
+      return <Logout />;
+    }
+
     if (currentPage === 'party-culture-blog') {
       return <PartyCultureBlog />;
     }
@@ -131,19 +142,84 @@ const App = () => {
     return (
       <ProtectedRoute>
         {(() => {
+          const role = user?.role || 'user';
+
           switch (currentPage) {
+            case 'role-selection':
+              return <RoleSelection />;
+
+            case 'profile':
+              return <ProfilePage />;
+
+            case 'user-dashboard':
+              return <UserDashboard />;
+
+            case 'creator-dashboard':
+              return <RoleGuard allowedRoles={['creator']}><CreatorDashboard /></RoleGuard>;
+
+            case 'vendor-dashboard':
+              return <RoleGuard allowedRoles={['vendor']}><VendorDashboard /></RoleGuard>;
+
             case 'dashboard':
-              return <Dashboard />;
+              if (role === 'creator') return <CreatorDashboard />;
+              if (role === 'vendor') return <VendorDashboard />;
+              return <UserDashboard />;
+
             case 'create-event':
-              return <EventCreation />;
+              return <RoleGuard allowedRoles={['creator']}><EventCreation /></RoleGuard>;
+
             case 'event-management':
-              return <EventManagement />;
+              return <RoleGuard allowedRoles={['creator']}><EventManagement /></RoleGuard>;
+
             case 'qr-scanner':
-              return <QRScanner />;
+              return <RoleGuard allowedRoles={['creator']}><QRScanner /></RoleGuard>;
+
             case 'games':
               return <GamesPage />;
+
+            case 'settings':
+              return <SettingsPage />;
+
+            case 'feed':
+              return <SocialFeedPage />;
+
+            case 'explore':
+              return <ExplorePage />;
+
+            case 'my-tickets':
+              return <UserDashboard />;
+
+            case 'saved-events':
+              return <UserDashboard />;
+
+            case 'switch-role':
+              return <RoleSelection />;
+
+            case 'analytics':
+              return <RoleGuard allowedRoles={['creator']}><CreatorDashboard /></RoleGuard>;
+
+            case 'vendor-profile-setup':
+              return <RoleGuard allowedRoles={['vendor']}><VendorDashboard /></RoleGuard>;
+
+            case 'vendor-bookings':
+              return <RoleGuard allowedRoles={['vendor']}><VendorDashboard /></RoleGuard>;
+
+            case 'vendor-earnings':
+              return <RoleGuard allowedRoles={['vendor']}><VendorDashboard /></RoleGuard>;
+
+            case 'vendor-reviews':
+              return <RoleGuard allowedRoles={['vendor']}><VendorDashboard /></RoleGuard>;
+
+            case 'vendor-analytics':
+              return <RoleGuard allowedRoles={['vendor']}><VendorDashboard /></RoleGuard>;
+
+            case 'vendor-services':
+              return <RoleGuard allowedRoles={['vendor']}><VendorDashboard /></RoleGuard>;
+
             default:
-              return <Dashboard />;
+              if (role === 'creator') return <CreatorDashboard />;
+              if (role === 'vendor') return <VendorDashboard />;
+              return <UserDashboard />;
           }
         })()}
       </ProtectedRoute>

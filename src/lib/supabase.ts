@@ -1,15 +1,3 @@
-// DEV ONLY: Clear Supabase session on app load to force manual login
-if (import.meta.env.DEV) {
-  try {
-    const keys = Object.keys(localStorage).filter(k => k.includes('supabase.auth'));
-    for (const k of keys) {
-      localStorage.removeItem(k);
-  // ...removed bloatware debug log...
-    }
-  } catch (e) {
-    // ignore if localStorage is not available
-  }
-}
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? '';

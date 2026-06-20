@@ -2,7 +2,7 @@
 -- Date: 2025-10-10
 
 create table if not exists invite_templates (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   host_id uuid references auth.users(id) not null,
   name text not null,
   slug text,

@@ -16,14 +16,19 @@ export const useAuth = () => {
 
       if (event === 'SIGNED_IN' && session?.user) {
         isLoggingOut = false; // Reset logout guard
-        // User signed in - set user in store
+        const meta = session.user.user_metadata || {};
         const normalizedUser = {
           id: session.user.id,
           email: session.user.email ?? '',
-          name: session.user.user_metadata?.name,
-          user_metadata: session.user.user_metadata
+          name: meta.name,
+          role: meta.role,
+          user_metadata: meta
         };
         await usePartyStore.getState().setUser(normalizedUser);
+        // If no role yet, send to role selection
+        if (!meta.role) {
+          usePartyStore.getState().setCurrentPage('role-selection');
+        }
       } else if (event === 'SIGNED_OUT' && !isLoggingOut) {
         isLoggingOut = true; // Set guard to prevent double logout
         // User signed out - clear user from store

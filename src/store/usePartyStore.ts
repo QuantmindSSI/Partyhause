@@ -5,12 +5,16 @@ import { eventService } from '@/lib/events';
 import { supabase } from '@/lib/supabase';
 import type { TimelineBlock } from '@/features/timeline/types';
 
+export type UserRole = 'user' | 'creator' | 'vendor';
+
 export interface User {
   id: string;
   email: string;
   name?: string;
+  role?: UserRole;
   user_metadata?: {
     name?: string;
+    role?: UserRole;
   };
 }
 
@@ -56,7 +60,7 @@ export interface PartyState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  currentPage: 'auth' | 'dashboard' | 'create-event' | 'event-management' | 'qr-scanner' | 'party-culture-blog' | 'games' | string;
+  currentPage: 'auth' | 'dashboard' | 'create-event' | 'event-management' | 'qr-scanner' | 'party-culture-blog' | 'games' | 'user-dashboard' | 'creator-dashboard' | 'vendor-dashboard' | string;
   events: Event[];
   currentEvent: Event | null;
   guests: Guest[];
@@ -93,7 +97,8 @@ export const usePartyStore = create<PartyState>()(
             id: user.id,
             email: user.email ?? '',
             user_metadata: user.user_metadata || {},
-            name: user.user_metadata?.name || user.name || user.email || 'User'
+            name: user.user_metadata?.name || user.name || user.email || 'User',
+            role: (user.user_metadata?.role || user.role || 'user') as UserRole
           };
 
           set({

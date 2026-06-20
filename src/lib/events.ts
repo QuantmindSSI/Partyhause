@@ -5,13 +5,22 @@ export const eventService = {
   // Fetch all events for the current user
   getUserEvents: async (userId: string): Promise<Event[]> => {
     try {
-      const { data: events, error } = await supabase
+      let { data: events, error } = await supabase
         .from('events')
         .select('*')
         .eq('host_id', userId)
         .order('start_date', { ascending: true });
 
-      if (error) throw error;
+      // If start_date query fails for any reason, fall back to created_at
+      if (error) {
+        const fallback = await supabase
+          .from('events')
+          .select('*')
+          .eq('host_id', userId)
+          .order('created_at', { ascending: false });
+        if (fallback.error) throw fallback.error;
+        events = fallback.data;
+      }
       
       // Ensure backward compatibility for events without new fields
       return events.map(event => ({

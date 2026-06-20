@@ -2,6 +2,37 @@
 -- Secure access to events, guests, media, activities, and vendors
 
 -- ============================================================================
+-- Drop existing policies to ensure idempotency
+-- ============================================================================
+DROP POLICY IF EXISTS "Public events are viewable by everyone" ON events;
+DROP POLICY IF EXISTS "Users can view their own events" ON events;
+DROP POLICY IF EXISTS "Users can view events they're invited to" ON events;
+DROP POLICY IF EXISTS "Users can view events they co-host" ON events;
+DROP POLICY IF EXISTS "Users can create events" ON events;
+DROP POLICY IF EXISTS "Hosts can update their events" ON events;
+DROP POLICY IF EXISTS "Hosts can delete their events" ON events;
+DROP POLICY IF EXISTS "Co-hosts can update events" ON events;
+DROP POLICY IF EXISTS "Hosts can manage co-hosts" ON event_co_hosts;
+DROP POLICY IF EXISTS "Users can view co-hosts of their events" ON event_co_hosts;
+DROP POLICY IF EXISTS "Users can view guests of their events" ON guests;
+DROP POLICY IF EXISTS "Users can manage guests of their events" ON guests;
+DROP POLICY IF EXISTS "Guests can view their own record" ON guests;
+DROP POLICY IF EXISTS "Hosts can manage guests" ON guests;
+DROP POLICY IF EXISTS "Hosts can view tickets" ON tickets;
+DROP POLICY IF EXISTS "Guests can view their own tickets" ON tickets;
+DROP POLICY IF EXISTS "Hosts can manage timeline" ON timeline_blocks;
+DROP POLICY IF EXISTS "Guests can view timeline" ON timeline_blocks;
+DROP POLICY IF EXISTS "Hosts can manage media" ON media;
+DROP POLICY IF EXISTS "Guests can view event media" ON media;
+DROP POLICY IF EXISTS "Guests can upload media" ON media;
+DROP POLICY IF EXISTS "Hosts can manage activities" ON activities;
+DROP POLICY IF EXISTS "Guests can view activities" ON activities;
+DROP POLICY IF EXISTS "Hosts can manage activity participants" ON activity_participants;
+DROP POLICY IF EXISTS "Users can manage their participation" ON activity_participants;
+DROP POLICY IF EXISTS "Hosts can manage vendors" ON vendors;
+DROP POLICY IF EXISTS "Hosts can manage vendor tasks" ON vendor_tasks;
+
+-- ============================================================================
 -- Enable RLS on all tables
 -- ============================================================================
 ALTER TABLE events ENABLE ROW LEVEL SECURITY;

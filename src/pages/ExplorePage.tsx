@@ -11,10 +11,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, CheckCircle2, MapPin, Calendar } from 'lucide-react';
+import { Loader2, CheckCircle2, MapPin, Calendar, ArrowLeft } from 'lucide-react';
+import { usePartyStore } from '@/store/usePartyStore';
 
 export default function ExplorePage() {
   const navigate = useNavigate();
+  const setCurrentPage = usePartyStore((s) => s.setCurrentPage);
   const { users, isLoading, refetch } = useSuggestedUsers(50);
 
   if (isLoading) {
@@ -31,9 +33,14 @@ export default function ExplorePage() {
       <div className="bg-white border-b sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Discover Creators</h1>
-              <p className="text-gray-600">Find amazing party hosts and creators to follow</p>
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="icon" onClick={() => setCurrentPage('dashboard')}>
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Discover Creators</h1>
+                <p className="text-gray-600">Find amazing party hosts and creators to follow</p>
+              </div>
             </div>
             <Button
               variant="outline"

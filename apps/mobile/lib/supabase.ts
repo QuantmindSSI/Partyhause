@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { initSupabaseClient, type CoreSupabaseClient } from "@partyhause/core";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { storage } from "./storage";
 
 const expoPublic = Constants.expoConfig?.extra as Record<string, string | undefined> | undefined;
@@ -20,8 +21,9 @@ if (!hasSupabaseConfig && typeof window !== 'undefined') {
 let _supabase: CoreSupabaseClient | null = null;
 
 export const getSupabase = (): CoreSupabaseClient | null => {
-	// Skip initialization during static rendering
-	if (typeof window === 'undefined') {
+	// Skip initialization only during web SSR/static rendering
+	// On native (iOS/Android), window is undefined but we still need to initialize
+	if (Platform.OS === 'web' && typeof window === 'undefined') {
 		return null;
 	}
 	
@@ -33,19 +35,23 @@ export const getSupabase = (): CoreSupabaseClient | null => {
 		return null;
 	}
 	
-	// Use web-compatible storage on web platform
+	// Use AsyncStorage directly on native, localStorage-based storage on web
 	const getStorage = () => {
 		if (Platform.OS === 'web') {
 			return storage;
 		}
-		// For native, dynamically import AsyncStorage
-		return require("@react-native-async-storage/async-storage").default;
+		return AsyncStorage;
 	};
 	
 	_supabase = initSupabaseClient(SUPABASE_URL!, SUPABASE_ANON_KEY!, {
+		global: {
+			fetch: fetch.bind(globalThis),
+		},
 		auth: {
 			storage: getStorage(),
-			storageKey: "partyhause-mobile-auth"
+			autoRefreshToken: true,
+			persistSession: true,
+			detectSessionInUrl: false,
 		}
 	});
 	
@@ -53,7 +59,7 @@ export const getSupabase = (): CoreSupabaseClient | null => {
 };
 
 // For backwards compatibility
-export const supabase = typeof window !== 'undefined' ? getSupabase() : null;
+export const supabase = (Platform.OS !== 'web' || typeof window !== 'undefined') ? getSupabase() : null;
 
 export const requireSupabase = (): CoreSupabaseClient => {
 	const client = getSupabase();
