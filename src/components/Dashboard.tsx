@@ -120,8 +120,11 @@ export const Dashboard = () => {
                 </h1>
                 <p className="text-gray-600">Welcome back, User!</p>
               </div>
-              <button className="text-gray-600 hover:text-gray-900 transition-colors">
-                Logout
+              <button
+                onClick={signOut}
+                className="text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-1"
+              >
+                <LogOut className="h-4 w-4" /> Logout
               </button>
             </div>
           </div>
@@ -214,7 +217,7 @@ export const Dashboard = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => window.location.href = '/feed'}
+                onClick={() => usePartyStore.getState().setCurrentPage('feed')}
                 className="text-gray-700 hover:text-orange-600 transition-colors font-medium"
               >
                 <Users className="h-4 w-4 mr-2" />
@@ -223,7 +226,7 @@ export const Dashboard = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => window.location.href = '/explore'}
+                onClick={() => usePartyStore.getState().setCurrentPage('explore')}
                 className="text-gray-700 hover:text-orange-600 transition-colors font-medium"
               >
                 <Users className="h-4 w-4 mr-2" />

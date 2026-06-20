@@ -12,7 +12,7 @@ create table if not exists public.users (
 
 -- Events table
 create table if not exists public.events (
-    id uuid primary key default uuid_generate_v4(),
+    id uuid primary key default gen_random_uuid(),
     host_id uuid references auth.users(id) not null,
     name text not null,
     event_date timestamp with time zone not null,
@@ -25,7 +25,7 @@ create table if not exists public.events (
 
 -- Guests table
 create table if not exists public.guests (
-    id uuid primary key default uuid_generate_v4(),
+    id uuid primary key default gen_random_uuid(),
     event_id uuid references events(id) on delete cascade not null,
     name text not null,
     email text not null,

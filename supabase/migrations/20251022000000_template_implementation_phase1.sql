@@ -23,6 +23,24 @@ CREATE TABLE IF NOT EXISTS events (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Add new columns to events if they don't exist (table may already exist from earlier migration)
+ALTER TABLE events ADD COLUMN IF NOT EXISTS template_type VARCHAR(50);
+ALTER TABLE events ADD COLUMN IF NOT EXISTS title VARCHAR(255);
+ALTER TABLE events ADD COLUMN IF NOT EXISTS start_date TIMESTAMPTZ;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS end_date TIMESTAMPTZ;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS timezone VARCHAR(50) DEFAULT 'UTC';
+ALTER TABLE events ADD COLUMN IF NOT EXISTS location_name VARCHAR(255);
+ALTER TABLE events ADD COLUMN IF NOT EXISTS location_address TEXT;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS location_coordinates POINT;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS privacy VARCHAR(20) DEFAULT 'private';
+ALTER TABLE events ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'draft';
+ALTER TABLE events ADD COLUMN IF NOT EXISTS settings JSONB DEFAULT '{}';
+
+DROP INDEX IF EXISTS idx_events_host;
+DROP INDEX IF EXISTS idx_events_status;
+DROP INDEX IF EXISTS idx_events_dates;
+DROP INDEX IF EXISTS idx_events_template_type;
+DROP INDEX IF EXISTS idx_events_privacy;
 CREATE INDEX IF NOT EXISTS idx_events_host ON events(host_id);
 CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
 CREATE INDEX IF NOT EXISTS idx_events_dates ON events(start_date, end_date);
@@ -68,6 +86,20 @@ CREATE TABLE IF NOT EXISTS guests (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Add new columns to guests if they don't exist
+ALTER TABLE guests ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
+ALTER TABLE guests ADD COLUMN IF NOT EXISTS rsvp_status VARCHAR(20) DEFAULT 'pending';
+ALTER TABLE guests ADD COLUMN IF NOT EXISTS ticket_type VARCHAR(100);
+ALTER TABLE guests ADD COLUMN IF NOT EXISTS ticket_id VARCHAR(100);
+ALTER TABLE guests ADD COLUMN IF NOT EXISTS qr_code TEXT;
+ALTER TABLE guests ADD COLUMN IF NOT EXISTS checked_in BOOLEAN DEFAULT FALSE;
+ALTER TABLE guests ADD COLUMN IF NOT EXISTS checked_in_at TIMESTAMPTZ;
+ALTER TABLE guests ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}';
+
+DROP INDEX IF EXISTS idx_guests_event;
+DROP INDEX IF EXISTS idx_guests_rsvp;
+DROP INDEX IF EXISTS idx_guests_email;
+DROP INDEX IF EXISTS idx_guests_checked_in;
 CREATE INDEX IF NOT EXISTS idx_guests_event ON guests(event_id);
 CREATE INDEX IF NOT EXISTS idx_guests_rsvp ON guests(rsvp_status);
 CREATE INDEX IF NOT EXISTS idx_guests_email ON guests(email);

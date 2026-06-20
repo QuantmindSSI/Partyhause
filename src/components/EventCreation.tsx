@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowLeft, Sparkles, ChevronRight, PartyPopper, Send, Check, Users } from 'lucide-react';
 import { EventTemplateSelection } from '@/components/templates/EventTemplateSelection';
 import TemplateFormRouter from '@/components/templates/forms/TemplateFormRouter';
+import AIEventAssistant from '@/components/templates/AIEventAssistant';
 import InviteTemplateSelection from '@/components/invites/InviteTemplateSelection';
 import InviteCustomization from '@/components/invites/InviteCustomization';
 import { InviteTemplate, CustomInviteData } from '@/types/invites';
@@ -47,7 +48,7 @@ export const EventCreation = () => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showLocationTip, setShowLocationTip] = useState(false);
   const [showPlaylistTip, setShowPlaylistTip] = useState(false);
-  const [step, setStep] = useState<'template' | 'details' | 'form' | 'timeline' | 'invite' | 'invite-template' | 'invite-customize' | 'curate'>('template');
+  const [step, setStep] = useState<'ai-assistant' | 'template' | 'details' | 'form' | 'timeline' | 'invite' | 'invite-template' | 'invite-customize' | 'curate'>('ai-assistant');
   const [selectedTemplate, setSelectedTemplate] = useState<EventTemplate | null>(null);
   const [templateData, setTemplateData] = useState<Record<string, any>>({});
   const [selectedInviteTemplate, setSelectedInviteTemplate] = useState<InviteTemplate | null>(null);
@@ -63,6 +64,7 @@ export const EventCreation = () => {
 
   // Define the event creation flow steps
   const EVENT_CREATION_STEPS: Step[] = [
+    { id: 'ai-assistant', label: 'AI Planner', description: 'Chat with AI to plan' },
     { id: 'template', label: 'Choose Template', description: 'Pick your event type' },
     { id: 'details', label: 'Event Details', description: 'Fill in information' },
     { id: 'form', label: 'Basic Info', description: 'Date, time, location' },
@@ -603,6 +605,80 @@ export const EventCreation = () => {
     );
   }
 
+  // AI Assistant Step
+  if (step === 'ai-assistant') {
+    return (
+      <div className="min-h-screen relative">
+        <div className="liquid-bg" />
+        <div className="container mx-auto px-4 py-8 relative z-10">
+          <div className="max-w-4xl mx-auto">
+            {/* Header */}
+            <div className="mb-6 flex items-center justify-between">
+              <button
+                onClick={() => setCurrentPage('dashboard')}
+                className="icon-btn-liquid"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <CompactProgressBar 
+                current={1} 
+                total={EVENT_CREATION_STEPS.length}
+                label="Event Creation"
+              />
+            </div>
+
+            {/* Progress Stepper */}
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-8 bg-white/10 backdrop-blur-sm rounded-xl p-6"
+            >
+              <ProgressStepper 
+                steps={EVENT_CREATION_STEPS}
+                currentStep={step}
+                completedSteps={completedSteps}
+              />
+            </motion.div>
+
+            <AIEventAssistant
+              onComplete={(data) => {
+                // Pre-populate form data from AI extraction
+                if (data.templateId) {
+                  setSelectedTemplate({
+                    id: data.templateId,
+                    name: data.templateId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                    description: '',
+                    icon: '✨',
+                    color: '#FF6B9D',
+                    category: 'ai-selected'
+                  });
+                }
+                if (data.eventName) {
+                  setFormData(prev => ({ ...prev, name: data.eventName! }));
+                }
+                if (data.description) {
+                  setFormData(prev => ({ ...prev, description: data.description! }));
+                }
+                if (data.location) {
+                  setFormData(prev => ({ ...prev, location: data.location! }));
+                }
+                if (data.formData) {
+                  setTemplateData(data.formData);
+                }
+                setCompletedSteps(['ai-assistant']);
+                setStep('template');
+              }}
+              onBack={() => {
+                // Skip AI and go straight to manual template selection
+                setStep('template');
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Template Selection Step
   if (step === 'template') {
     return (
@@ -613,7 +689,7 @@ export const EventCreation = () => {
             {/* Back Button */}
             <div className="mb-6 flex items-center justify-between">
               <button
-                onClick={() => setCurrentPage('dashboard')}
+                onClick={() => setStep('ai-assistant')}
                 className="icon-btn-liquid"
               >
                 <ArrowLeft className="h-5 w-5" />
@@ -661,7 +737,7 @@ export const EventCreation = () => {
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
-                className="text-4xl font-bold text-white mb-4"
+                className="text-4xl font-bold text-gray-900 mb-4"
               >
                 Choose Your Event Template
               </motion.h1>

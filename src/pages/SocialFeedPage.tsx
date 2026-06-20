@@ -9,11 +9,13 @@ import { useCrewFeed } from '@/features/partycrew/hooks';
 import { ContentFeedCard, CrewingWithBar } from '@/features/partycrew/components';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { Loader2, RefreshCw, ArrowLeft } from 'lucide-react';
 import { FilterTab } from '@/features/partycrew/types';
+import { usePartyStore } from '@/store/usePartyStore';
 
 export default function SocialFeedPage() {
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
+  const setCurrentPage = usePartyStore((s) => s.setCurrentPage);
   
   const contentTypeMap: Record<FilterTab, string | undefined> = {
     all: undefined,
@@ -47,7 +49,12 @@ export default function SocialFeedPage() {
       <div className="bg-white border-b sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-bold text-gray-900">PartyCrew Feed</h1>
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="icon" onClick={() => setCurrentPage('dashboard')}>
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <h1 className="text-2xl font-bold text-gray-900">PartyCrew Feed</h1>
+            </div>
             <Button
               variant="ghost"
               size="icon"
@@ -92,7 +99,7 @@ export default function SocialFeedPage() {
                 Start following creators to see their content here!
               </p>
             </div>
-            <Button onClick={() => window.location.href = '/explore'}>
+            <Button onClick={() => usePartyStore.getState().setCurrentPage('explore')}>
               Discover Creators
             </Button>
           </div>

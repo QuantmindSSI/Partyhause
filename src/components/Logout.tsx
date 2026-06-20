@@ -1,52 +1,51 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/use-auth';
+import { usePartyStore } from '@/store/usePartyStore';
+import { Loader2, LogOut } from 'lucide-react';
 
 const Logout = () => {
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
+  const { signOut } = useAuth();
+  const setCurrentPage = usePartyStore((s) => s.setCurrentPage);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const handleLogout = async () => {
       try {
-        const { error } = await supabase.auth.signOut();
-        if (error) {
-          setError(error.message);
-          setLoading(false);
-          return;
-        }
-        // Redirect to auth page after successful sign-out
-        navigate('/auth');
+        await signOut();
+        setCurrentPage('auth');
       } catch (err) {
-        setError('An error occurred during logout.');
-        setLoading(false);
+        setError('An error occurred during logout. Please try again.');
       }
     };
-
-    // Listen for auth state changes to handle sign-out
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
-        navigate('/auth');
-      }
-    });
 
     handleLogout();
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [navigate]);
-
-  if (loading) {
-    return <div>Loading...</div>; // Prevent blank page during logout
-  }
+  }, []);
 
   if (error) {
-    return <div>Error: {error}</div>; // Show error instead of blank page
+    return (
+      <div className="flex h-screen w-screen items-center justify-center">
+        <div className="text-center space-y-3">
+          <p className="text-destructive font-medium">{error}</p>
+          <button
+            onClick={() => setCurrentPage('dashboard')}
+            className="text-sm text-muted-foreground underline"
+          >
+            Back to dashboard
+          </button>
+        </div>
+      </div>
+    );
   }
 
-  return <div>Logging out...</div>; // Fallback content
+  return (
+    <div className="flex h-screen w-screen items-center justify-center">
+      <div className="text-center space-y-3">
+        <LogOut className="h-8 w-8 text-muted-foreground mx-auto" />
+        <p className="text-foreground font-medium">Signing you out…</p>
+        <Loader2 className="h-5 w-5 animate-spin text-orange-500 mx-auto" />
+      </div>
+    </div>
+  );
 };
 
 export default Logout;

@@ -67,7 +67,7 @@ CREATE INDEX IF NOT EXISTS idx_user_profiles_search
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS public.connections (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   follower_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
   following_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
   
@@ -93,7 +93,7 @@ CREATE INDEX IF NOT EXISTS idx_connections_mutual ON public.connections(follower
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS public.connection_requests (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   requester_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
   target_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
   status TEXT DEFAULT 'pending' NOT NULL,
@@ -117,7 +117,7 @@ CREATE INDEX IF NOT EXISTS idx_connection_requests_requester ON public.connectio
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS public.user_blocks (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   blocker_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
   blocked_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
   reason TEXT,
@@ -137,7 +137,7 @@ CREATE INDEX IF NOT EXISTS idx_user_blocks_blocked ON public.user_blocks(blocked
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS public.partycrew_posts (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   creator_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
   
   -- Content
@@ -191,7 +191,7 @@ CREATE INDEX IF NOT EXISTS idx_partycrew_posts_search
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS public.post_likes (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   post_id UUID NOT NULL REFERENCES public.partycrew_posts(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
@@ -208,7 +208,7 @@ CREATE INDEX IF NOT EXISTS idx_post_likes_user ON public.post_likes(user_id, cre
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS public.post_comments (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   post_id UUID NOT NULL REFERENCES public.partycrew_posts(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
   parent_comment_id UUID REFERENCES public.post_comments(id) ON DELETE CASCADE,
@@ -229,7 +229,7 @@ CREATE INDEX IF NOT EXISTS idx_post_comments_parent ON public.post_comments(pare
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS public.post_shares (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   post_id UUID NOT NULL REFERENCES public.partycrew_posts(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
   shared_to TEXT,
@@ -247,7 +247,7 @@ CREATE INDEX IF NOT EXISTS idx_post_shares_user ON public.post_shares(user_id, c
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS public.poll_votes (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   post_id UUID NOT NULL REFERENCES public.partycrew_posts(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
   option_id TEXT NOT NULL,
@@ -265,7 +265,7 @@ CREATE INDEX IF NOT EXISTS idx_poll_votes_user ON public.poll_votes(user_id);
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS public.notifications (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
   type TEXT NOT NULL,
   title TEXT NOT NULL,
@@ -300,7 +300,7 @@ CREATE INDEX IF NOT EXISTS idx_notifications_expires ON public.notifications(exp
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS public.feed_read_status (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
   post_id UUID NOT NULL REFERENCES public.partycrew_posts(id) ON DELETE CASCADE,
   viewed_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
@@ -316,7 +316,7 @@ CREATE INDEX IF NOT EXISTS idx_feed_read_user ON public.feed_read_status(user_id
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS public.content_interactions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
   post_id UUID NOT NULL REFERENCES public.partycrew_posts(id) ON DELETE CASCADE,
   interaction_type TEXT NOT NULL,

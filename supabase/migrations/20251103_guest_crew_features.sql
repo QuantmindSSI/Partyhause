@@ -32,7 +32,7 @@ COMMENT ON COLUMN public.guests.payment_status IS 'Payment completion status';
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS public.event_invite_tokens (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
   
   -- Token data
@@ -74,7 +74,7 @@ COMMENT ON COLUMN public.event_invite_tokens.token_type IS 'guest_join: join as 
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS public.cost_split_requests (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
   guest_id UUID NOT NULL REFERENCES public.guests(id) ON DELETE CASCADE,
   
@@ -121,7 +121,7 @@ COMMENT ON TABLE public.cost_split_requests IS 'Individual cost-split payment re
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS public.guest_crew_conversions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
   guest_id UUID NOT NULL REFERENCES public.guests(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -262,8 +262,7 @@ CREATE POLICY "Guests can update their payment status" ON public.cost_split_requ
     )
   )
   WITH CHECK (
-    -- Guests can only update payment-related fields
-    NEW.status = OLD.status OR NEW.status IN ('paid', 'pending')
+    status IN ('paid', 'pending')
   );
 
 -- Guest Crew Conversions
@@ -300,7 +299,7 @@ CREATE POLICY "Event hosts can view cost summaries" ON public.event_cost_summari
 -- Generate unique invite token
 CREATE OR REPLACE FUNCTION generate_invite_token()
 RETURNS TEXT AS $$
-  SELECT 'inv_' || encode(gen_random_bytes(16), 'base64')::TEXT;
+  SELECT 'inv_' || replace(gen_random_uuid()::TEXT, '-', '');
 $$ LANGUAGE SQL VOLATILE;
 
 -- Check if invite token is valid
@@ -432,7 +431,7 @@ WHERE status IN ('pending', 'sent', 'overdue');
 
 -- Index for overdue payments
 CREATE INDEX IF NOT EXISTS idx_cost_splits_overdue ON public.cost_split_requests(due_date, status)
-WHERE status IN ('pending', 'sent') AND due_date < NOW();
+WHERE status IN ('pending', 'sent');
 
 -- ============================================
 -- INITIAL DATA / EXAMPLES

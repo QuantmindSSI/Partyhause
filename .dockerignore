@@ -1,0 +1,13 @@
+node_modules
+dist
+dev-dist
+.git
+.github
+.vercel
+.vite
+docs
+test-images
+apps/mobile/node_modules
+packages/core/node_modules
+*.ps1
+csi-report.*

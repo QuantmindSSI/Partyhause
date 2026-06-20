@@ -24,14 +24,22 @@ import {
   CheckCircle2,
   Lock,
   ArrowLeftRight,
-  Edit
+  Edit,
+  LogOut
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { usePartyStore } from '@/store/usePartyStore';
+import { useAuth } from '@/hooks/use-auth';
 
 export default function ProfilePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { profile, isLoading, refetch } = useUserProfile(id);
+  const setCurrentPage = usePartyStore((s) => s.setCurrentPage);
+  const storeUser = usePartyStore((s) => s.user);
+  const { signOut } = useAuth();
+  // If no URL param, use the logged-in user's id from the store
+  const profileId = id || storeUser?.id || undefined;
+  const { profile, isLoading, refetch } = useUserProfile(profileId);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -41,6 +49,18 @@ export default function ProfilePage() {
     };
     getUserId();
   }, []);
+
+  const handleBack = () => {
+    const role = storeUser?.role || 'user';
+    if (role === 'creator') setCurrentPage('creator-dashboard');
+    else if (role === 'vendor') setCurrentPage('vendor-dashboard');
+    else setCurrentPage('user-dashboard');
+  };
+
+  const handleLogout = async () => {
+    await signOut();
+    setCurrentPage('auth');
+  };
 
   if (isLoading) {
     return (
@@ -62,7 +82,7 @@ export default function ProfilePage() {
             If this is your profile, you need to create it in Supabase first.
           </p>
         </div>
-        <Button onClick={() => navigate(-1)} variant="outline">
+        <Button onClick={handleBack} variant="outline">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Go Back
         </Button>
@@ -82,7 +102,7 @@ export default function ProfilePage() {
   };
 
   const handleEditProfile = () => {
-    navigate('/settings/profile');
+    setCurrentPage('settings');
   };
 
   return (
@@ -93,7 +113,7 @@ export default function ProfilePage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => navigate(-1)}
+            onClick={handleBack}
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
@@ -138,13 +158,19 @@ export default function ProfilePage() {
                 )}
               </div>
 
-              {/* Action Button */}
+              {/* Action Buttons */}
               <div className="flex gap-2">
                 {isOwnProfile ? (
-                  <Button onClick={handleEditProfile} variant="outline">
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit Profile
-                  </Button>
+                  <>
+                    <Button onClick={handleEditProfile} variant="outline">
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit Profile
+                    </Button>
+                    <Button onClick={handleLogout} variant="destructive">
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Logout
+                    </Button>
+                  </>
                 ) : (
                   <JoinCrewButton
                     creatorId={profile.id}
