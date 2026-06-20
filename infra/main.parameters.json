@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "VITE_SUPABASE_URL": {
+      "value": ""
+    },
+    "VITE_SUPABASE_ANON_KEY": {
+      "value": ""
+    },
+    "MAILERSEND_API_TOKEN": {
+      "value": ""
+    },
+    "MAILERSEND_FROM_EMAIL": {
+      "value": ""
+    },
+    "SUPABASE_URL": {
+      "value": ""
+    },
+    "SUPABASE_SERVICE_ROLE_KEY": {
+      "value": ""
+    }
+  }
+}
