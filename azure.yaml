@@ -1,0 +1,18 @@
+# azure.yaml — PartyHause Azure Container Apps deployment
+# Two services: web PWA (nginx) + API server (Express)
+services:
+  web:
+    project: .
+    host: containerapp
+    language: js
+    docker:
+      path: ./Dockerfile
+      remoteBuild: true
+
+  api:
+    project: .
+    host: containerapp
+    language: js
+    docker:
+      path: ./Dockerfile.api
+      remoteBuild: true
