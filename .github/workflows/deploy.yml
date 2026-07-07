@@ -147,6 +147,9 @@ jobs:
             --build-arg VITE_API_URL="${{ env.API_PUBLIC_URL }}" \
             --build-arg VITE_APP_NAME="PartyHause" \
             --build-arg VITE_APP_URL="${{ env.WEB_PUBLIC_URL }}" \
+            --build-arg VITE_ENTRA_TENANT_ID="${{ secrets.ENTRA_TENANT_ID }}" \
+            --build-arg VITE_ENTRA_SPA_CLIENT_ID="${{ secrets.ENTRA_SPA_CLIENT_ID }}" \
+            --build-arg VITE_ENTRA_POLICY="B2C_1_susi" \
             .
 
       - name: Build & Push API Image to ACR

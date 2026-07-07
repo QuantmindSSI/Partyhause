@@ -13,6 +13,7 @@
 
 import { supabase } from './supabase';
 import { apiUrl } from './apiBase';
+import { isMsalConfigured, msalGetToken } from './msal';
 
 export interface ApiResponse<T = unknown> {
   data: T | null;
@@ -20,10 +21,19 @@ export interface ApiResponse<T = unknown> {
 }
 
 /**
- * Returns the current Supabase session access token, or null if there is
- * no active session.
+ * Returns the current auth access token to send as a Bearer token.
+ * Checks MSAL first (when Entra CIAM is configured), then falls back to the
+ * Supabase session access token.
  */
 export async function getAuthToken(): Promise<string | null> {
+  if (isMsalConfigured) {
+    try {
+      const token = await msalGetToken();
+      if (token) return token;
+    } catch {
+      // fall through to Supabase
+    }
+  }
   try {
     const {
       data: { session },
