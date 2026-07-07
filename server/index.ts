@@ -25,6 +25,7 @@ import costSplitRouter from './routes/cost-split';
 import aiRouter from './routes/ai';
 import emailLogsRouter from './routes/email-logs';
 import storageRouter from './routes/storage';
+import realtimeRouter from './routes/realtime';
 
 // Load environment variables
 dotenv.config();
@@ -144,6 +145,7 @@ app.use('/api/cost-split', costSplitRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/email-logs', emailLogsRouter);
 app.use('/api/storage', storageRouter);
+app.use('/api/realtime', realtimeRouter);
 
 // 404 handler
 app.use('/api', (_req, res) => {
