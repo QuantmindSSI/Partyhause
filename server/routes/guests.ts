@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { randomUUID } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { broadcastEvent } from '../lib/pubsub';
 
 const router = Router();
 
@@ -114,6 +115,9 @@ router.post('/', async (req: AuthenticatedRequest, res) => {
       data: guestData,
     });
 
+    // Notify connected clients that guests for this event changed.
+    broadcastEvent('partyhause', 'guest-updated', { eventId });
+
     return res.status(201).json({
       guests: insertedGuests,
       success: true,
@@ -171,6 +175,9 @@ router.put('/:id', async (req: AuthenticatedRequest, res) => {
       data: updateData as any,
     });
 
+    // Notify connected clients that guests for this event changed.
+    broadcastEvent('partyhause', 'guest-updated', { eventId: guest.event_id, id });
+
     return res.status(200).json({ guest, success: true });
   } catch (error: unknown) {
     console.error('Guests API error:', error);
@@ -194,9 +201,19 @@ router.delete('/:id', async (req: AuthenticatedRequest, res) => {
       return res.status(400).json({ error: 'Guest ID required' });
     }
 
+    // Capture the event_id before deleting so we can broadcast the change.
+    const existing = await prisma.guest.findUnique({
+      where: { id },
+      select: { event_id: true },
+    });
+
     await prisma.guest.delete({
       where: { id },
     });
+
+    if (existing?.event_id) {
+      broadcastEvent('partyhause', 'guest-updated', { eventId: existing.event_id, id });
+    }
 
     return res.status(200).json({ success: true });
   } catch (error: unknown) {

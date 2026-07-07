@@ -4,6 +4,7 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { broadcastEvent } from '../lib/pubsub';
 
 const router = Router();
 
@@ -211,6 +212,9 @@ router.put('/:id', async (req: AuthenticatedRequest, res) => {
       where: { id },
       data: updateData as any,
     });
+
+    // Notify connected clients that this event changed so they can refetch.
+    broadcastEvent('partyhause', 'event-updated', { id });
 
     return res.status(200).json({ event, success: true });
   } catch (error: unknown) {
