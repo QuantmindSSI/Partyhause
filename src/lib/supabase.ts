@@ -1,16 +1,34 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'Missing Supabase configuration. Please create a .env file with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY. ' +
-    'You can find these values in your Supabase project dashboard under Settings > API.'
-  );
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+
+// Lazy-init: don't throw at module load if creds are missing. This lets the
+// PWA shell load (landing page, static content) even when Supabase isn't
+// configured. Auth/data features will surface a user-facing error instead
+// of crashing the entire app with a blank screen.
+let _client: SupabaseClient | null = null;
+
+function getClient(): SupabaseClient {
+  if (_client) return _client;
+  if (!isSupabaseConfigured) {
+    throw new Error(
+      'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, ' +
+      'or wait for the Azure migration to complete.'
+    );
+  }
+  _client = createClient(supabaseUrl, supabaseAnonKey);
+  return _client;
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Proxy that lazily creates the client on first property access.
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    return Reflect.get(getClient(), prop);
+  },
+}) as SupabaseClient;
 
 // Type definitions for our database tables
 export type Tables = {

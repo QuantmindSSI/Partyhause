@@ -7,16 +7,32 @@ RUN npm ci --legacy-peer-deps
 
 COPY . .
 
+# Generate Prisma client
+RUN npx prisma generate
+
 # --- Runtime stage ---
 FROM node:20-slim
 WORKDIR /app
 
+# Install tsx for TypeScript runtime execution
+RUN npm install -g tsx
+
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --legacy-peer-deps
 
+# Copy server code (TypeScript routes + lib + middleware)
 COPY server/ ./server/
-COPY api/ ./api/
+
+# Copy Prisma schema and generated client
+COPY prisma/ ./prisma/
+COPY prisma.config.ts ./
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+
+# Copy template data (used by seed and event-templates route)
+COPY server/data/ ./server/data/
 
 EXPOSE 3001
 
-CMD ["node", "server/index.js"]
+# Use tsx to run the TypeScript server directly
+CMD ["tsx", "server/index.ts"]

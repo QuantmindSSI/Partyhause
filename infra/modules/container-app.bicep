@@ -23,8 +23,11 @@ param image string
 @description('Target port for ingress')
 param targetPort int
 
-@description('Environment variables')
+@description('Environment variables (non-secret values use `value`; secret values use `secretRef` matching a name in `secrets`)')
 param envVars array = []
+
+@description('Secrets exposed to the container app. Each item: { name: string, value: string }. Referenced from envVars via secretRef.')
+param secrets array = []
 
 // --- Container App ---
 resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
@@ -34,6 +37,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
     environmentId: environmentId
     configuration: {
       activeRevisionsMode: 'Single'
+      secrets: secrets
       ingress: {
         external: true
         targetPort: targetPort

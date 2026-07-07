@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 // Simple sanitizer for preview: strip <script> tags (lightweight; consider replacing with DOMPurify)
 const safePreview = (html: string) => html.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '');
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/lib/supabase';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api-client';
 import { usePartyStore } from '@/store/usePartyStore';
 
 interface Template {
@@ -36,12 +36,9 @@ export const TemplateManager: React.FC = () => {
   const fetchTemplates = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('invite_templates')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const { data, error } = await apiGet<{ templates?: Template[] }>('/api/invite-templates');
       if (error) throw error;
-      setTemplates(data || []);
+      setTemplates(data?.templates || []);
     } catch (e) {
       console.error('Failed to fetch templates', e);
       toast({ title: 'Failed to load templates', variant: 'destructive' });
@@ -166,30 +163,26 @@ export const TemplateManager: React.FC = () => {
     }
 
     try {
-      // If is_default is true, clear other defaults first
-      const user = await supabase.auth.getUser();
-      const uid = user?.data?.user?.id;
-
-      if (isDefault && uid) {
-        await supabase.from('invite_templates').update({ is_default: false }).eq('host_id', uid);
-      }
+      // The API clears other defaults for this host automatically when
+      // is_default=true is sent on create/update, so no explicit clear is
+      // needed here. Auth stays on Supabase; the user id is not required.
 
       if (editing) {
         const updates: any = { name: name.trim(), subject: subject.trim() };
         if (isMarkdown) updates.body_markdown = body;
         else updates.body_html = body;
-  updates.is_default = !!isDefault;
+        updates.is_default = !!isDefault;
 
-        const { error } = await supabase.from('invite_templates').update(updates).eq('id', editing.id);
+        const { error } = await apiPut(`/api/invite-templates/${encodeURIComponent(editing.id)}`, updates);
         if (error) throw error;
         toast({ title: 'Template updated' });
       } else {
         const insert: any = { name: name.trim(), subject: subject.trim() };
         if (isMarkdown) insert.body_markdown = body;
         else insert.body_html = body;
-  insert.is_default = !!isDefault;
+        insert.is_default = !!isDefault;
 
-        const { error } = await supabase.from('invite_templates').insert([{ ...insert }]);
+        const { error } = await apiPost('/api/invite-templates', insert);
         if (error) throw error;
         toast({ title: 'Template created' });
       }
@@ -205,7 +198,7 @@ export const TemplateManager: React.FC = () => {
   const deleteTemplate = async (id: string) => {
     if (!confirm('Delete this template? This cannot be undone.')) return;
     try {
-      const { error } = await supabase.from('invite_templates').delete().eq('id', id);
+      const { error } = await apiDelete(`/api/invite-templates/${encodeURIComponent(id)}`);
       if (error) throw error;
       toast({ title: 'Template deleted' });
       fetchTemplates();
@@ -217,13 +210,8 @@ export const TemplateManager: React.FC = () => {
 
   const setDefault = async (id: string) => {
     try {
-      // Clear existing defaults for this host and set this one
-      const user = await supabase.auth.getUser();
-      const uid = user?.data?.user?.id;
-      if (uid) {
-        await supabase.from('invite_templates').update({ is_default: false }).eq('host_id', uid);
-      }
-      const { error } = await supabase.from('invite_templates').update({ is_default: true }).eq('id', id);
+      // The API clears other defaults for this host when is_default=true.
+      const { error } = await apiPut(`/api/invite-templates/${encodeURIComponent(id)}`, { is_default: true });
       if (error) throw error;
       toast({ title: 'Default template set' });
       fetchTemplates();

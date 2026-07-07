@@ -1,137 +1,118 @@
-// main.bicep — PartyHause infrastructure
-// Provisions: Resource Group, ACR, Container Apps Environment, Log Analytics,
-// and two Container Apps (web PWA + API server) with managed identity
+// main.bicep — PartyHause infrastructure (Azure-native, post-Supabase migration)
+// Subscription-scope orchestrator: creates the resource group, then delegates
+// to resources.bicep (resource-group scope) which provisions:
+//   - Log Analytics Workspace
+//   - Key Vault (secrets)
+//   - Azure Container Registry
+//   - Cosmos DB for PostgreSQL cluster (replaces Supabase Postgres)
+//   - Storage Account + Blob containers (replaces Supabase Storage)
+//   - Azure Web PubSub (replaces Supabase Realtime)
+//   - Container Apps Environment
+//   - Web Container App (PWA, nginx)
+//   - API Container App (Express) with managed identity + AcrPull
+//
+// Auth (Microsoft Entra External ID / Azure AD B2C) is configured out-of-band at
+// the tenant level — see MIGRATION_STATUS.md. The API container receives the
+// B2C tenant/client/audience ids as env vars to validate JWTs.
+
+targetScope = 'subscription'
 
 @description('Azure region for all resources')
-param location string = resourceGroup().location
+param location string = 'eastus2'
+
+@description('Resource group name (will be created)')
+param resourceGroupName string = 'rg-partyhause-prod'
 
 @description('Unique suffix for resource names')
-param suffix string = uniqueString(resourceGroup().id)
+param suffix string = uniqueString(subscription().id, resourceGroupName)
 
-// --- Log Analytics Workspace ---
-resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
-  name: 'log-partyhause-${suffix}'
+@description('Environment tag')
+param environmentTag string = 'prod'
+
+// ===== Database (Cosmos DB for PostgreSQL) =====
+@description('Administrator login for the PostgreSQL cluster')
+param postgresAdminLogin string = 'partyadmin'
+
+@description('Administrator password for the PostgreSQL cluster (secure)')
+@secure()
+param postgresAdminPassword string
+
+@description('Initial database name to create on the cluster')
+param postgresDbName string = 'partyhause'
+
+// ===== Email (Resend) =====
+@description('Resend API key (secret, used by the API container to send email)')
+@secure()
+param RESEND_API_KEY string
+
+@description('Resend from email (verified sending address)')
+param RESEND_FROM_EMAIL string
+
+// ===== Auth (Microsoft Entra External ID / Azure AD B2C) =====
+@description('Entra External ID (B2C) tenant id')
+param entraTenantId string = ''
+
+@description('Entra External ID (B2C) API app (server) client id')
+param entraApiClientId string = ''
+
+@description('Entra External ID (B2C) API app client secret (secure)')
+@secure()
+param entraApiClientSecret string = ''
+
+@description('Entra External ID (B2C) SPA app (web) client id')
+param entraSpaClientId string = ''
+
+@description('B2C user-flow signup-signin policy name (e.g. B2C_1_susi)')
+param entraSignUpSignInPolicy string = 'B2C_1_susi'
+
+@description('Object ID of the deployer (signed-in user/SP) granted Key Vault access. Run: az ad signed-in-user show --query id -o tsv')
+param deployerObjectId string
+
+// ===== Resource Group =====
+resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
+  name: resourceGroupName
   location: location
-  properties: {
-    sku: {
-      name: 'PerGB2018'
-    }
-    retentionInDays: 30
+  tags: {
+    project: 'PartyHause'
+    environment: environmentTag
+    managedBy: 'bicep'
   }
 }
 
-// --- Azure Container Registry ---
-resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
-  name: 'acrpartyhause${suffix}'
-  location: location
-  sku: {
-    name: 'Basic'
-  }
-  properties: {
-    adminUserEnabled: false
-  }
-}
-
-// --- Container Apps Environment ---
-resource cae 'Microsoft.App/managedEnvironments@2024-03-01' = {
-  name: 'cae-partyhause-${suffix}'
-  location: location
-  properties: {
-    appLogsConfiguration: {
-      destination: 'log-analytics'
-      logAnalyticsConfiguration: {
-        customerId: logAnalytics.properties.customerId
-        sharedKey: logAnalytics.listKeys().primarySharedKey
-      }
-    }
+// ===== All resources (RG scope) =====
+module resources 'resources.bicep' = {
+  name: 'partyhause-resources'
+  scope: rg
+  params: {
+    location: location
+    suffix: suffix
+    environmentTag: environmentTag
+    postgresAdminLogin: postgresAdminLogin
+    postgresAdminPassword: postgresAdminPassword
+    postgresDbName: postgresDbName
+    RESEND_API_KEY: RESEND_API_KEY
+    RESEND_FROM_EMAIL: RESEND_FROM_EMAIL
+    entraTenantId: entraTenantId
+    entraApiClientId: entraApiClientId
+    entraApiClientSecret: entraApiClientSecret
+    entraSpaClientId: entraSpaClientId
+    entraSignUpSignInPolicy: entraSignUpSignInPolicy
+    deployerObjectId: deployerObjectId
   }
 }
 
-// --- Web Container App (created via az containerapp create) ---
-// module webApp 'modules/container-app.bicep' = {
-//   name: 'webApp'
-//   params: {
-//     appName: 'ca-web-partyhause-${suffix}'
-//     location: location
-//     environmentId: cae.id
-//     acrLoginServer: acr.properties.loginServer
-//     acrId: acr.id
-//     image: 'nginx:1.25-alpine'
-//     targetPort: 80
-//     envVars: [
-//       {
-//         name: 'VITE_SUPABASE_URL'
-//         value: VITE_SUPABASE_URL
-//       }
-//       {
-//         name: 'VITE_SUPABASE_ANON_KEY'
-//         value: VITE_SUPABASE_ANON_KEY
-//       }
-//       {
-//         name: 'VITE_APP_NAME'
-//         value: 'PartyHause'
-//       }
-//       {
-//         name: 'VITE_APP_URL'
-//         value: 'https://ca-web-partyhause-${suffix}.${location}.azurecontainerapps.io'
-//       }
-//     ]
-//   }
-// }
-
-// --- API Container App (created via az containerapp create) ---
-// module apiApp 'modules/container-app.bicep' = {
-//   name: 'apiApp'
-//   params: {
-//     appName: 'ca-api-partyhause-${suffix}'
-//     location: location
-//     environmentId: cae.id
-//     acrLoginServer: acr.properties.loginServer
-//     acrId: acr.id
-//     image: 'node:18-slim'
-//     targetPort: 3001
-//     envVars: [
-//       {
-//         name: 'MAILERSEND_API_TOKEN'
-//         value: MAILERSEND_API_TOKEN
-//       }
-//       {
-//         name: 'MAILERSEND_FROM_EMAIL'
-//         value: MAILERSEND_FROM_EMAIL
-//       }
-//       {
-//         name: 'SUPABASE_URL'
-//         value: SUPABASE_URL
-//       }
-//       {
-//         name: 'SUPABASE_SERVICE_ROLE_KEY'
-//         value: SUPABASE_SERVICE_ROLE_KEY
-//       }
-//     ]
-//   }
-// }
-
-// --- Outputs ---
-output webUrl string = 'https://ca-web-partyhause-${suffix}.${location}.azurecontainerapps.io'
-output apiUrl string = 'https://ca-api-partyhause-${suffix}.${location}.azurecontainerapps.io'
-output acrLoginServer string = acr.properties.loginServer
-output acrName string = acr.name
-
-// --- Parameters from environment ---
-@description('Supabase URL')
-param VITE_SUPABASE_URL string
-
-@description('Supabase anon key')
-param VITE_SUPABASE_ANON_KEY string
-
-@description('MailerSend API token')
-param MAILERSEND_API_TOKEN string
-
-@description('MailerSend from email')
-param MAILERSEND_FROM_EMAIL string
-
-@description('Supabase service URL (server-side)')
-param SUPABASE_URL string
-
-@description('Supabase service role key')
-param SUPABASE_SERVICE_ROLE_KEY string
+// ===== Outputs =====
+output resourceGroupName string = rg.name
+output webUrl string = resources.outputs.webUrl
+output apiUrl string = resources.outputs.apiUrl
+output acrLoginServer string = resources.outputs.acrLoginServer
+output acrName string = resources.outputs.acrName
+output postgresFqdn string = resources.outputs.postgresFqdn
+output postgresClusterName string = resources.outputs.postgresClusterName
+output storageAccountName string = resources.outputs.storageAccountName
+output storageBlobEndpoint string = resources.outputs.storageBlobEndpoint
+output webPubSubEndpoint string = resources.outputs.webPubSubEndpoint
+output webPubSubName string = resources.outputs.webPubSubName
+output keyVaultName string = resources.outputs.keyVaultName
+output keyVaultUri string = resources.outputs.keyVaultUri
+output containerAppsEnvName string = resources.outputs.containerAppsEnvName

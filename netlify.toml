@@ -1,3 +1,12 @@
+# ⚠️  DEPRECATED: Netlify deployment has been discontinued.
+# The active deployment target is Azure Container Apps — see:
+#   - .github/workflows/deploy.yml  (CI/CD pipeline)
+#   - infra/main.bicep              (infrastructure as code)
+#   - azure.yaml                    (azd config)
+# This file is kept for reference only. To fully disable Netlify auto-deploy,
+# disconnect the GitHub webhook in the Netlify dashboard (app.netlify.com).
+# To re-enable Netlify, restore the build trigger and remove this notice.
+
 # Netlify configuration for PartyHause Web PWA
 [build]
   # Build from root directory

@@ -1,18 +1,16 @@
-import { supabase } from './supabase';
+import { apiGet, apiPut } from './api-client';
 import { TimelineBlock } from '@/features/timeline/types';
 
 export const timelineService = {
   // Get timeline blocks for an event
   getEventTimeline: async (eventId: string): Promise<TimelineBlock[]> => {
     try {
-      const { data, error } = await supabase
-        .from('events')
-        .select('timeline_blocks')
-        .eq('id', eventId)
-        .single();
+      const { data, error } = await apiGet<{ blocks?: TimelineBlock[] }>(
+        `/api/timeline/${encodeURIComponent(eventId)}`,
+      );
 
       if (error) throw error;
-      return data?.timeline_blocks || [];
+      return data?.blocks || [];
     } catch (error) {
       console.error('Error fetching timeline:', error);
       return [];
@@ -34,18 +32,16 @@ export const timelineService = {
         order: index
       }));
 
-      const { data, error } = await supabase
-        .from('events')
-        .update({ 
-          timeline_blocks: blocksWithOrder,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', eventId)
-        .select('timeline_blocks')
-        .single();
+      // timeline_blocks is stored on the event; update via PUT /api/events/:id
+      const { data, error } = await apiPut<{ event?: { timeline_blocks?: TimelineBlock[] } }>(
+        `/api/events/${encodeURIComponent(eventId)}`,
+        { timeline_blocks: blocksWithOrder },
+      );
 
       if (error) throw error;
-      return data?.timeline_blocks || [];
+      // Prefer the timeline_blocks returned on the event, fall back to the
+      // locally-computed ordered list so callers always get the new order.
+      return data?.event?.timeline_blocks || blocksWithOrder;
     } catch (error) {
       console.error('Error updating timeline:', error);
       throw error;

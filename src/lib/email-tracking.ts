@@ -1,6 +1,7 @@
 // Enhanced email service with comprehensive status tracking
-import { supabase } from './supabase';
+import { apiGet, apiPost, apiPut } from './api-client';
 import { getEmailOptimizedImageUrl } from './image-utils';
+import { apiUrl as buildApiUrl } from './apiBase';
 
 export interface EmailTemplate {
   to: string;
@@ -73,7 +74,7 @@ export interface SendResult {
 
 export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate, logData: EmailLogData): Promise<SendResult> => {
   try {
-    // First, create email log entry
+    // First, create email log entry via the API.
     // Build insert payload without including template fields when they are not provided.
     // This avoids failures when the database schema hasn't been migrated yet.
     const insertPayload: Record<string, unknown> = {
@@ -88,33 +89,43 @@ export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate
     if (logData.templateId) insertPayload.template_id = logData.templateId;
     if (logData.templateBody) insertPayload.template_body = logData.templateBody;
 
-    const { data: emailLog, error: logError } = await supabase
-      .from('email_logs')
-      .insert(insertPayload)
-      .select()
-      .single();
-
-    if (logError) {
-      console.error('Failed to create email log:', logError);
-      throw new Error('Database logging failed');
+    // POST /api/email-logs — endpoint may not exist yet (transitional). If it
+    // fails, we log silently and continue without DB tracking.
+    let emailLog: any = null;
+    try {
+      const { data: logResp, error: logError } = await apiPost<{ email_log?: any; id?: string }>(
+        '/api/email-logs',
+        insertPayload,
+      );
+      if (logError) {
+        console.warn('Failed to create email log (endpoint may not exist yet):', logError.message);
+      } else {
+        emailLog = logResp?.email_log || (logResp as any);
+      }
+    } catch (e) {
+      // Silently swallow — endpoint may not exist yet.
+      console.warn('Email log creation skipped:', e);
     }
 
+    const emailLogId = emailLog?.id || `temp_${Date.now()}`;
+
+    if (emailLog) {
       console.log('📝 Email log created:', emailLog.id);
       // Debug: show the insert payload and metadata for troubleshooting
       try {
         console.log('sendEmailWithTracking - created log payload:', insertPayload);
       } catch (e) { /* ignore logging errors */ }
+    }
 
-    // Use deployed Netlify API if VITE_API_BASE_URL is set, otherwise use relative path
-    const apiBase = import.meta.env.VITE_API_BASE_URL || '';
-    const apiUrl = apiBase ? `${apiBase}/api/email` : '/api/email';
+    // Resolve the email endpoint via the centralized API base URL helper.
+    const apiUrl = buildApiUrl('/api/email');
     // Allow a client-side override for the From header in dev when configured via Vite env vars.
     const allowFromOverride = import.meta.env.VITE_ALLOW_FROM_OVERRIDE === 'true';
     const fromOverride = allowFromOverride ? import.meta.env.VITE_FROM_OVERRIDE : undefined;
 
     console.log('sendEmailWithTracking - sending to apiUrl:', apiUrl);
     console.log('sendEmailWithTracking - payload:', { to: to, subject, html, from: fromOverride, metadata: {
-      emailLogId: emailLog.id,
+      emailLogId,
       guestId: logData.guestId,
       eventId: logData.eventId,
       templateId: logData.templateId || null,
@@ -134,7 +145,7 @@ export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate
         ...(fromOverride ? { from: fromOverride } : {}),
         // Attach metadata so MailerSend webhook payloads can be correlated to this email log
         metadata: {
-          emailLogId: emailLog.id,
+          emailLogId,
           guestId: logData.guestId,
           eventId: logData.eventId,
           templateId: logData.templateId || null,
@@ -153,65 +164,67 @@ export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate
     console.log('sendEmailWithTracking - api response status:', response.status, 'body:', data as Record<string, unknown>);
     
     if (!response.ok) {
-      // Update email log with failure
+      // Update email log with failure (best-effort, endpoint may not exist)
       const parsed = extractApiResult(data);
-      await supabase
-        .from('email_logs')
-        .update({
-          status: 'failed',
-          error_message: parsed.error || `HTTP error! status: ${response.status}`
-        })
-        .eq('id', emailLog.id);
+      if (emailLog) {
+        try {
+          await apiPut(`/api/email-logs/${encodeURIComponent(emailLog.id)}`, {
+            status: 'failed',
+            error_message: parsed.error || `HTTP error! status: ${response.status}`,
+          });
+        } catch (e) { /* ignore */ }
+      }
 
       throw new Error(parsed.error || `HTTP error! status: ${response.status}`);
     }
     
     const parsed = extractApiResult(data);
     if (!parsed.success) {
-      // Update email log with failure
-      await supabase
-        .from('email_logs')
-        .update({
-          status: 'failed',
-          error_message: parsed.error || 'Email sending failed'
-        })
-        .eq('id', emailLog.id);
+      // Update email log with failure (best-effort, endpoint may not exist)
+      if (emailLog) {
+        try {
+          await apiPut(`/api/email-logs/${encodeURIComponent(emailLog.id)}`, {
+            status: 'failed',
+            error_message: parsed.error || 'Email sending failed',
+          });
+        } catch (e) { /* ignore */ }
+      }
 
       throw new Error(parsed.error || 'Email sending failed');
     }
     
-    // Update email log with success and MailerSend message ID
+    // Update email log with success and MailerSend message ID (best-effort)
   const mailerSendId = parsed.id || null;
-    await supabase
-      .from('email_logs')
-      .update({
-        status: 'sent',
-        resend_email_id: mailerSendId, // Keep column name for backward compatibility
-        sent_at: new Date().toISOString()
-      })
-      .eq('id', emailLog.id);
+    if (emailLog) {
+      try {
+        await apiPut(`/api/email-logs/${encodeURIComponent(emailLog.id)}`, {
+          status: 'sent',
+          resend_email_id: mailerSendId, // Keep field name for backward compatibility
+          sent_at: new Date().toISOString(),
+        });
+      } catch (e) { /* ignore */ }
+    }
 
-    // Update guest email status if guest_id provided
+    // Update guest email status if guest_id provided (best-effort via API)
     if (logData.guestId) {
-      await supabase
-        .from('guests')
-        .update({
+      try {
+        await apiPut(`/api/guests/${encodeURIComponent(logData.guestId)}`, {
           email_status: 'sent',
           last_email_sent_at: new Date().toISOString(),
-          email_log_id: emailLog.id
-        })
-        .eq('id', logData.guestId);
+          email_log_id: emailLogId,
+        });
+      } catch (e) { /* ignore */ }
     }
     
     console.log('✅ Email sent successfully with tracking:', {
-      emailLogId: emailLog.id,
+      emailLogId,
       resendEmailId: mailerSendId,
       recipient: to
     });
     
     return {
       raw: data,
-      emailLogId: emailLog.id,
+      emailLogId,
       resendEmailId: mailerSendId
     };
     
@@ -224,9 +237,8 @@ export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate
 // Fallback for existing email function (backward compatibility)
 export const sendEmail = async ({ to, subject, html }: EmailTemplate) => {
   try {
-    const apiBase = import.meta.env.VITE_API_BASE_URL || '';
-    const apiUrl = apiBase ? `${apiBase}/api/email` : '/api/email';
-      
+    const apiUrl = buildApiUrl('/api/email');
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -257,35 +269,25 @@ export const sendEmail = async ({ to, subject, html }: EmailTemplate) => {
 // Get email status by email log ID
 export const getEmailStatus = async (emailLogId: string): Promise<EmailStatus | null> => {
   try {
-    const { data, error } = await supabase
-      .from('email_logs')
-      .select(`
-        id,
-        status,
-        sent_at,
-        delivered_at,
-        opened_at,
-        clicked_at,
-        bounced_at,
-        error_message
-      `)
-      .eq('id', emailLogId)
-      .single();
+    const { data, error } = await apiGet<Record<string, any>>(
+      `/api/email-logs/${encodeURIComponent(emailLogId)}`,
+    );
 
-    if (error) {
+    if (error || !data) {
       console.error('Failed to get email status:', error);
       return null;
     }
 
+    const d = data as Record<string, any>;
     return {
-      id: data.id,
-      status: data.status,
-      sentAt: data.sent_at,
-      deliveredAt: data.delivered_at,
-      openedAt: data.opened_at,
-      clickedAt: data.clicked_at,
-      bouncedAt: data.bounced_at,
-      errorMessage: data.error_message
+      id: d.id,
+      status: d.status,
+      sentAt: d.sent_at,
+      deliveredAt: d.delivered_at,
+      openedAt: d.opened_at,
+      clickedAt: d.clicked_at,
+      bouncedAt: d.bounced_at,
+      errorMessage: d.error_message,
     };
   } catch (error) {
     console.error('Error fetching email status:', error);
@@ -296,11 +298,9 @@ export const getEmailStatus = async (emailLogId: string): Promise<EmailStatus | 
 // Get email analytics for an event
 export const getEmailAnalytics = async (eventId: string) => {
   try {
-    const { data, error } = await supabase
-      .from('email_analytics')
-      .select('*')
-      .eq('event_id', eventId)
-      .single();
+    const { data, error } = await apiGet<Record<string, any>>(
+      `/api/email-logs/analytics?eventId=${encodeURIComponent(eventId)}`,
+    );
 
     if (error) {
       console.error('Failed to get email analytics:', error);
@@ -317,24 +317,16 @@ export const getEmailAnalytics = async (eventId: string) => {
 // Get detailed email logs for an event
 export const getEventEmailLogs = async (eventId: string) => {
   try {
-    const { data, error } = await supabase
-      .from('email_logs')
-      .select(`
-        *,
-        guests:guest_id (
-          name,
-          email
-        )
-      `)
-      .eq('event_id', eventId)
-      .order('sent_at', { ascending: false });
+    const { data, error } = await apiGet<{ logs?: any[] }>(
+      `/api/email-logs?eventId=${encodeURIComponent(eventId)}`,
+    );
 
     if (error) {
       console.error('Failed to get email logs:', error);
       return [];
     }
 
-    return data;
+    return data?.logs || [];
   } catch (error) {
     console.error('Error fetching email logs:', error);
     return [];
@@ -344,25 +336,12 @@ export const getEventEmailLogs = async (eventId: string) => {
 // Re-send failed email (now using MailerSend)
 export const resendEmail = async (emailLogId: string) => {
   try {
-    // Get original email log
-    const { data: emailLog, error: logError } = await supabase
-      .from('email_logs')
-      .select(`
-        *,
-        guests:guest_id (
-          name,
-          email
-        ),
-        events:event_id (
-          name,
-          event_date,
-          location,
-          invite_image_url
-        )
-      `)
-      .eq('id', emailLogId)
-      .single();
+    // Get original email log via the API
+    const { data: logResp, error: logError } = await apiGet<Record<string, any>>(
+      `/api/email-logs/${encodeURIComponent(emailLogId)}`,
+    );
 
+    const emailLog = (logResp as Record<string, any>) || null;
     if (logError || !emailLog) {
       throw new Error('Email log not found');
     }

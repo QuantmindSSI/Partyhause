@@ -1,14 +1,13 @@
 /**
  * PartyCrew API Client for Web
- * Handles all API requests to Netlify functions
+ * Handles all API requests to the backend API (Azure Container Apps / serverless functions)
  */
 
 import { supabase } from '@/lib/supabase';
+import { getApiBaseUrl } from '@/lib/apiBase';
 
-// Get API base URL from environment
-const getApiUrl = (): string => {
-  return import.meta.env.VITE_API_URL || 'https://partyhause.netlify.app';
-};
+// Get API base URL from the centralized helper (single source of truth: VITE_API_URL)
+const getApiUrl = (): string => getApiBaseUrl();
 
 /**
  * Make authenticated API request

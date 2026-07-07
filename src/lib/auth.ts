@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, isSupabaseConfigured } from './supabase';
 import { sendEmail, emailTemplates } from './email';
 
 export interface AuthResponse {
@@ -33,6 +33,7 @@ export const handleAuthError = async (error: any) => {
 
 // Set up auth state change listener for session management
 export const initializeAuthStateListener = () => {
+  if (!isSupabaseConfigured) return;
   supabase.auth.onAuthStateChange(async (event, session) => {
     console.log('Auth state changed:', event, session?.user?.email);
     

@@ -1,37 +1,35 @@
-import { supabase } from './supabase';
+import { apiGet, apiPost, apiPut, apiDelete } from './api-client';
 import type { Event, Guest } from '@/store/usePartyStore';
+
+// Normalize an event coming from the API so it matches the shape the UI
+// expects (backward-compat for events missing the new multi-day fields).
+const normalizeEvent = (event: any): Event => ({
+  ...event,
+  description: event.description ?? null,
+  start_date: event.start_date || event.event_date || event.date,
+  end_date: event.end_date || event.event_date || event.date,
+  event_type: event.event_type || 'single_day',
+});
 
 export const eventService = {
   // Fetch all events for the current user
   getUserEvents: async (userId: string): Promise<Event[]> => {
     try {
-      let { data: events, error } = await supabase
-        .from('events')
-        .select('*')
-        .eq('host_id', userId)
-        .order('start_date', { ascending: true });
+      const { data, error } = await apiGet<{ events?: any[] }>('/api/events');
 
-      // If start_date query fails for any reason, fall back to created_at
       if (error) {
-        const fallback = await supabase
-          .from('events')
-          .select('*')
-          .eq('host_id', userId)
-          .order('created_at', { ascending: false });
-        if (fallback.error) throw fallback.error;
-        events = fallback.data;
+        // No fallback query needed for the API; just surface an empty list.
+        return [];
       }
-      
-      // Ensure backward compatibility for events without new fields
-      return events.map(event => ({
-        ...event,
-        description: event.description ?? null,
-        start_date: event.start_date || event.event_date,
-        end_date: event.end_date || event.event_date,
-        event_type: event.event_type || 'single_day'
-      }));
+
+      const events = data?.events || [];
+      // The API already filters to events the user hosts / co-hosts / is invited
+      // to, so we don't need to filter by host_id here. We still keep the param
+      // for signature compatibility.
+      void userId;
+
+      return events.map(normalizeEvent);
     } catch (error) {
-  // ...removed bloatware error log...
       return [];
     }
   },
@@ -39,16 +37,11 @@ export const eventService = {
   // Create a new event
   createEvent: async (event: Omit<Event, 'id'>): Promise<Event | null> => {
     try {
-      const { data, error } = await supabase
-        .from('events')
-        .insert([event])
-        .select()
-        .single();
-
+      const { data, error } = await apiPost<{ event?: any; success?: boolean }>('/api/events', event);
       if (error) throw error;
-      return data;
+      const created = data?.event;
+      return created ? normalizeEvent(created) : null;
     } catch (error) {
-  // ...removed bloatware error log...
       return null;
     }
   },
@@ -56,17 +49,11 @@ export const eventService = {
   // Update an event
   updateEvent: async (id: string, updates: Partial<Event>): Promise<Event | null> => {
     try {
-      const { data, error } = await supabase
-        .from('events')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
+      const { data, error } = await apiPut<{ event?: any; success?: boolean }>(`/api/events/${id}`, updates);
       if (error) throw error;
-      return data;
+      const updated = data?.event;
+      return updated ? normalizeEvent(updated) : null;
     } catch (error) {
-  // ...removed bloatware error log...
       return null;
     }
   },
@@ -74,15 +61,10 @@ export const eventService = {
   // Delete an event
   deleteEvent: async (id: string): Promise<boolean> => {
     try {
-      const { error } = await supabase
-        .from('events')
-        .delete()
-        .eq('id', id);
-
+      const { error } = await apiDelete(`/api/events/${id}`);
       if (error) throw error;
       return true;
     } catch (error) {
-  // ...removed bloatware error log...
       return false;
     }
   },
@@ -90,16 +72,12 @@ export const eventService = {
   // Get event guests
   getEventGuests: async (eventId: string): Promise<Guest[]> => {
     try {
-      const { data: guests, error } = await supabase
-        .from('guests')
-        .select('*')
-        .eq('event_id', eventId)
-        .order('created_at', { ascending: true });
-
+      const { data, error } = await apiGet<{ guests?: any[]; stats?: any }>(
+        `/api/guests?eventId=${encodeURIComponent(eventId)}`,
+      );
       if (error) throw error;
-      return guests;
+      return data?.guests || [];
     } catch (error) {
-  // ...removed bloatware error log...
       return [];
     }
   },
@@ -107,21 +85,11 @@ export const eventService = {
   // Get single event by id
   getEventById: async (id: string): Promise<Event | null> => {
     try {
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .eq('id', id)
-        .single();
+      const { data, error } = await apiGet<{ event?: any; stats?: any }>(`/api/events/${id}`);
       if (error) throw error;
-      
-      // Ensure backward compatibility for events without new fields
-      return {
-        ...data,
-        description: data.description ?? null,
-        start_date: data.start_date || data.event_date,
-        end_date: data.end_date || data.event_date,
-        event_type: data.event_type || 'single_day'
-      };
+      const event = data?.event;
+      if (!event) return null;
+      return normalizeEvent(event);
     } catch (error) {
       return null;
     }
@@ -130,16 +98,23 @@ export const eventService = {
   // Add guest to event
   addGuest: async (guest: Omit<Guest, 'id'>): Promise<Guest | null> => {
     try {
-      const { data, error } = await supabase
-        .from('guests')
-        .insert([guest])
-        .select()
-        .single();
-
+      // The API expects { eventId, guests: [...] } (bulk import shape).
+      const payload = {
+        eventId: guest.event_id,
+        guests: [
+          {
+            name: guest.name,
+            email: guest.email || null,
+            phone: guest.phone || null,
+            plusOnes: guest.plus_ones ?? 0,
+          },
+        ],
+      };
+      const { data, error } = await apiPost<{ guests?: any[]; success?: boolean }>('/api/guests', payload);
       if (error) throw error;
-      return data;
+      const created = data?.guests?.[0];
+      return created || null;
     } catch (error) {
-  // ...removed bloatware error log...
       return null;
     }
   },
@@ -147,17 +122,19 @@ export const eventService = {
   // Update guest
   updateGuest: async (id: string, updates: Partial<Guest>): Promise<Guest | null> => {
     try {
-      const { data, error } = await supabase
-        .from('guests')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
+      // Map UI field names to the API's expected body shape.
+      const body: Record<string, unknown> = {};
+      if (updates.name !== undefined) body.name = updates.name;
+      if (updates.email !== undefined) body.email = updates.email;
+      if (updates.phone !== undefined) body.phone = updates.phone;
+      if (updates.plus_ones !== undefined) body.plusOnes = updates.plus_ones;
+      if (updates.status !== undefined) body.rsvpStatus = updates.status;
+      if ((updates as any).is_checked_in !== undefined) body.checkedIn = (updates as any).is_checked_in;
 
+      const { data, error } = await apiPut<{ guest?: any; success?: boolean }>(`/api/guests/${id}`, body);
       if (error) throw error;
-      return data;
+      return data?.guest || null;
     } catch (error) {
-  // ...removed bloatware error log...
       return null;
     }
   },
@@ -165,16 +142,11 @@ export const eventService = {
   // Remove guest
   removeGuest: async (id: string): Promise<boolean> => {
     try {
-      const { error } = await supabase
-        .from('guests')
-        .delete()
-        .eq('id', id);
-
+      const { error } = await apiDelete(`/api/guests/${id}`);
       if (error) throw error;
       return true;
     } catch (error) {
-  // ...removed bloatware error log...
       return false;
     }
-  }
+  },
 };

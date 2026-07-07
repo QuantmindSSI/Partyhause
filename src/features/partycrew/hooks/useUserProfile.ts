@@ -1,11 +1,11 @@
 /**
  * useUserProfile Hook - Web Version
  * Fetches complete user profile with stats and viewer relationship
- * Queries Supabase directly instead of going through Netlify API
+ * Calls the Express API (/api/users/:id) instead of querying Supabase directly
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { apiGet } from '@/lib/api-client';
 import { UserProfile } from '../types';
 
 interface UseUserProfileResult {
@@ -30,42 +30,43 @@ export function useUserProfile(userId: string | undefined): UseUserProfileResult
     setError(null);
 
     try {
-      const { data, error: fetchError } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
+      const { data, error: fetchError } = await apiGet<Record<string, any>>(
+        `/api/users/${encodeURIComponent(userId)}`,
+      );
 
       if (fetchError || !data) {
         throw new Error(fetchError?.message || 'Profile not found');
       }
 
+      // The API returns the profile fields directly on the response object.
+      const dataRecord = data as Record<string, any>;
+
       // Build profile with defaults for stats/viewer fields
       const userProfile: UserProfile = {
-        id: data.id,
-        username: data.username || 'user',
-        display_name: data.display_name || 'User',
-        bio: data.bio || null,
-        avatar_url: data.avatar_url || null,
-        cover_photo_url: data.cover_photo_url || null,
-        location: data.location || null,
-        website_url: data.website_url || null,
-        partycrew_count: data.partycrew_count || 0,
-        crewing_count: data.crewing_count || 0,
-        events_hosted: data.events_hosted || 0,
-        haus_score: data.haus_score || 0,
-        is_verified: data.is_verified || false,
-        is_private: data.is_private || false,
-        account_type: data.account_type || 'user',
-        viewer_is_following: false,
-        viewer_is_follower: false,
-        viewer_is_mutual: false,
-        viewer_has_pending_request: false,
-        viewer_is_blocked: false,
-        viewer_has_blocked: false,
-        mutual_crew_count: 0,
-        created_at: data.created_at || new Date().toISOString(),
-        last_active_at: data.last_active_at || data.created_at || new Date().toISOString(),
+        id: dataRecord.id,
+        username: dataRecord.username || 'user',
+        display_name: dataRecord.display_name || 'User',
+        bio: dataRecord.bio || null,
+        avatar_url: dataRecord.avatar_url || null,
+        cover_photo_url: dataRecord.cover_photo_url || null,
+        location: dataRecord.location || null,
+        website_url: dataRecord.website_url || null,
+        partycrew_count: dataRecord.partycrew_count || 0,
+        crewing_count: dataRecord.crewing_count || 0,
+        events_hosted: dataRecord.events_hosted || 0,
+        haus_score: dataRecord.haus_score || 0,
+        is_verified: dataRecord.is_verified || false,
+        is_private: dataRecord.is_private || false,
+        account_type: dataRecord.account_type || 'user',
+        viewer_is_following: dataRecord.viewer_is_following || false,
+        viewer_is_follower: dataRecord.viewer_is_follower || false,
+        viewer_is_mutual: dataRecord.viewer_is_mutual || false,
+        viewer_has_pending_request: dataRecord.viewer_has_pending_request || false,
+        viewer_is_blocked: dataRecord.viewer_is_blocked || false,
+        viewer_has_blocked: dataRecord.viewer_has_blocked || false,
+        mutual_crew_count: dataRecord.mutual_crew_count || 0,
+        created_at: dataRecord.created_at || new Date().toISOString(),
+        last_active_at: dataRecord.last_active_at || dataRecord.created_at || new Date().toISOString(),
       };
 
       setProfile(userProfile);

@@ -6,7 +6,7 @@ declare global {
 }
 import { useEffect } from 'react';
 import { usePartyStore } from '@/store/usePartyStore';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import type { Event, Guest } from '@/store/usePartyStore';
 
@@ -14,7 +14,7 @@ export const useRealtimeSubscriptions = (eventId?: string) => {
   const { setGuests, addGuest, updateGuest, setEvents, user } = usePartyStore();
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !isSupabaseConfigured) return;
 
     let eventsChannel: RealtimeChannel;
     let guestsChannel: RealtimeChannel;

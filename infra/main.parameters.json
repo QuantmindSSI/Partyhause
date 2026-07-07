@@ -2,23 +2,39 @@
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
-    "VITE_SUPABASE_URL": {
-      "value": ""
+    "location": { "value": "eastus2" },
+    "resourceGroupName": { "value": "rg-partyhause-prod" },
+    "environmentTag": { "value": "prod" },
+
+    "postgresAdminLogin": { "value": "partyadmin" },
+    "postgresDbName": { "value": "partyhause" },
+
+    "RESEND_FROM_EMAIL": { "value": "PartyHause <noreply@partyhause.com>" },
+
+    "entraTenantId": { "value": "" },
+    "entraApiClientId": { "value": "" },
+    "entraSpaClientId": { "value": "" },
+    "entraSignUpSignInPolicy": { "value": "B2C_1_susi" },
+
+    "deployerObjectId": { "value": "7adb1e8d-4944-4714-8192-fe2efa8a34bc" },
+
+    "postgresAdminPassword": {
+      "reference": {
+        "keyVault": { "id": "/subscriptions/59346494-43d4-4ef7-b364-6a688d9eb445/resourceGroups/rg-partyhause-prod/providers/Microsoft.KeyVault/vaults/kvphgipkzrenusqpy" },
+        "secretName": "PostgresAdminPassword"
+      }
     },
-    "VITE_SUPABASE_ANON_KEY": {
-      "value": ""
+    "RESEND_API_KEY": {
+      "reference": {
+        "keyVault": { "id": "/subscriptions/59346494-43d4-4ef7-b364-6a688d9eb445/resourceGroups/rg-partyhause-prod/providers/Microsoft.KeyVault/vaults/kvphgipkzrenusqpy" },
+        "secretName": "ResendApiKey"
+      }
     },
-    "MAILERSEND_API_TOKEN": {
-      "value": ""
-    },
-    "MAILERSEND_FROM_EMAIL": {
-      "value": ""
-    },
-    "SUPABASE_URL": {
-      "value": ""
-    },
-    "SUPABASE_SERVICE_ROLE_KEY": {
-      "value": ""
+    "entraApiClientSecret": {
+      "reference": {
+        "keyVault": { "id": "/subscriptions/59346494-43d4-4ef7-b364-6a688d9eb445/resourceGroups/rg-partyhause-prod/providers/Microsoft.KeyVault/vaults/kvphgipkzrenusqpy" },
+        "secretName": "EntraApiClientSecret"
+      }
     }
   }
 }
