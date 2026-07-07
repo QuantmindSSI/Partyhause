@@ -30,6 +30,7 @@
     "dev:docker": "docker-compose up --build"
   },
   "dependencies": {
+    "@azure/msal-browser": "^5.16.0",
     "@azure/storage-blob": "^12.32.0",
     "@azure/web-pubsub": "^1.2.0",
     "@azure/web-pubsub-socket.io": "^1.2.1",

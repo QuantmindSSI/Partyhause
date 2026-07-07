@@ -1,5 +1,12 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { sendEmail, emailTemplates } from './email';
+import {
+  isMsalConfigured,
+  msalLogin,
+  msalLogout,
+  msalGetAccount,
+  msalGetToken,
+} from './msal';
 
 export interface AuthResponse {
   success: boolean;
@@ -15,8 +22,13 @@ export interface AuthResponse {
 // Handle authentication errors, especially refresh token issues
 export const handleAuthError = async (error: any) => {
   console.error('Auth error:', error);
-  
-  if (error.message?.includes('Invalid Refresh Token') || 
+
+  if (isMsalConfigured) {
+    // MSAL handles its own token lifecycle; no refresh-token cleanup needed.
+    return false;
+  }
+
+  if (error.message?.includes('Invalid Refresh Token') ||
       error.message?.includes('Refresh Token Not Found')) {
     console.log('Refresh token invalid, signing out user');
     // Clear local session and redirect to login
@@ -33,10 +45,14 @@ export const handleAuthError = async (error: any) => {
 
 // Set up auth state change listener for session management
 export const initializeAuthStateListener = () => {
+  if (isMsalConfigured) {
+    // MSAL manages its own state via cache + redirect handling; no listener.
+    return;
+  }
   if (!isSupabaseConfigured) return;
   supabase.auth.onAuthStateChange(async (event, session) => {
     console.log('Auth state changed:', event, session?.user?.email);
-    
+
     switch (event) {
       case 'SIGNED_IN':
         console.log('User signed in successfully');
@@ -58,6 +74,11 @@ export const initializeAuthStateListener = () => {
 
 export const authService = {
   signIn: async (email: string, password: string): Promise<AuthResponse> => {
+    if (isMsalConfigured) {
+      // MSAL uses redirect-based login; ignore credentials.
+      await msalLogin();
+      return { success: true, user: null };
+    }
     try {
       const { data: { user }, error } = await supabase.auth.signInWithPassword({
         email,
@@ -90,7 +111,7 @@ export const authService = {
           error: 'Session expired, please sign in again'
         };
       }
-      
+
       return {
         success: false,
         error: error.message
@@ -99,6 +120,11 @@ export const authService = {
   },
 
   signUp: async (email: string, password: string, name?: string): Promise<AuthResponse> => {
+    if (isMsalConfigured) {
+      // Sign-up is handled by the CIAM user flow; trigger login redirect.
+      await msalLogin();
+      return { success: true, user: null };
+    }
     try {
       const { data: { user }, error } = await supabase.auth.signUp({
         email,
@@ -140,6 +166,11 @@ export const authService = {
   },
 
   resetPassword: async (email: string): Promise<AuthResponse> => {
+    if (isMsalConfigured) {
+      // Password resets are managed by the CIAM user flow (self-service).
+      await msalLogin();
+      return { success: true, message: 'Redirecting to account recovery.' };
+    }
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/auth/reset-password`,
@@ -165,6 +196,14 @@ export const authService = {
   },
 
   signOut: async (): Promise<AuthResponse> => {
+    if (isMsalConfigured) {
+      try {
+        await msalLogout();
+        return { success: true, message: 'Successfully signed out' };
+      } catch (error: any) {
+        return { success: false, error: error.message };
+      }
+    }
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
@@ -181,14 +220,49 @@ export const authService = {
     }
   },
 
-  // Get the current session user
+  // Get the current session user (MSAL account or Supabase user)
   getCurrentUser: async () => {
+    if (isMsalConfigured) {
+      const account = msalGetAccount();
+      if (!account) return null;
+      const claims = (account.idTokenClaims ?? {}) as Record<string, unknown>;
+      return {
+        id: account.homeAccountId,
+        email:
+          (typeof claims.email === 'string' ? claims.email : undefined) ||
+          (typeof claims.preferred_username === 'string'
+            ? claims.preferred_username
+            : undefined) ||
+          account.username ||
+          '',
+        user_metadata: {
+          name: account.name || claims.name || account.username,
+          provider: 'msal',
+        },
+      } as any;
+    }
     const { data: { user } } = await supabase.auth.getUser();
     return user;
   },
 
+  // Get the current access token (MSAL or Supabase)
+  getAccessToken: async (): Promise<string | null> => {
+    if (isMsalConfigured) {
+      return msalGetToken();
+    }
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token ?? null;
+  },
+
   // Verify email confirmation
   verifyEmail: async (token: string): Promise<AuthResponse> => {
+    if (isMsalConfigured) {
+      // Email verification is handled by the CIAM user flow.
+      return {
+        success: true,
+        message: 'Email verification is managed by Microsoft Entra.'
+      };
+    }
     try {
       const { error } = await supabase.auth.verifyOtp({
         token_hash: token,

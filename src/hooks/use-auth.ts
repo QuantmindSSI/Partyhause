@@ -1,7 +1,47 @@
 import { useEffect } from 'react';
 import { usePartyStore } from '@/store/usePartyStore';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import {
+  isMsalConfigured,
+  msalGetAccount,
+  msalLogin,
+  msalLogout,
+} from '@/lib/msal';
 import type { User } from '@supabase/supabase-js';
+
+/**
+ * Normalize an MSAL AccountInfo into the user shape used by the store.
+ */
+function accountToUser(account: ReturnType<typeof msalGetAccount>) {
+  if (!account) return null;
+  const idClaims = (account.idTokenClaims ?? {}) as Record<string, unknown>;
+  const name =
+    (account.name as string | undefined) ||
+    (typeof idClaims.name === 'string' ? idClaims.name : undefined) ||
+    (typeof idClaims.preferred_username === 'string'
+      ? idClaims.preferred_username
+      : undefined) ||
+    account.username ||
+    'User';
+  const email =
+    (typeof idClaims.email === 'string' ? idClaims.email : undefined) ||
+    (typeof idClaims.preferred_username === 'string'
+      ? idClaims.preferred_username
+      : undefined) ||
+    account.username ||
+    '';
+  return {
+    id: account.homeAccountId,
+    email,
+    name,
+    user_metadata: {
+      name,
+      email,
+      provider: 'msal',
+      sub: account.localAccountId,
+    },
+  };
+}
 
 export const useAuth = () => {
   const isLoading = usePartyStore((s) => s.isLoading);
@@ -11,9 +51,22 @@ export const useAuth = () => {
     let isLoggingOut = false; // GUARD: Prevent double logout
     let subscription: { unsubscribe: () => void } | null = null;
 
+    // MSAL mode: check account first, no Supabase listener needed.
+    if (isMsalConfigured) {
+      const account = msalGetAccount();
+      if (account) {
+        const normalizedUser = accountToUser(account);
+        if (normalizedUser) {
+          usePartyStore.getState().setUser(normalizedUser);
+        }
+      }
+      usePartyStore.getState().setLoading(false);
+      return;
+    }
+
     if (!isSupabaseConfigured) {
-      // Supabase not configured (migration in progress) — skip auth setup
-      // and let the app show the landing page.
+      // Neither MSAL nor Supabase configured — skip auth setup and let the
+      // app show the landing page.
       usePartyStore.getState().setLoading(false);
       return;
     }
@@ -92,6 +145,12 @@ export const useAuth = () => {
   }, []);
 
   const signIn = async (email: string, password: string) => {
+    if (isMsalConfigured) {
+      // MSAL uses redirect-based login; ignore email/password.
+      usePartyStore.getState().setLoading(true);
+      await msalLogin();
+      return { user: null, error: null };
+    }
     try {
       usePartyStore.getState().setLoading(true);
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -107,6 +166,12 @@ export const useAuth = () => {
   };
 
   const signUp = async (email: string, password: string, name?: string) => {
+    if (isMsalConfigured) {
+      // MSAL sign-up is handled by the CIAM user flow; trigger login redirect.
+      usePartyStore.getState().setLoading(true);
+      await msalLogin();
+      return { user: null, error: null };
+    }
     try {
       usePartyStore.getState().setLoading(true);
       const { data, error } = await supabase.auth.signUp({
@@ -128,6 +193,18 @@ export const useAuth = () => {
   };
 
   const signOut = async () => {
+    if (isMsalConfigured) {
+      try {
+        usePartyStore.getState().setLoading(true);
+        usePartyStore.getState().logout();
+        await msalLogout();
+      } catch (error) {
+        console.error('MSAL sign out failed:', error);
+      } finally {
+        usePartyStore.getState().setLoading(false);
+      }
+      return;
+    }
     try {
       usePartyStore.getState().setLoading(true);
       const { error } = await supabase.auth.signOut();
