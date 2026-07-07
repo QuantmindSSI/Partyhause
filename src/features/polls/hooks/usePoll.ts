@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Poll, VoteData, CreatePollData } from '../types';
 import { supabase } from '@/lib/supabase';
+import { getApiBaseUrl } from '@/lib/apiBase';
 
 interface UsePollOptions {
   eventId?: string;
@@ -13,8 +14,8 @@ export const usePoll = ({ eventId, pollId, autoRefresh = false }: UsePollOptions
   const [currentPoll, setCurrentPoll] = useState<Poll | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+
+  const API_BASE = getApiBaseUrl();
 
   // Fetch polls for an event
   const fetchPolls = async (eventIdParam?: string) => {

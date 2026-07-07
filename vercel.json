@@ -1,1 +1,3 @@
-{}
+{
+  "$comment": "DEPRECATED: Vercel deployment has been discontinued. The active deployment target is Azure Container Apps — see .github/workflows/deploy.yml and infra/main.bicep. This file is kept empty for reference only. To re-enable Vercel, remove this file and configure the Vercel project settings."
+}

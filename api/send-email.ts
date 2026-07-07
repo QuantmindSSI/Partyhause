@@ -1,5 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { sendZohoEmail, type ZohoEmailOptions } from './zoho-email.js';
+import { sendEmail, type EmailOptions } from './email-service.js';
 import { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from './env-server.js';
 import sanitizeHtml from 'sanitize-html';
 import { createClient } from '@supabase/supabase-js';
@@ -45,9 +45,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const metadataRecord: EmailMetadata | undefined =
     metadata && typeof metadata === 'object' ? (metadata as EmailMetadata) : undefined;
 
-  console.log('api/send-email - Using Zoho Mail SMTP');
-  console.log('api/send-email - env ZOHO_SMTP_USER present:', !!process.env.ZOHO_SMTP_USER);
-  console.log('api/send-email - env ZOHO_FROM_EMAIL present:', !!process.env.ZOHO_FROM_EMAIL);
+  console.log('api/send-email - Using Resend');
+  console.log('api/send-email - env RESEND_API_KEY present:', !!process.env.RESEND_API_KEY);
+  console.log('api/send-email - env RESEND_FROM_EMAIL present:', !!process.env.RESEND_FROM_EMAIL);
     console.log('api/send-email - incoming body:', JSON.stringify({ to, subject, html, guestId, eventId, metadata }));
 
     // Server-side Supabase admin client for updating email_logs
@@ -75,19 +75,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Check if Zoho credentials are available
-    if (!process.env.ZOHO_SMTP_USER || !process.env.ZOHO_SMTP_PASS) {
-      console.error('Zoho Mail credentials not configured');
+    // Check if Resend credentials are available
+    if (!process.env.RESEND_API_KEY) {
+      console.error('Resend API key not configured');
       return res.status(500).json({
         success: false,
-        error: 'Email service configuration error: Zoho credentials missing'
+        error: 'Email service configuration error: RESEND_API_KEY missing'
       });
     }
 
       // Ensure a verified FROM address is configured
-      if (!process.env.ZOHO_FROM_EMAIL) {
-  console.error('ZOHO_FROM_EMAIL environment variable must be set to a verified sending address (e.g. dara@partyhause.com)');
-          return res.status(500).json({ success: false, error: 'Server configuration error: ZOHO_FROM_EMAIL not set' });
+      if (!process.env.RESEND_FROM_EMAIL) {
+  console.error('RESEND_FROM_EMAIL environment variable must be set to a verified sending address (e.g. PartyHause <noreply@partyhause.com>)');
+          return res.status(500).json({ success: false, error: 'Server configuration error: RESEND_FROM_EMAIL not set' });
         }
 
     // Sanitize the HTML content before sending
@@ -100,9 +100,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     // Determine 'from' header; allow client override if explicitly enabled
-    let effectiveFromEmail = process.env.ZOHO_FROM_EMAIL || '';
-    let effectiveFromName = process.env.ZOHO_FROM_NAME || 'PartyHause';
-    
+    let effectiveFromEmail = process.env.RESEND_FROM_EMAIL || '';
+    let effectiveFromName = process.env.RESEND_FROM_NAME || 'PartyHause';
+
     if (from && process.env.ALLOW_FROM_OVERRIDE === 'true') {
       effectiveFromEmail = String(from);
       console.log('api/send-email - Using overridden from header from request:', effectiveFromEmail);
@@ -110,7 +110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.log('api/send-email - Using configured from header:', effectiveFromName, '<' + effectiveFromEmail + '>');
     }
 
-    // Prepare metadata for Zoho email
+    // Prepare metadata for Resend email
     const emailMetadata: Record<string, any> = {};
     if (guestId) emailMetadata.guestId = String(guestId);
     if (eventId) emailMetadata.eventId = String(eventId);
@@ -122,8 +122,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Send email via Zoho Mail
-    const zohoOptions: ZohoEmailOptions = {
+    // Send email via Resend
+    const emailOptions: EmailOptions = {
       to: to,
       subject: subject,
       html: sanitizedHtml,
@@ -134,13 +134,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       metadata: emailMetadata,
     };
 
-    const result = await sendZohoEmail(zohoOptions);
+    const result = await sendEmail(emailOptions);
 
     if (!result.success) {
-      throw new Error(result.error || 'Failed to send email via Zoho');
+      throw new Error(result.error || 'Failed to send email via Resend');
     }
 
-    console.log('api/send-email - Zoho Mail response:', {
+    console.log('api/send-email - Resend response:', {
       messageId: result.messageId,
       accepted: result.accepted,
       rejected: result.rejected,
@@ -160,7 +160,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .update({
             template_id: metadata?.templateId || null,
             template_body: metadata?.templateBody ? sanitizeHtml(String(metadata.templateBody)) : null,
-            resend_email_id: messageId, // Using MailerSend message_id
+            resend_email_id: messageId, // Resend message id
             status: 'sent',
             sent_at: new Date().toISOString()
           })

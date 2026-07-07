@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { usePartyStore } from '@/store/usePartyStore';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import type { User } from '@supabase/supabase-js';
 
 export const useAuth = () => {
@@ -9,9 +9,17 @@ export const useAuth = () => {
   useEffect(() => {
     let mounted = true;
     let isLoggingOut = false; // GUARD: Prevent double logout
+    let subscription: { unsubscribe: () => void } | null = null;
+
+    if (!isSupabaseConfigured) {
+      // Supabase not configured (migration in progress) — skip auth setup
+      // and let the app show the landing page.
+      usePartyStore.getState().setLoading(false);
+      return;
+    }
 
     // Simple auth state listener - no complex flags or race condition logic
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
 
       if (event === 'SIGNED_IN' && session?.user) {
@@ -35,6 +43,7 @@ export const useAuth = () => {
         usePartyStore.getState().logout();
       }
     });
+    subscription = data.subscription;
 
     // Check for existing session on mount
     const checkSession = async () => {
@@ -76,7 +85,7 @@ export const useAuth = () => {
 
     return () => {
       mounted = false;
-      subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
     // Remove function dependencies to prevent infinite loops
     // Zustand actions are stable, but we'll use the store directly to be safe

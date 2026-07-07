@@ -1,5 +1,7 @@
 // Email service that uses the backend API instead of exposing API keys
-// Now using MailerSend instead of Resend
+// Sends via the Resend-backed API endpoint (see api/send-email.ts)
+
+import { apiUrl } from './apiBase';
 
 export interface EmailTemplate {
   to: string;
@@ -9,12 +11,10 @@ export interface EmailTemplate {
 
 export const sendEmail = async ({ to, subject, html }: EmailTemplate) => {
   try {
-    // Use Vercel serverless function in production, fallback to localhost in development
-    const apiUrl = process.env.NODE_ENV === 'production' 
-      ? '/api/email' 
-      : 'http://localhost:3001/api/send-email';
-      
-    const response = await fetch(apiUrl, {
+    // Resolve the email endpoint from the centralized API base URL.
+    // In production this is typically same-origin (/api/send-email);
+    // in development set VITE_API_URL=http://localhost:3001.
+    const response = await fetch(apiUrl('/api/send-email'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

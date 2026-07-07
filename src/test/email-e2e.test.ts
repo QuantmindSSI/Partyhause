@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { emailTemplates } from '@/lib/email';
+import { apiUrl } from '@/lib/apiBase';
 
 // E2E tests for the email API endpoint
 // These tests require the actual API to be running
 describe('Email API E2E Tests', () => {
-  const API_URL = process.env.NODE_ENV === 'production' 
-    ? '/api/email' 
-    : 'http://localhost:3001/api/send-email';
+  // Resolve the email endpoint from the centralized API base URL helper.
+  // Set VITE_API_URL=http://localhost:3001 to point at a local dev API server.
+  const API_URL = apiUrl('/api/send-email');
 
   // Only run these tests if we're in an environment where the API is expected to be available
   const shouldRunE2ETests = process.env.RUN_E2E_TESTS === 'true';
@@ -110,10 +111,9 @@ describe('Email API E2E Tests', () => {
   // Mock tests that always run
   describe('Email API Mock Tests', () => {
     it('should have correct API URL configuration', () => {
-      const devUrl = 'http://localhost:3001/api/send-email';
-      const prodUrl = '/api/email';
-      
-      expect([devUrl, prodUrl]).toContain(API_URL);
+      // API_URL is resolved from VITE_API_URL via apiUrl(); it should always
+      // end with /api/send-email (same-origin relative or absolute with origin).
+      expect(API_URL.endsWith('/api/send-email')).toBe(true);
     });
 
     it('should construct proper request format', () => {

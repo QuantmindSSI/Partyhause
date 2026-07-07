@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { usePartyStore } from '@/store/usePartyStore';
-import { supabase } from '@/lib/supabase';
+import { apiGet, apiPost, apiDelete } from '@/lib/api-client';
 import {
   Table,
   TableBody,
@@ -47,12 +47,9 @@ export const GuestList = ({ eventId }: GuestListProps) => {
   const fetchTemplates = async () => {
     setLoadingTemplates(true);
     try {
-      const { data, error } = await supabase
-        .from('invite_templates')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const { data, error } = await apiGet<{ templates?: any[] }>('/api/invite-templates');
       if (error) throw error;
-      setTemplates(data || []);
+      setTemplates(data?.templates || []);
     } catch (e) {
       console.error('Failed to fetch templates', e);
       toast({ title: 'Failed to load templates', variant: 'destructive' });
@@ -78,25 +75,30 @@ export const GuestList = ({ eventId }: GuestListProps) => {
       return;
     }
     
-    const { data, error } = await supabase
-      .from('guests')
-      .insert({
-        event_id: eventId,
-        name: newGuest.name,
-        email: newGuest.email,
-        is_checked_in: false,
-      })
-      .select()
-      .single();
+    const { data, error } = await apiPost<{ guests?: any[]; success?: boolean }>(
+      '/api/guests',
+      {
+        eventId,
+        guests: [
+          {
+            name: newGuest.name,
+            email: newGuest.email,
+            phone: null,
+            plusOnes: 0,
+          },
+        ],
+      },
+    );
 
-    if (!error && data) {
+    const createdGuest = !error && data?.guests?.[0] ? data.guests[0] : null;
+    if (createdGuest) {
       // Update the store with the new guest
       const { addGuest } = usePartyStore.getState();
-      addGuest(data);
+      addGuest(createdGuest);
       
       // Send invitation email if current event is available
       if (currentEvent) {
-        const invitationUrl = generateInvitationUrl(eventId, data.id);
+        const invitationUrl = generateInvitationUrl(eventId, createdGuest.id);
         try {
           // Build email content: prefer selected template (with per-send edits) otherwise fallback to default template generator
           let templateIdToUse = selectedTemplateId;
@@ -110,18 +112,18 @@ export const GuestList = ({ eventId }: GuestListProps) => {
           let emailTemplate;
           if (templateBodyToSend) {
             const interpolated = String(templateBodyToSend)
-              .replace(/{{\s*guest_name\s*}}/gi, data.name || '')
+              .replace(/{{\s*guest_name\s*}}/gi, createdGuest.name || '')
               .replace(/{{\s*event_name\s*}}/gi, currentEvent.name || '')
               .replace(/{{\s*rsvp_url\s*}}/gi, invitationUrl);
 
             emailTemplate = {
-              to: data.email,
+              to: createdGuest.email,
               subject: `🎉 You're Invited to ${currentEvent.name}!`,
               html: interpolated,
             };
           } else {
             emailTemplate = emailTemplates.eventInvitation(
-              data.email,
+              createdGuest.email,
               {
                 name: currentEvent.name,
                 date: currentEvent.start_date ? format(new Date(currentEvent.start_date), 'PPP') : format(new Date(currentEvent.date!), 'PPP'),
@@ -138,11 +140,11 @@ export const GuestList = ({ eventId }: GuestListProps) => {
             emailTemplate,
             {
               eventId: currentEvent.id,
-              guestId: data.id,
+              guestId: createdGuest.id,
               templateId: templateIdToUse,
               templateBody: templateBodyToSend,
               emailType: 'invitation',
-              recipientEmail: data.email,
+              recipientEmail: createdGuest.email,
               subject: emailTemplate.subject
             }
           );
@@ -150,7 +152,7 @@ export const GuestList = ({ eventId }: GuestListProps) => {
           // Show success toast with tracking info
           toast({
             title: "Invitation sent! 🎉",
-            description: `Email invitation sent to ${data.name} with tracking enabled`,
+            description: `Email invitation sent to ${createdGuest.name} with tracking enabled`,
           });
 
           // Clear per-send template edits after send
@@ -162,7 +164,7 @@ export const GuestList = ({ eventId }: GuestListProps) => {
           console.warn('Failed to send invitation email:', emailError);
           toast({
             title: "Guest added, but email failed",
-            description: `${data.name} was added to the guest list, but we couldn't send the invitation email. You can copy the invitation link manually.`,
+            description: `${createdGuest.name} was added to the guest list, but we couldn't send the invitation email. You can copy the invitation link manually.`,
             variant: "destructive",
           });
         }
@@ -183,10 +185,7 @@ export const GuestList = ({ eventId }: GuestListProps) => {
   const handleDeleteGuest = async (guestId: string) => {
     if (!confirm('Are you sure you want to remove this invited guest? This cannot be undone.')) return;
     try {
-      const { error } = await supabase
-        .from('guests')
-        .delete()
-        .eq('id', guestId);
+      const { error } = await apiDelete(`/api/guests/${encodeURIComponent(guestId)}`);
 
       if (error) throw error;
 

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { usePartyStore } from '@/store/usePartyStore';
-import { supabase } from '@/lib/supabase';
+import { apiGet } from '@/lib/api-client';
 import { Loading } from '@/components/ui/loading';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,7 +26,7 @@ export const GuestView = ({ guestId, eventId }: GuestViewProps) => {
   const guest = guests.find(g => g.id === guestId);
   const event = guest ? events.find(e => e.id === guest.event_id) || currentEvent : null;
 
-  // If guest or event missing, attempt to fetch them once from Supabase
+  // If guest or event missing, attempt to fetch them once from the API
   useEffect(() => {
     let mounted = true;
     const fetchGuestAndEvent = async () => {
@@ -34,43 +34,41 @@ export const GuestView = ({ guestId, eventId }: GuestViewProps) => {
       triedFetch.current = true;
       setIsFetching(true);
       try {
-        const { data: fetchedGuest } = await supabase
-          .from('guests')
-          .select('*')
-          .eq('id', guestId)
-          .maybeSingle();
+        const { data: guestData, error: guestError } = await apiGet<{ guest?: any }>(
+          `/api/guests?id=${encodeURIComponent(guestId)}`,
+        );
 
         if (!mounted) return;
-        if (fetchedGuest) {
-          // merge into store guests
-          setGuests([...(guests || []).filter(g => g.id !== fetchedGuest.id), fetchedGuest]);
-          // fetch event for guest
-          const { data: fetchedEvent } = await supabase
-            .from('events')
-            .select('*')
-            .eq('id', fetchedGuest.event_id)
-            .maybeSingle();
-          if (!mounted) return;
-          if (fetchedEvent) {
-            // Merge fetchedEvent into the existing events array without reordering
-            const existing = events || [];
-            const foundIndex = existing.findIndex(e => e.id === fetchedEvent.id);
-            let merged: typeof existing;
-            if (foundIndex >= 0) {
-              merged = [...existing.slice(0, foundIndex), fetchedEvent, ...existing.slice(foundIndex + 1)];
-            } else {
-              merged = [...existing, fetchedEvent];
-            }
-            setEvents(merged);
+        if (guestError || !guestData?.guest) return;
+        const fetchedGuest = guestData.guest;
 
-            // set currentEvent for the UI using the action which will also load guests
-            try {
-              await setCurrentEvent(fetchedEvent);
-            } catch (e) {
-              // fallback: call action without await
-              setCurrentEvent(fetchedEvent);
-            }
-          }
+        // merge into store guests
+        setGuests([...(guests || []).filter(g => g.id !== fetchedGuest.id), fetchedGuest]);
+        // fetch event for guest
+        const { data: eventData, error: eventError } = await apiGet<{ event?: any }>(
+          `/api/events/${encodeURIComponent(fetchedGuest.event_id)}`,
+        );
+        if (!mounted) return;
+        if (eventError || !eventData?.event) return;
+        const fetchedEvent = eventData.event;
+
+        // Merge fetchedEvent into the existing events array without reordering
+        const existing = events || [];
+        const foundIndex = existing.findIndex(e => e.id === fetchedEvent.id);
+        let merged: typeof existing;
+        if (foundIndex >= 0) {
+          merged = [...existing.slice(0, foundIndex), fetchedEvent, ...existing.slice(foundIndex + 1)];
+        } else {
+          merged = [...existing, fetchedEvent];
+        }
+        setEvents(merged);
+
+        // set currentEvent for the UI using the action which will also load guests
+        try {
+          await setCurrentEvent(fetchedEvent);
+        } catch (e) {
+          // fallback: call action without await
+          setCurrentEvent(fetchedEvent);
         }
       } catch (e) {
         // ignore, will show not found below

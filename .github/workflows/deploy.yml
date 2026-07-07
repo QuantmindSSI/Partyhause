@@ -1,93 +1,233 @@
-name: 🚀 Deploy to Azure Container Apps
+name: Deploy to Azure Container Apps
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      skip-provision:
+        description: 'Skip Bicep infrastructure provisioning (images-only deploy)'
+        required: false
+        type: boolean
+        default: false
+
+# Only one deploy at a time per environment. New pushes cancel in-flight runs
+# and the latest commit wins.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: true
 
 env:
-  AZURE_RESOURCE_GROUP: rg-partyhause-dev2
-  ACR_NAME: acrpartyhausel2apcqjqxo6qu
-  ACR_LOGIN_SERVER: acrpartyhausel2apcqjqxo6qu.azurecr.io
-  WEB_APP_NAME: ca-web-partyhause-l2apcqjqxo6qu
-  API_APP_NAME: ca-api-partyhause-l2apcqjqxo6qu
+  AZURE_RESOURCE_GROUP: rg-partyhause-prod
+  ACR_NAME: acrpartyhausegipkzrenusqpy
+  ACR_LOGIN_SERVER: acrpartyhausegipkzrenusqpy.azurecr.io
+  WEB_APP_NAME: ca-web-partyhause-gipkzrenusqpy
+  API_APP_NAME: ca-api-partyhause-gipkzrenusqpy
+  # Public origins of the two Container Apps. The web PWA bundle is configured
+  # with API_PUBLIC_URL at build time so the browser knows where to send /api/*.
+  # These must match the FQDNs emitted by Bicep (resources.bicep outputs).
+  API_PUBLIC_URL: https://ca-api-partyhause-gipkzrenusqpy.calmtree-5b646dc8.eastus2.azurecontainerapps.io
+  WEB_PUBLIC_URL: https://ca-web-partyhause-gipkzrenusqpy.calmtree-5b646dc8.eastus2.azurecontainerapps.io
   NODE_VERSION: '20'
+  # Short SHA used to tag images for traceability (also tagged :latest).
+  IMAGE_TAG: ${{ github.sha }}
+
+# Required GitHub secrets (set in repo settings → Secrets and variables → Actions):
+#   AZURE_CREDENTIALS          — service principal JSON for `azure/login` (Contributor + AcrPush on ACR)
+#   POSTGRES_ADMIN_PASSWORD    — PostgreSQL cluster admin password (Bicep @secure param)
+#   RESEND_API_KEY             — Resend API key (API container secret)
+#   RESEND_FROM_EMAIL          — verified Resend sending address (e.g. "PartyHause <noreply@partyhause.com>")
+#   SUPABASE_URL               — Supabase project URL (API container, transitional)
+#   SUPABASE_SERVICE_ROLE_KEY  — Supabase service role key (API container secret, transitional)
+#   VITE_SUPABASE_URL          — Supabase project URL (baked into web bundle at build time)
+#   VITE_SUPABASE_ANON_KEY     — Supabase anon key (baked into web bundle at build time)
+#   ENTRA_API_CLIENT_SECRET    — Entra External ID (B2C) API app client secret (Bicep @secure param)
+#
+# Optional (only needed for first provision or infra changes):
+#   AZURE_DEPLOYER_OBJECT_ID   — Object ID of the SP/user granted Key Vault access.
+#                                Run: az ad sp show --id <appId> --query id -o tsv
+#   ENTRA_TENANT_ID            — B2C tenant id (leave empty until Entra is wired up)
+#   ENTRA_API_CLIENT_ID        — B2C API app (server) client id
+#   ENTRA_SPA_CLIENT_ID        — B2C SPA app (web) client id
+#
+# Prerequisites (one-time, manual):
+#   1. Create the service principal and grant roles:
+#        az ad sp create-for-rbac --name gh-actions-partyhause --role Contributor \
+#          --scopes /subscriptions/<subId>/resourceGroups/rg-partyhause-prod \
+#          --json-auth > azure-creds.json
+#        az role assignment create --assignee <spId> --role AcrPush \
+#          --scope /subscriptions/<subId>/resourceGroups/rg-partyhause-prod/providers/Microsoft.ContainerRegistry/registries/acrpartyhausegipkzrenusqpy
+#      Paste azure-creds.json contents into the AZURE_CREDENTIALS secret.
+#   2. First run: trigger the workflow with skip-provision=false (default) so
+#      Bicep provisions/updates the infra. Subsequent runs may set
+#      skip-provision=true to deploy only new images (faster).
 
 jobs:
   build-and-test:
-    name: 🏗️ Build & Test
+    name: Build & Test
     runs-on: ubuntu-latest
     steps:
-      - name: 📂 Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🏗️ Setup Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - name: 📥 Install dependencies
+      - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      - name: 🔍 Lint code
+      - name: Lint code
         run: npm run lint
-        continue-on-error: true
 
-      - name: 🧪 Run tests
+      - name: Run tests
         run: npm run test:run
-        continue-on-error: true
 
-  deploy:
-    name: 🚀 Deploy to Azure
+  provision:
+    name: Provision / Update infrastructure (Bicep)
     runs-on: ubuntu-latest
     needs: [build-and-test]
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event.inputs.skip-provision != 'true'
     steps:
-      - name: 📂 Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🔐 Azure Login
+      - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: 🏗️ Build & Push Web Image to ACR
-        uses: azure/acr-build@v1
-        with:
-          registry-name: ${{ env.ACR_NAME }}
-          image: partyhause-web
-          tag: latest
-          dockerfile: Dockerfile
-          folder: .
-
-      - name: 🏗️ Build & Push API Image to ACR
-        uses: azure/acr-build@v1
-        with:
-          registry-name: ${{ env.ACR_NAME }}
-          image: partyhause-api
-          tag: latest
-          dockerfile: Dockerfile.api
-          folder: .
-
-      - name: 🚀 Update Web Container App
-        uses: azure/container-apps-deploy-action@v1
-        with:
-          resource-group: ${{ env.AZURE_RESOURCE_GROUP }}
-          container-app-name: ${{ env.WEB_APP_NAME }}
-          image: ${{ env.ACR_LOGIN_SERVER }}/partyhause-web:latest
-
-      - name: 🚀 Update API Container App
-        uses: azure/container-apps-deploy-action@v1
-        with:
-          resource-group: ${{ env.AZURE_RESOURCE_GROUP }}
-          container-app-name: ${{ env.API_APP_NAME }}
-          image: ${{ env.ACR_LOGIN_SERVER }}/partyhause-api:latest
-
-      - name: ✅ Deployment Summary
+      - name: Deploy Bicep template (subscription scope)
+        # Idempotent: creates/updates the RG + all resources defined in main.bicep.
+        # main.bicep is subscription-scoped (it creates the RG itself), so we use
+        # `az deployment sub create` with the RG as a parameter (not --resource-group).
         run: |
-          echo "## Deployment Complete ✅" >> $GITHUB_STEP_SUMMARY
+          az deployment sub create \
+            --location eastus2 \
+            --template-file infra/main.bicep \
+            --parameters infra/main.parameters.json \
+            --parameters postgresAdminPassword="${{ secrets.POSTGRES_ADMIN_PASSWORD }}" \
+            --parameters RESEND_API_KEY="${{ secrets.RESEND_API_KEY }}" \
+            --parameters entraApiClientSecret="${{ secrets.ENTRA_API_CLIENT_SECRET }}" \
+            --parameters deployerObjectId="${{ secrets.AZURE_DEPLOYER_OBJECT_ID }}" \
+            --parameters entraTenantId="${{ secrets.ENTRA_TENANT_ID }}" \
+            --parameters entraApiClientId="${{ secrets.ENTRA_API_CLIENT_ID }}" \
+            --parameters entraSpaClientId="${{ secrets.ENTRA_SPA_CLIENT_ID }}"
+
+  deploy:
+    name: Build & Deploy images to Azure Container Apps
+    runs-on: ubuntu-latest
+    needs: [build-and-test, provision]
+    # Always run if on main; `provision` is skipped when skip-provision=true, and
+    # `needs` treats skipped jobs as success.
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Build & Push Web Image to ACR (with Vite build args)
+        # Vite inlines VITE_* vars at build time, so they MUST be passed as
+        # build args here. We tag with both :latest and :<sha> for traceability.
+        # Using `az acr build` directly for reliable --build-arg support.
+        run: |
+          az acr build \
+            --registry ${{ env.ACR_NAME }} \
+            --image partyhause-web:latest \
+            --image partyhause-web:${{ env.IMAGE_TAG }} \
+            --file Dockerfile \
+            --build-arg VITE_SUPABASE_URL="${{ secrets.VITE_SUPABASE_URL }}" \
+            --build-arg VITE_SUPABASE_ANON_KEY="${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
+            --build-arg VITE_API_URL="${{ env.API_PUBLIC_URL }}" \
+            --build-arg VITE_APP_NAME="PartyHause" \
+            --build-arg VITE_APP_URL="${{ env.WEB_PUBLIC_URL }}" \
+            .
+
+      - name: Build & Push API Image to ACR
+        run: |
+          az acr build \
+            --registry ${{ env.ACR_NAME }} \
+            --image partyhause-api:latest \
+            --image partyhause-api:${{ env.IMAGE_TAG }} \
+            --file Dockerfile.api \
+            .
+
+      - name: Update Web Container App
+        # Deploys the SHA-tagged image. VITE_* vars are already baked into the
+        # static bundle, so the web container only needs non-secret runtime
+        # vars for visibility/debugging.
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          resourceGroup: ${{ env.AZURE_RESOURCE_GROUP }}
+          containerAppName: ${{ env.WEB_APP_NAME }}
+          imageToDeploy: ${{ env.ACR_LOGIN_SERVER }}/partyhause-web:${{ env.IMAGE_TAG }}
+          targetPort: 80
+          ingress: external
+          environmentVariables: "VITE_APP_NAME=PartyHause VITE_APP_URL=${{ env.WEB_PUBLIC_URL }}"
+
+      - name: Update API Container App
+        # Deploys the SHA-tagged image. Secrets are referenced via `secretref:`
+        # and must already exist on the Container App (provisioned by Bicep).
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          resourceGroup: ${{ env.AZURE_RESOURCE_GROUP }}
+          containerAppName: ${{ env.API_APP_NAME }}
+          imageToDeploy: ${{ env.ACR_LOGIN_SERVER }}/partyhause-api:${{ env.IMAGE_TAG }}
+          targetPort: 3001
+          ingress: external
+          environmentVariables: "RESEND_API_KEY=secretref:RESEND_API_KEY RESEND_FROM_EMAIL=${{ secrets.RESEND_FROM_EMAIL }} RESEND_FROM_NAME=PartyHause SUPABASE_URL=${{ secrets.SUPABASE_URL }} SUPABASE_SERVICE_ROLE_KEY=secretref:SUPABASE_SERVICE_ROLE_KEY CORS_ALLOWED_ORIGINS=${{ env.WEB_PUBLIC_URL }} PORT=3001"
+
+      - name: Health check (API)
+        # Poll the API /api/health endpoint and fail the workflow if it does
+        # not return 200 within ~2 minutes.
+        run: |
+          set -euo pipefail
+          URL="${{ env.API_PUBLIC_URL }}/api/health"
+          echo "Polling $URL ..."
+          for i in $(seq 1 24); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL" || echo "000")
+            echo "attempt $i: HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "API is healthy."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "ERROR: API did not become healthy in time."
+          curl -s --max-time 10 "$URL" || true
+          exit 1
+
+      - name: Health check (Web)
+        # The web PWA is served by nginx; just verify the index returns 200.
+        run: |
+          set -euo pipefail
+          URL="${{ env.WEB_PUBLIC_URL }}/"
+          echo "Polling $URL ..."
+          for i in $(seq 1 24); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL" || echo "000")
+            echo "attempt $i: HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "Web is healthy."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "ERROR: Web did not become healthy in time."
+          exit 1
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Endpoints" >> $GITHUB_STEP_SUMMARY
-          echo "- **Web PWA**: https://${{ env.WEB_APP_NAME }}.delightfulground-7d0dbf37.eastus2.azurecontainerapps.io/" >> $GITHUB_STEP_SUMMARY
-          echo "- **API Server**: https://${{ env.API_APP_NAME }}.delightfulground-7d0dbf37.eastus2.azurecontainerapps.io/" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image tag**: \`${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Web PWA**: ${{ env.WEB_PUBLIC_URL }}/" >> $GITHUB_STEP_SUMMARY
+          echo "- **API Server**: ${{ env.API_PUBLIC_URL }}/" >> $GITHUB_STEP_SUMMARY
+          echo "- **API health**: \`${{ env.API_PUBLIC_URL }}/api/health\`" >> $GITHUB_STEP_SUMMARY

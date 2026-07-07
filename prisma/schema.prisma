@@ -1,0 +1,1138 @@
+// ============================================================================
+// PartyHause Prisma Schema
+// ============================================================================
+// Generated from 25 SQL migration files in supabase/migrations/ plus
+// supabase/schema.sql. All migrations applied in chronological order.
+//
+// IMPORTANT NOTES:
+// - All `auth.users(id)` foreign keys are modeled as plain String columns
+//   (no Prisma relation). After migration to Entra External ID / Azure AD
+//   B2C, these columns will hold Entra user object IDs instead of Supabase
+//   auth UUIDs. No AuthUser Prisma model is created because `auth.users` is
+//   a Supabase-internal table that will not exist in the Azure PostgreSQL
+//   database.
+// - RLS policies and Supabase trigger functions are NOT included here.
+//   RLS is Supabase-specific and will be replaced by application-level
+//   authorization. Trigger functions (update_updated_at_column, count
+//   maintenance, etc.) will be reimplemented at the application level.
+// - PostgreSQL CHECK constraints are documented in comments since Prisma
+//   does not support CHECK constraints directly.
+// - Database RPC functions are documented at the bottom of this file.
+// - The `partyboard_tasks`, `budget_items`, and `ai_extractions` tables
+//   were mentioned in prior analysis but do NOT exist as actual tables in
+//   any migration file. `partyboard_tasks` and `budget_items` exist only as
+//   JSONB data inside `templates.default_payload`. `ai_extractions` was
+//   never created. They are therefore omitted from this schema.
+// - The `email_analytics` view is omitted (Prisma does not manage views).
+// - POINT columns (location_coordinates) use Unsupported("point").
+// ============================================================================
+
+// NOTE: In Prisma 7, the `url` property is no longer supported in the
+// datasource block. The connection URL is configured in prisma.config.ts
+// and passed via the DATABASE_URL environment variable. See
+// prisma.config.ts for the Migrate connection configuration.
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum TemplateCategory {
+  birthday
+  wedding
+  corporate
+  holiday
+  social
+  sports
+  cultural
+  fundraiser
+  other
+}
+
+enum PriceTier {
+  free
+  basic
+  premium
+}
+
+// ============================================================================
+// LEGACY TABLES
+// ============================================================================
+
+// Legacy users table — mirrors auth.users rows. After Entra migration this
+// table may be deprecated in favor of user_profiles.
+model User {
+  id         String   @id // references auth.users(id) ON DELETE CASCADE
+  email      String
+  name       String?
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
+
+  // Relations
+  events                  Event[]               @relation("UserHostedEvents")
+  event_co_hosts          EventCoHost[]
+  media                   Media[]
+  activity_participants   ActivityParticipant[]
+  vendor_tasks            VendorTask[]          @relation("VendorTaskAssignee")
+  invite_templates        InviteTemplate[]
+  templates               Template[]            @relation("TemplateAuthor")
+  template_usage          TemplateUsage[]
+  event_invite_tokens     EventInviteToken[]    @relation("TokenCreator")
+  cost_split_requests     CostSplitRequest[]    @relation("CostSplitCreator")
+  guest_crew_conversions  GuestCrewConversion[] @relation("ConversionUser")
+  guest_crew_conversions2 GuestCrewConversion[] @relation("ConversionByUser")
+  polls                   Poll[]
+  poll_votes              PollVote[]
+
+  @@map("users")
+}
+
+// Legacy games table
+model Game {
+  id          String   @id @default(dbgenerated("gen_random_uuid()"))
+  event_id    String
+  type        String
+  settings    Json     @default("{}")
+  content     Json     @default("{}")
+  order_index Int
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now()) @updatedAt
+
+  // Relations
+  event             Event         @relation(fields: [event_id], references: [id])
+  game_sessions     GameSession[]
+  active_for_events Event[]       @relation("EventActiveGame")
+
+  @@index([event_id])
+  @@map("games")
+}
+
+// Legacy game sessions table
+model GameSession {
+  id            String   @id @default(dbgenerated("gen_random_uuid()"))
+  game_id       String
+  status        String   @default("pending")
+  current_round Int      @default(0)
+  scores        Json     @default("{}")
+  created_at    DateTime @default(now())
+  updated_at    DateTime @default(now()) @updatedAt
+
+  // Relations
+  game Game @relation(fields: [game_id], references: [id])
+
+  @@index([game_id])
+  @@map("game_sessions")
+}
+
+// ============================================================================
+// CORE EVENT MANAGEMENT
+// ============================================================================
+
+// Events table — built up across many migrations. Contains columns from the
+// initial schema (20250908), multi-day support (20250916), description
+// (20250917), template system (20251022), and template data (20251109).
+model Event {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()"))
+  host_id              String // references auth.users(id) ON DELETE CASCADE
+  name                 String
+  event_date           DateTime? // Legacy field — use start_date for new events
+  location             String
+  spotify_playlist_url String?
+  active_game_id       String?
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @default(now()) @updatedAt
+
+  // Multi-day support (20250916)
+  start_date DateTime
+  end_date   DateTime
+  event_type String   @default("single_day") // CHECK: IN ('single_day', 'multi_day')
+  // CHECK: end_date >= start_date (constraint check_end_date_after_start_date)
+
+  // Invite image / capacity (20250915, 20250918)
+  invite_image_url String?
+  max_guests       Int?
+  is_public        Boolean @default(false)
+
+  // Description (20250917)
+  description String?
+
+  // Template system columns (20251022, 20251108, 20251109)
+  template_type        String? // VARCHAR(100) — event template identifier
+  title                String? // VARCHAR(255)
+  timezone             String?               @default("UTC") // VARCHAR(50)
+  location_name        String? // VARCHAR(255)
+  location_address     String?
+  location_coordinates Unsupported("point")?
+  privacy              String                @default("private") // CHECK: IN ('public', 'private', 'unlisted')
+  status               String                @default("draft") // CHECK: IN ('draft', 'published', 'active', 'completed', 'archived')
+  settings             Json                  @default("{}")
+  template_data        Json                  @default("{}")
+  timeline_blocks      Json                  @default("[]")
+
+  // Relations
+  host                   User                  @relation("UserHostedEvents", fields: [host_id], references: [id])
+  active_game            Game?                 @relation("EventActiveGame", fields: [active_game_id], references: [id])
+  guests                 Guest[]
+  games                  Game[]
+  email_logs             EmailLog[]
+  event_co_hosts         EventCoHost[]
+  tickets                Ticket[]
+  timeline_blocks_rel    TimelineBlock[]
+  media                  Media[]
+  activities             Activity[]
+  vendors                Vendor[]
+  template_usage         TemplateUsage[]
+  partycrew_posts        PartycrewPost[]
+  notifications          Notification[]
+  event_invite_tokens    EventInviteToken[]
+  cost_split_requests    CostSplitRequest[]
+  guest_crew_conversions GuestCrewConversion[]
+  event_cost_summary     EventCostSummary?
+  polls                  Poll[]
+
+  @@index([host_id])
+  @@index([status])
+  @@index([start_date, end_date])
+  @@index([template_type])
+  @@index([privacy])
+  @@map("events")
+}
+
+// Event co-hosts (20251022, 20260619)
+model EventCoHost {
+  id          String   @id @default(dbgenerated("gen_random_uuid()"))
+  event_id    String
+  user_id     String // references auth.users(id) ON DELETE CASCADE
+  role        String   @default("co-host") // VARCHAR(50)
+  permissions Json     @default("{\"can_edit\": true, \"can_invite\": true, \"can_moderate\": true}")
+  created_at  DateTime @default(now())
+
+  // Relations
+  event Event @relation(fields: [event_id], references: [id])
+  user  User  @relation(fields: [user_id], references: [id])
+
+  @@unique([event_id, user_id])
+  @@index([event_id])
+  @@index([user_id])
+  @@map("event_co_hosts")
+}
+
+// Guests table — built up across initial schema, email tracking, template
+// phase 1, and guest/crew features migrations.
+model Guest {
+  id            String   @id @default(dbgenerated("gen_random_uuid()"))
+  event_id      String
+  name          String // VARCHAR(255) NOT NULL
+  email         String // NOT NULL
+  is_checked_in Boolean  @default(false) // Legacy column from initial schema
+  created_at    DateTime @default(now())
+  updated_at    DateTime @default(now()) @updatedAt
+
+  // Email tracking (20250914)
+  email_status       String?   @default("not_sent") // CHECK: IN ('not_sent', 'sent', 'delivered', 'opened', 'clicked', 'bounced', 'failed')
+  last_email_sent_at DateTime?
+  email_log_id       String? // references email_logs(id)
+
+  // Template phase 1 (20251022)
+  phone                String? // VARCHAR(50)
+  rsvp_status          String    @default("pending") // CHECK: IN ('pending', 'accepted', 'declined', 'maybe')
+  ticket_type          String? // VARCHAR(100)
+  ticket_id            String? // VARCHAR(100)
+  qr_code              String?
+  plus_ones            Int       @default(0)
+  dietary_restrictions String[]
+  custom_fields        Json      @default("{}")
+  checked_in           Boolean   @default(false)
+  checked_in_at        DateTime?
+  role                 String    @default("guest") // CHECK: IN ('host', 'co-host', 'guest', 'vendor', 'volunteer')
+  metadata             Json      @default("{}")
+
+  // Guest/crew features (20251103)
+  user_id            String? // references auth.users(id) ON DELETE SET NULL
+  cost_share_enabled Boolean  @default(false)
+  cost_share_amount  Decimal? @db.Decimal(10, 2)
+  payment_status     String   @default("unpaid") // CHECK: IN ('unpaid', 'paid', 'refunded', 'partial')
+  payment_intent_id  String?
+
+  // Relations
+  event                  Event                 @relation(fields: [event_id], references: [id])
+  email_log              EmailLog?             @relation("GuestEmailLog", fields: [email_log_id], references: [id])
+  email_logs             EmailLog[]            @relation("GuestEmailLogs")
+  cost_split_requests    CostSplitRequest[]
+  guest_crew_conversions GuestCrewConversion[]
+
+  @@index([event_id])
+  @@index([rsvp_status])
+  @@index([email])
+  @@index([checked_in])
+  @@index([user_id])
+  @@index([event_id, rsvp_status])
+  @@index([event_id, payment_status])
+  @@index([user_id, event_id])
+  @@map("guests")
+}
+
+// Tickets (20251022)
+model Ticket {
+  id          String   @id @default(dbgenerated("gen_random_uuid()"))
+  event_id    String
+  type        String // VARCHAR(50) NOT NULL
+  name        String // VARCHAR(255) NOT NULL
+  description String?
+  price       Decimal  @default(0) @db.Decimal(10, 2)
+  currency    String   @default("USD") // VARCHAR(3)
+  quantity    Int // NOT NULL
+  sold        Int      @default(0)
+  settings    Json     @default("{}")
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now()) @updatedAt
+
+  // CHECK: sold <= quantity
+
+  // Relations
+  event Event @relation(fields: [event_id], references: [id])
+
+  @@index([event_id])
+  @@index([type])
+  @@map("tickets")
+}
+
+// Timeline blocks (20251022)
+model TimelineBlock {
+  id            String   @id @default(dbgenerated("gen_random_uuid()"))
+  event_id      String
+  label         String // VARCHAR(255) NOT NULL
+  description   String?
+  start_time    DateTime
+  duration      Int // minutes — NOT NULL
+  type          String // CHECK: IN ('activity', 'meal', 'speech', 'performance', 'break', 'custom')
+  host_notes    String?
+  guest_visible Boolean  @default(true)
+  notify_before Int? // minutes before to send reminder
+  location      String? // VARCHAR(255)
+  assigned_to   String[]
+  order_index   Int
+  created_at    DateTime @default(now())
+  updated_at    DateTime @default(now()) @updatedAt
+
+  // Relations
+  event Event @relation(fields: [event_id], references: [id])
+
+  @@index([event_id])
+  @@index([start_time])
+  @@index([event_id, order_index])
+  @@map("timeline_blocks")
+}
+
+// Media (20251022)
+model Media {
+  id                   String                @id @default(dbgenerated("gen_random_uuid()"))
+  event_id             String
+  uploader_id          String // references auth.users(id) ON DELETE CASCADE
+  type                 String // CHECK: IN ('photo', 'video')
+  url                  String
+  thumbnail_url        String?
+  width                Int?
+  height               Int?
+  duration             Int? // for videos in seconds
+  file_size            BigInt?
+  mime_type            String? // VARCHAR(100)
+  tags                 String[]
+  location_coordinates Unsupported("point")?
+  captured_at          DateTime?
+  uploaded_at          DateTime              @default(now())
+  status               String                @default("pending") // CHECK: IN ('pending', 'approved', 'rejected', 'flagged')
+  moderation_notes     String?
+  credits              String? // VARCHAR(255)
+  created_at           DateTime              @default(now())
+
+  // Relations
+  event    Event @relation(fields: [event_id], references: [id])
+  uploader User  @relation(fields: [uploader_id], references: [id])
+
+  @@index([event_id])
+  @@index([uploader_id])
+  @@index([status])
+  @@index([captured_at])
+  @@index([type])
+  @@map("media")
+}
+
+// Activities (20251022)
+model Activity {
+  id          String    @id @default(dbgenerated("gen_random_uuid()"))
+  event_id    String
+  type        String // CHECK: IN ('poll', 'trivia', 'scavenger', 'vote', 'quiz')
+  title       String // VARCHAR(255) NOT NULL
+  description String?
+  status      String    @default("draft") // CHECK: IN ('draft', 'active', 'paused', 'completed')
+  start_time  DateTime?
+  end_time    DateTime?
+  duration    Int? // minutes
+  config      Json      @default("{}")
+  results     Json      @default("{}")
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @default(now()) @updatedAt
+
+  // Relations
+  event        Event                 @relation(fields: [event_id], references: [id])
+  participants ActivityParticipant[]
+
+  @@index([event_id])
+  @@index([status])
+  @@index([type])
+  @@map("activities")
+}
+
+// Activity participants (20251022)
+model ActivityParticipant {
+  id          String   @id @default(dbgenerated("gen_random_uuid()"))
+  activity_id String
+  user_id     String // references auth.users(id) ON DELETE CASCADE
+  score       Int      @default(0)
+  completed   Boolean  @default(false)
+  responses   Json     @default("{}")
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now()) @updatedAt
+
+  // Relations
+  activity Activity @relation(fields: [activity_id], references: [id])
+  user     User     @relation(fields: [user_id], references: [id])
+
+  @@unique([activity_id, user_id])
+  @@index([activity_id])
+  @@index([user_id])
+  @@map("activity_participants")
+}
+
+// Vendors (20251022)
+model Vendor {
+  id              String   @id @default(dbgenerated("gen_random_uuid()"))
+  event_id        String
+  name            String // VARCHAR(255) NOT NULL
+  role            String // VARCHAR(100) NOT NULL
+  contact_email   String? // VARCHAR(255)
+  contact_phone   String? // VARCHAR(50)
+  contact_website String?
+  contract_url    String?
+  notes           String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @default(now()) @updatedAt
+
+  // Relations
+  event Event        @relation(fields: [event_id], references: [id])
+  tasks VendorTask[]
+
+  @@index([event_id])
+  @@map("vendors")
+}
+
+// Vendor tasks (20251022)
+model VendorTask {
+  id           String    @id @default(dbgenerated("gen_random_uuid()"))
+  vendor_id    String
+  description  String
+  due_date     DateTime?
+  completed    Boolean   @default(false)
+  completed_at DateTime?
+  assigned_to  String? // references auth.users(id) — no ON DELETE clause
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @default(now()) @updatedAt
+
+  // Relations
+  vendor   Vendor @relation(fields: [vendor_id], references: [id])
+  assignee User?  @relation("VendorTaskAssignee", fields: [assigned_to], references: [id])
+
+  @@index([vendor_id])
+  @@index([due_date])
+  @@index([completed])
+  @@map("vendor_tasks")
+}
+
+// ============================================================================
+// EMAIL SYSTEM
+// ============================================================================
+
+// Email logs (20250914, 20251010)
+model EmailLog {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  event_id        String? // references events(id) ON DELETE CASCADE
+  guest_id        String? // references guests(id) ON DELETE CASCADE
+  resend_email_id String?
+  email_type      String // CHECK: IN ('invitation', 'confirmation', 'reminder', 'test')
+  recipient_email String
+  subject         String
+  status          String    @default("pending") // CHECK: IN ('pending', 'sent', 'delivered', 'opened', 'clicked', 'bounced', 'complained', 'failed')
+  sent_at         DateTime  @default(now())
+  delivered_at    DateTime?
+  opened_at       DateTime?
+  clicked_at      DateTime?
+  bounced_at      DateTime?
+  error_message   String?
+  webhook_data    Json      @default("{}")
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @default(now()) @updatedAt
+
+  // Template fields (20251010)
+  template_id   String? // references invite_templates(id)
+  template_body String?
+
+  // Relations
+  event            Event?          @relation(fields: [event_id], references: [id])
+  guest            Guest?          @relation("GuestEmailLogs", fields: [guest_id], references: [id])
+  template         InviteTemplate? @relation(fields: [template_id], references: [id])
+  email_events     EmailEvent[]
+  guest_email_logs Guest[]         @relation("GuestEmailLog")
+
+  @@index([event_id])
+  @@index([guest_id])
+  @@index([resend_email_id])
+  @@index([status])
+  @@index([sent_at])
+  @@index([template_id])
+  @@map("email_logs")
+}
+
+// Email events (20250914)
+model EmailEvent {
+  id              String   @id @default(dbgenerated("gen_random_uuid()"))
+  email_log_id    String
+  resend_email_id String
+  event_type      String
+  timestamp       DateTime
+  webhook_data    Json     @default("{}")
+  processed_at    DateTime @default(now())
+
+  // Relations
+  email_log EmailLog @relation(fields: [email_log_id], references: [id])
+
+  @@index([email_log_id])
+  @@index([resend_email_id])
+  @@index([event_type])
+  @@map("email_events")
+}
+
+// Invite templates (20251010)
+model InviteTemplate {
+  id            String   @id @default(dbgenerated("gen_random_uuid()"))
+  host_id       String // references auth.users(id)
+  name          String
+  slug          String?
+  subject       String
+  body_html     String?
+  body_markdown String?
+  is_default    Boolean  @default(false)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @default(now()) @updatedAt
+
+  // Relations
+  host       User       @relation(fields: [host_id], references: [id])
+  email_logs EmailLog[]
+
+  // Partial unique index: only one default per host
+  // CREATE UNIQUE INDEX idx_invite_templates_one_default_per_host
+  //   ON invite_templates(host_id) WHERE is_default = true
+
+  @@index([host_id])
+  @@index([slug])
+  @@map("invite_templates")
+}
+
+// ============================================================================
+// TEMPLATES SYSTEM
+// ============================================================================
+
+// Templates (20251021)
+model Template {
+  id                     String           @id @default(dbgenerated("gen_random_uuid()"))
+  name                   String
+  slug                   String           @unique
+  description            String?
+  category               TemplateCategory
+  hero_image_url         String?
+  price_tier             PriceTier        @default(free)
+  default_payload        Json             @default("{}")
+  required_fields_schema Json?
+  author_id              String? // references auth.users(id) ON DELETE SET NULL
+  featured               Boolean          @default(false)
+  published              Boolean          @default(true)
+  usage_count            Int              @default(0)
+  created_at             DateTime         @default(now())
+  updated_at             DateTime         @default(now()) @updatedAt
+
+  // Relations
+  author         User?           @relation("TemplateAuthor", fields: [author_id], references: [id])
+  template_usage TemplateUsage[]
+
+  @@index([category])
+  @@index([price_tier])
+  @@index([slug])
+  @@map("templates")
+}
+
+// Template usage tracking (20251021)
+model TemplateUsage {
+  id          String   @id @default(dbgenerated("gen_random_uuid()"))
+  template_id String
+  user_id     String // references auth.users(id) ON DELETE CASCADE
+  event_id    String? // references events(id) ON DELETE SET NULL
+  created_at  DateTime @default(now())
+
+  // Relations
+  template Template @relation(fields: [template_id], references: [id])
+  user     User     @relation(fields: [user_id], references: [id])
+  event    Event?   @relation(fields: [event_id], references: [id])
+
+  @@index([template_id])
+  @@index([user_id])
+  @@index([event_id])
+  @@index([created_at])
+  @@map("template_usage")
+}
+
+// ============================================================================
+// PARTYCREW SOCIAL NETWORK
+// ============================================================================
+
+// User profiles (20251101)
+model UserProfile {
+  id              String  @id // references auth.users(id) ON DELETE CASCADE
+  username        String  @unique
+  display_name    String
+  bio             String?
+  avatar_url      String?
+  cover_photo_url String?
+  location        String?
+  website_url     String?
+
+  // PartyCrew stats (denormalized)
+  partycrew_count Int @default(0)
+  crewing_count   Int @default(0)
+  events_hosted   Int @default(0)
+  events_attended Int @default(0)
+  haus_score      Int @default(0)
+
+  // Privacy settings
+  is_private            Boolean @default(false)
+  show_attending_events Boolean @default(true)
+  show_partycrew_list   Boolean @default(true)
+  show_activity_status  Boolean @default(true)
+
+  // Verification & account type
+  is_verified  Boolean @default(false)
+  account_type String  @default("personal") // CHECK: IN ('personal', 'business', 'creator')
+
+  // Timestamps
+  created_at     DateTime @default(now())
+  updated_at     DateTime @default(now()) @updatedAt
+  last_active_at DateTime @default(now())
+
+  // CHECK: char_length(username) >= 3 AND <= 30
+  // CHECK: username ~ '^[a-zA-Z0-9_]+$'
+
+  // Relations — connections (follower/following)
+  connections_following        Connection[]         @relation("ConnectionFollower")
+  connections_followed         Connection[]         @relation("ConnectionFollowing")
+  connection_requests_sent     ConnectionRequest[]  @relation("Requester")
+  connection_requests_received ConnectionRequest[]  @relation("Target")
+  user_blocks_given            UserBlock[]          @relation("UserBlockBlocker")
+  user_blocks_received         UserBlock[]          @relation("UserBlockBlocked")
+  posts                        PartycrewPost[]
+  post_likes                   PostLike[]
+  post_comments                PostComment[]
+  post_shares                  PostShare[]
+  notifications                Notification[]       @relation("NotificationUser")
+  notification_actors          Notification[]       @relation("NotificationActor")
+  feed_read_status             FeedReadStatus[]
+  content_interactions         ContentInteraction[]
+
+  @@index([username])
+  @@index([display_name])
+  @@index([location])
+  @@index([haus_score])
+  @@index([partycrew_count])
+  @@index([last_active_at])
+  @@map("user_profiles")
+}
+
+// Connections / PartyCrew follow relationships (20251101)
+model Connection {
+  id               String   @id @default(dbgenerated("gen_random_uuid()"))
+  follower_id      String
+  following_id     String
+  notify_on_events Boolean  @default(true)
+  notify_on_posts  Boolean  @default(true)
+  created_at       DateTime @default(now())
+
+  // CHECK: follower_id != following_id
+
+  // Relations
+  follower               UserProfile           @relation("ConnectionFollower", fields: [follower_id], references: [id])
+  following              UserProfile           @relation("ConnectionFollowing", fields: [following_id], references: [id])
+  guest_crew_conversions GuestCrewConversion[]
+
+  @@unique([follower_id, following_id])
+  @@index([follower_id])
+  @@index([following_id])
+  @@map("connections")
+}
+
+// Connection requests (20251101)
+model ConnectionRequest {
+  id           String   @id @default(dbgenerated("gen_random_uuid()"))
+  requester_id String
+  target_id    String
+  status       String   @default("pending") // CHECK: IN ('pending', 'accepted', 'rejected', 'cancelled')
+  message      String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @default(now()) @updatedAt
+
+  // CHECK: requester_id != target_id
+
+  // Relations
+  requester UserProfile @relation("Requester", fields: [requester_id], references: [id])
+  target    UserProfile @relation("Target", fields: [target_id], references: [id])
+
+  @@unique([requester_id, target_id])
+  @@index([target_id])
+  @@index([requester_id])
+  @@map("connection_requests")
+}
+
+// User blocks (20251101)
+model UserBlock {
+  id         String   @id @default(dbgenerated("gen_random_uuid()"))
+  blocker_id String
+  blocked_id String
+  reason     String?
+  created_at DateTime @default(now())
+
+  // CHECK: blocker_id != blocked_id
+
+  // Relations
+  blocker UserProfile @relation("UserBlockBlocker", fields: [blocker_id], references: [id])
+  blocked UserProfile @relation("UserBlockBlocked", fields: [blocked_id], references: [id])
+
+  @@unique([blocker_id, blocked_id])
+  @@index([blocker_id])
+  @@index([blocked_id])
+  @@map("user_blocks")
+}
+
+// PartyCrew posts (20251101)
+model PartycrewPost {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()"))
+  creator_id          String
+  content_type        String // CHECK: IN ('update', 'photo', 'video', 'poll', 'event_announcement', 'tip', 'recap')
+  title               String?
+  body                String?
+  media_urls          String[]
+  event_id            String? // references events(id) ON DELETE SET NULL
+  poll_options        Json?
+  poll_ends_at        DateTime?
+  poll_allow_multiple Boolean   @default(false)
+  visibility          String    @default("crew") // CHECK: IN ('crew', 'public', 'private')
+  is_pinned           Boolean   @default(false)
+  likes_count         Int       @default(0)
+  comments_count      Int       @default(0)
+  shares_count        Int       @default(0)
+  views_count         Int       @default(0)
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @default(now()) @updatedAt
+  scheduled_at        DateTime?
+  published_at        DateTime  @default(now())
+
+  // Relations
+  creator              UserProfile          @relation(fields: [creator_id], references: [id])
+  event                Event?               @relation(fields: [event_id], references: [id])
+  post_likes           PostLike[]
+  post_comments        PostComment[]
+  post_shares          PostShare[]
+  notifications        Notification[]
+  feed_read_status     FeedReadStatus[]
+  content_interactions ContentInteraction[]
+
+  @@index([creator_id])
+  @@index([content_type])
+  @@index([event_id])
+  @@index([published_at])
+  @@index([visibility])
+  @@map("partycrew_posts")
+}
+
+// Post likes (20251101)
+model PostLike {
+  id         String   @id @default(dbgenerated("gen_random_uuid()"))
+  post_id    String
+  user_id    String
+  created_at DateTime @default(now())
+
+  // Relations
+  post PartycrewPost @relation(fields: [post_id], references: [id])
+  user UserProfile   @relation(fields: [user_id], references: [id])
+
+  @@unique([post_id, user_id])
+  @@index([post_id])
+  @@index([user_id])
+  @@map("post_likes")
+}
+
+// Post comments (20251101)
+model PostComment {
+  id                String   @id @default(dbgenerated("gen_random_uuid()"))
+  post_id           String
+  user_id           String
+  parent_comment_id String?
+  body              String
+  created_at        DateTime @default(now())
+  updated_at        DateTime @default(now()) @updatedAt
+
+  // CHECK: char_length(body) > 0 AND <= 1000
+
+  // Relations
+  post           PartycrewPost @relation(fields: [post_id], references: [id])
+  user           UserProfile   @relation(fields: [user_id], references: [id])
+  parent_comment PostComment?  @relation("CommentReplies", fields: [parent_comment_id], references: [id])
+  replies        PostComment[] @relation("CommentReplies")
+
+  @@index([post_id])
+  @@index([user_id])
+  @@index([parent_comment_id])
+  @@map("post_comments")
+}
+
+// Post shares (20251101)
+model PostShare {
+  id         String   @id @default(dbgenerated("gen_random_uuid()"))
+  post_id    String
+  user_id    String
+  shared_to  String? // CHECK: IN ('feed', 'external', 'message')
+  created_at DateTime @default(now())
+
+  // Relations
+  post PartycrewPost @relation(fields: [post_id], references: [id])
+  user UserProfile   @relation(fields: [user_id], references: [id])
+
+  @@index([post_id])
+  @@index([user_id])
+  @@map("post_shares")
+}
+
+// Notifications (20251101)
+model Notification {
+  id          String    @id @default(dbgenerated("gen_random_uuid()"))
+  user_id     String
+  type        String // CHECK: IN ('new_partycrew_member', 'event_invite', 'crew_rsvp', 'event_reminder', 'post_like', 'post_comment', 'post_share', 'new_post', 'connection_request')
+  title       String
+  body        String
+  actor_id    String? // references user_profiles(id) ON DELETE SET NULL
+  event_id    String? // references events(id) ON DELETE SET NULL
+  post_id     String? // references partycrew_posts(id) ON DELETE SET NULL
+  read        Boolean   @default(false)
+  clicked     Boolean   @default(false)
+  action_data Json?
+  created_at  DateTime  @default(now())
+  expires_at  DateTime?
+
+  // Relations
+  user  UserProfile    @relation("NotificationUser", fields: [user_id], references: [id])
+  actor UserProfile?   @relation("NotificationActor", fields: [actor_id], references: [id])
+  event Event?         @relation(fields: [event_id], references: [id])
+  post  PartycrewPost? @relation(fields: [post_id], references: [id])
+
+  @@index([user_id, read])
+  @@index([type])
+  @@index([expires_at])
+  @@map("notifications")
+}
+
+// Feed read status (20251101)
+model FeedReadStatus {
+  id        String   @id @default(dbgenerated("gen_random_uuid()"))
+  user_id   String
+  post_id   String
+  viewed_at DateTime @default(now())
+
+  // Relations
+  user UserProfile   @relation(fields: [user_id], references: [id])
+  post PartycrewPost @relation(fields: [post_id], references: [id])
+
+  @@unique([user_id, post_id])
+  @@index([user_id])
+  @@map("feed_read_status")
+}
+
+// Content interactions (20251101)
+model ContentInteraction {
+  id               String   @id @default(dbgenerated("gen_random_uuid()"))
+  user_id          String
+  post_id          String
+  interaction_type String // CHECK: IN ('view', 'like', 'comment', 'share', 'click', 'skip')
+  duration_seconds Int?
+  created_at       DateTime @default(now())
+
+  // Relations
+  user UserProfile   @relation(fields: [user_id], references: [id])
+  post PartycrewPost @relation(fields: [post_id], references: [id])
+
+  @@index([user_id])
+  @@index([post_id])
+  @@index([interaction_type])
+  @@map("content_interactions")
+}
+
+// ============================================================================
+// POLLS & VOTING (20251107)
+// ============================================================================
+
+// Polls — the 20251107 migration drops and recreates polls/poll_options/
+// poll_votes, replacing the earlier poll_votes table from the PartyCrew
+// social network migration.
+model Poll {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()"))
+  event_id                String
+  node_id                 String? // Optional reference to PartyBoard node
+  created_by              String // references auth.users(id) ON DELETE CASCADE
+  question                String
+  poll_type               String // CHECK: IN ('single-choice', 'multiple-choice', 'ranking')
+  ends_at                 DateTime?
+  auto_close_on_consensus Boolean   @default(false)
+  consensus_threshold     Int       @default(70) // CHECK: >= 50 AND <= 100
+  status                  String    @default("active") // CHECK: IN ('active', 'closed', 'consensus-reached')
+  created_at              DateTime  @default(now())
+  closed_at               DateTime?
+
+  // Relations
+  event   Event        @relation(fields: [event_id], references: [id])
+  creator User         @relation(fields: [created_by], references: [id])
+  options PollOption[]
+  votes   PollVote[]
+
+  @@index([event_id])
+  @@index([created_by])
+  @@index([status])
+  @@map("polls")
+}
+
+// Poll options (20251107)
+model PollOption {
+  id          String   @id @default(dbgenerated("gen_random_uuid()"))
+  poll_id     String
+  text        String
+  description String?
+  created_at  DateTime @default(now())
+
+  // Relations
+  poll  Poll       @relation(fields: [poll_id], references: [id])
+  votes PollVote[]
+
+  @@index([poll_id])
+  @@map("poll_options")
+}
+
+// Poll votes (20251107) — replaces the earlier PartyCrew poll_votes table
+model PollVote {
+  id        String   @id @default(dbgenerated("gen_random_uuid()"))
+  poll_id   String
+  user_id   String // references auth.users(id) ON DELETE CASCADE
+  option_id String
+  voted_at  DateTime @default(now())
+
+  // Relations
+  poll   Poll       @relation(fields: [poll_id], references: [id])
+  user   User       @relation(fields: [user_id], references: [id])
+  option PollOption @relation(fields: [option_id], references: [id])
+
+  @@unique([poll_id, user_id, option_id])
+  @@index([poll_id])
+  @@index([user_id])
+  @@index([option_id])
+  @@map("poll_votes")
+}
+
+// ============================================================================
+// GUEST-TO-CREW FEATURES (20251103)
+// ============================================================================
+
+// Event invite tokens (for QR codes and shareable links)
+model EventInviteToken {
+  id               String    @id @default(dbgenerated("gen_random_uuid()"))
+  event_id         String
+  token            String    @unique
+  token_type       String // CHECK: IN ('guest_join', 'crew_invite', 'guest_and_crew')
+  max_uses         Int? // CHECK: max_uses IS NULL OR max_uses > 0
+  current_uses     Int       @default(0)
+  expires_at       DateTime?
+  created_by       String // references auth.users(id)
+  created_at       DateTime  @default(now())
+  last_used_at     DateTime?
+  is_active        Boolean   @default(true)
+  allowed_emails   String[] // Whitelist of emails (null = anyone)
+  require_approval Boolean   @default(false)
+  uses_log         Json      @default("[]") // Array of { user_id, timestamp, ip }
+  // CHECK: current_uses <= COALESCE(max_uses, current_uses)
+
+  // Relations
+  event   Event @relation(fields: [event_id], references: [id])
+  creator User  @relation("TokenCreator", fields: [created_by], references: [id])
+
+  @@index([event_id])
+  @@map("event_invite_tokens")
+}
+
+// Cost split requests (tracks individual payments)
+model CostSplitRequest {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()"))
+  event_id            String
+  guest_id            String
+  amount              Decimal   @db.Decimal(10, 2) // CHECK: amount > 0
+  currency            String    @default("USD")
+  description         String?
+  status              String    @default("pending") // CHECK: IN ('pending', 'sent', 'paid', 'overdue', 'cancelled', 'refunded')
+  payment_method      String?
+  payment_reference   String?
+  paid_at             DateTime?
+  reminder_sent_count Int       @default(0)
+  last_reminder_at    DateTime?
+  created_by          String // references auth.users(id)
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @default(now()) @updatedAt
+  due_date            DateTime?
+  admin_notes         String?
+  guest_notes         String?
+
+  // Relations
+  event   Event @relation(fields: [event_id], references: [id])
+  guest   Guest @relation(fields: [guest_id], references: [id])
+  creator User  @relation("CostSplitCreator", fields: [created_by], references: [id])
+
+  @@index([event_id])
+  @@index([guest_id])
+  @@index([status])
+  @@map("cost_split_requests")
+}
+
+// Guest-to-crew conversions (audit trail)
+model GuestCrewConversion {
+  id                String   @id @default(dbgenerated("gen_random_uuid()"))
+  event_id          String
+  guest_id          String
+  user_id           String // references auth.users(id) ON DELETE CASCADE
+  converted_by      String // references auth.users(id)
+  conversion_type   String // CHECK: IN ('host_promoted', 'guest_accepted', 'auto_mutual')
+  connection_id     String? // references connections(id) ON DELETE SET NULL
+  connection_status String? // CHECK: IN ('pending', 'accepted', 'declined')
+  created_at        DateTime @default(now())
+
+  // Relations
+  event             Event       @relation(fields: [event_id], references: [id])
+  guest             Guest       @relation(fields: [guest_id], references: [id])
+  user              User        @relation("ConversionUser", fields: [user_id], references: [id])
+  converted_by_user User        @relation("ConversionByUser", fields: [converted_by], references: [id])
+  connection        Connection? @relation(fields: [connection_id], references: [id])
+
+  @@unique([guest_id, user_id])
+  @@index([event_id])
+  @@index([guest_id])
+  @@index([user_id])
+  @@map("guest_crew_conversions")
+}
+
+// Event cost split summary (denormalized, one row per event)
+model EventCostSummary {
+  event_id           String   @id // references events(id) ON DELETE CASCADE
+  total_event_cost   Decimal  @default(0) @db.Decimal(10, 2)
+  total_collected    Decimal  @default(0) @db.Decimal(10, 2)
+  total_pending      Decimal  @default(0) @db.Decimal(10, 2)
+  total_overdue      Decimal  @default(0) @db.Decimal(10, 2)
+  guests_with_splits Int      @default(0)
+  guests_paid        Int      @default(0)
+  guests_pending     Int      @default(0)
+  split_enabled      Boolean  @default(false)
+  split_method       String? // CHECK: IN ('equal', 'custom', 'percentage')
+  currency           String?  @default("USD")
+  updated_at         DateTime @default(now()) @updatedAt
+
+  // Relations
+  event Event @relation(fields: [event_id], references: [id])
+
+  @@map("event_cost_summaries")
+}
+
+// ============================================================================
+// DATABASE RPC FUNCTIONS (documented — not managed by Prisma)
+// ============================================================================
+//
+// The following PostgreSQL functions are called as RPCs from the application
+// layer. They exist in the database but Prisma cannot define raw SQL
+// functions in the schema. They must be created via raw migrations.
+//
+// 1. generate_invite_token() RETURNS TEXT
+//    Generates a unique invite token string: 'inv_' || uuid without dashes.
+//    Source: 20251103_guest_crew_features.sql
+//
+// 2. increment_token_usage(token_input TEXT, user_id_input UUID) RETURNS BOOLEAN
+//    Atomically increments usage count for an invite token, validates
+//    active/expiry/max_uses, and appends to uses_log JSONB array.
+//    Source: 20251103_guest_crew_features.sql
+//
+// 3. convert_guest_to_crew(p_guest_id UUID, p_converted_by UUID,
+//    p_conversion_type TEXT DEFAULT 'host_promoted') RETURNS UUID
+//    Promotes an event guest to a host's crew member: creates a connection
+//    row and logs the conversion in guest_crew_conversions. Returns the
+//    new connection_id.
+//    Source: 20251103_guest_crew_features.sql
+//
+// 4. get_mutual_crew_count(user1 UUID, user2 UUID) RETURNS INTEGER
+//    Returns the count of users that both user1 and user2 follow (mutual
+//    crew overlap). Uses INTERSECT on connections.following_id.
+//    Source: 20251101_partycrew_social_network.sql
+//
+// 5. is_following(follower UUID, following UUID) RETURNS BOOLEAN
+//    Checks if `follower` follows `following`.
+//    Source: 20251101_partycrew_social_network.sql
+//
+// 6. is_mutual_crew(user1 UUID, user2 UUID) RETURNS BOOLEAN
+//    Checks if user1 and user2 mutually follow each other.
+//    Source: 20251101_partycrew_social_network.sql
+//
+// 7. is_invite_token_valid(token_input TEXT) RETURNS BOOLEAN
+//    Checks if an invite token is active, not expired, and under max_uses.
+//    Source: 20251103_guest_crew_features.sql
+//
+// 8. check_poll_consensus() RETURNS TRIGGER
+//    Trigger function: after a poll vote, checks if consensus threshold is
+//    met and auto-closes the poll if so.
+//    Source: 20251107_polls_feature.sql
+//
+// 9. update_event_cost_summary() RETURNS TRIGGER
+//    Trigger function: recalculates event_cost_summaries after cost_split_
+//    requests change.
+//    Source: 20251103_guest_crew_features.sql
+//
+// 10. increment_template_usage() RETURNS TRIGGER
+//     Trigger function: increments templates.usage_count after a new
+//     template_usage row is inserted.
+//     Source: 20251021175558_add_event_templates_system.sql
+//
+// 11. handle_new_user_profile() RETURNS TRIGGER
+//     Trigger function: auto-creates a user_profiles row when a new auth
+//     user is registered. Generates a unique username from email.
+//     Source: 20260623_auto_create_user_profiles.sql
+//
+// ============================================================================
+// VIEWS (documented — not managed by Prisma)
+// ============================================================================
+//
+// email_analytics — aggregated email delivery metrics per event.
+//   Columns: event_id, event_name, total_emails_sent, delivered_count,
+//   opened_count, clicked_count, bounced_count, failed_count, delivery_rate,
+//   open_rate, click_rate.
+//   Source: 20250914120000_email_tracking.sql
+// ============================================================================

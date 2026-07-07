@@ -1,5 +1,18 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
+
+// Mock the centralized API base URL helper so we can control the resolved
+// email endpoint without depending on Vite env var stubbing quirks.
+vi.mock('@/lib/apiBase', () => ({
+  apiUrl: vi.fn((path: string) => {
+    // Default: same-origin. Tests override this per-case via the mock below.
+    const base = (import.meta.env as any).VITE_API_URL || '';
+    return base ? `${base.replace(/\/+$/, '')}${path.startsWith('/') ? path : `/${path}`}` : path;
+  }),
+  getApiBaseUrl: vi.fn(() => (import.meta.env as any).VITE_API_URL || ''),
+}));
+
 import { sendEmail, emailTemplates } from '@/lib/email';
+import { apiUrl } from '@/lib/apiBase';
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -7,14 +20,16 @@ global.fetch = vi.fn();
 describe('Email Service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Reset environment variable for each test
     vi.stubEnv('NODE_ENV', 'test');
+    // VITE_API_URL is not a predeclared Vite env var; assign directly.
+    (import.meta.env as any).VITE_API_URL = '';
   });
 
   describe('sendEmail', () => {
-    it('should send email successfully in production', async () => {
-      vi.stubEnv('NODE_ENV', 'production');
-      
+    it('should send email successfully (same-origin when VITE_API_URL unset)', async () => {
+      (import.meta.env as any).VITE_API_URL = '';
+      (apiUrl as Mock).mockImplementation((path: string) => path);
+
       const mockResponse = {
         ok: true,
         json: () => Promise.resolve({ success: true, data: { id: 'email-123' } })
@@ -29,20 +44,20 @@ describe('Email Service', () => {
 
       const result = await sendEmail(emailData);
 
-      expect(fetch).toHaveBeenCalledWith('/api/email', {
+      expect(fetch).toHaveBeenCalledWith('/api/send-email', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(emailData),
       });
-      
+
       expect(result).toEqual({ success: true, data: { id: 'email-123' } });
     });
 
-    it('should use localhost in development', async () => {
-      vi.stubEnv('NODE_ENV', 'development');
-      
+    it('should use VITE_API_URL when set (e.g. localhost dev server)', async () => {
+      (apiUrl as Mock).mockReturnValue('http://localhost:3001/api/send-email');
+
       const mockResponse = {
         ok: true,
         json: () => Promise.resolve({ success: true })
@@ -102,9 +117,9 @@ describe('Email Service', () => {
         date: 'December 31, 2024',
         location: '123 Party Street, Fun City'
       };
-      
+
       const invitationUrl = 'https://partyhaus.app/invite/abc123';
-      
+
       const template = emailTemplates.eventInvitation(
         'guest@example.com',
         eventDetails,
@@ -126,9 +141,9 @@ describe('Email Service', () => {
         date: 'December 31, 2024',
         location: '123 Party Street, Fun City'
       };
-      
+
       const invitationUrl = 'https://partyhaus.app/invite/abc123';
-      
+
       const template = emailTemplates.eventInvitation(
         'guest@example.com',
         eventDetails,
@@ -145,9 +160,9 @@ describe('Email Service', () => {
         date: 'December 31, 2024',
         location: '123 Party Street, Fun City'
       };
-      
+
       const invitationUrl = 'https://partyhaus.app/invite/abc123';
-      
+
       const template = emailTemplates.eventInvitation(
         'guest@example.com',
         eventDetails,
@@ -163,9 +178,9 @@ describe('Email Service', () => {
         date: 'December 31, 2024',
         location: '123 Main St. <Apt 4B>, Fun City'
       };
-      
+
       const invitationUrl = 'https://partyhaus.app/invite/abc123';
-      
+
       const template = emailTemplates.eventInvitation(
         'guest@example.com',
         eventDetails,
@@ -187,7 +202,7 @@ describe('Email Service', () => {
         date: 'December 31, 2024',
         location: '123 Party Street, Fun City'
       };
-      
+
       const template = emailTemplates.rsvpConfirmation(
         'guest@example.com',
         eventDetails,
@@ -209,7 +224,7 @@ describe('Email Service', () => {
         date: 'December 31, 2024',
         location: '123 Party Street, Fun City'
       };
-      
+
       const template = emailTemplates.eventReminder(
         'guest@example.com',
         eventDetails,
@@ -230,7 +245,7 @@ describe('Email Service', () => {
         date: 'December 31, 2024',
         location: '123 Party Street, Fun City'
       };
-      
+
       const template = emailTemplates.eventReminder(
         'guest@example.com',
         eventDetails,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { StickyItem, CreateNoteData, CreateIdeaData, UpdateStickyPosition, CanvasStats } from '../types';
 import { DEFAULT_STICKY_SIZE, STICKY_COLORS } from '../constants';
+import { getApiBaseUrl } from '@/lib/apiBase';
 
 interface UsePartyBoardOptions {
   eventId: string;
@@ -12,8 +13,8 @@ export const usePartyBoard = ({ eventId, sessionId, autoRefresh = false }: UsePa
   const [stickies, setStickies] = useState<StickyItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+
+  const API_BASE = getApiBaseUrl();
 
   // Fetch stickies for the event/session
   const fetchStickies = useCallback(async () => {
