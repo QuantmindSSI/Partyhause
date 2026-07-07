@@ -19,28 +19,34 @@ let redirectHandled = false;
 function getInstance(): PublicClientApplication | null {
   if (!isMsalConfigured || !msalConfig) return null;
   if (!msalInstance) {
-    msalInstance = new PublicClientApplication(msalConfig);
-    // Handle the redirect promise returned from login/logout redirects.
-    // Must be called once on app initialization.
-    if (!redirectHandled) {
-      redirectHandled = true;
-      msalInstance
-        .handleRedirectPromise()
-        .then((response: AuthenticationResult | null) => {
-          if (response) {
-            msalInstance?.setActiveAccount(response.account);
-          }
-        })
-        .catch((err) => {
-          console.warn('MSAL handleRedirectPromise error:', err);
-        });
+    try {
+      msalInstance = new PublicClientApplication(msalConfig);
+      // Handle the redirect promise returned from login/logout redirects.
+      // Must be called once on app initialization.
+      if (!redirectHandled) {
+        redirectHandled = true;
+        msalInstance
+          .handleRedirectPromise()
+          .then((response: AuthenticationResult | null) => {
+            if (response) {
+              msalInstance?.setActiveAccount(response.account);
+            }
+          })
+          .catch((err) => {
+            console.warn('MSAL handleRedirectPromise error:', err);
+          });
+      }
+    } catch (err) {
+      console.error('MSAL initialization failed:', err);
+      msalInstance = null;
     }
   }
   return msalInstance;
 }
 
-// Eagerly initialize so the redirect promise is handled on module load.
-getInstance();
+// NOTE: Do NOT eagerly initialize MSAL at module load time. The initialization
+// is deferred to the first call of getInstance() (lazy) so that if the CIAM
+// tenant or user flow is not yet configured, the app doesn't crash on load.
 
 /** Returns true if MSAL env vars are set and the client can be used. */
 export function isMsalReady(): boolean {
