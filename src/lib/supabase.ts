@@ -1,71 +1,120 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+// Supabase has been fully replaced by the Express API + JWT auth.
+// This file provides backward-compatible exports so existing imports still work.
+// The `supabase` export is a minimal stub; no Supabase SDK is needed.
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
+const TOKEN_KEY = 'partyhause_auth_token';
+const USER_KEY = 'partyhause_auth_user';
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+export const isSupabaseConfigured = false;
 
-// Lazy-init: don't throw at module load if creds are missing. This lets the
-// PWA shell load (landing page, static content) even when Supabase isn't
-// configured. Auth/data features will surface a user-facing error instead
-// of crashing the entire app with a blank screen.
-let _client: SupabaseClient | null = null;
-
-function getClient(): SupabaseClient {
-  if (_client) return _client;
-  if (!isSupabaseConfigured) {
-    throw new Error(
-      'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, ' +
-      'or wait for the Azure migration to complete.'
-    );
-  }
-  _client = createClient(supabaseUrl, supabaseAnonKey);
-  return _client;
+export function getStoredToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
 }
 
-// Proxy that lazily creates the client on first property access.
-export const supabase = new Proxy({} as SupabaseClient, {
-  get(_target, prop) {
-    return Reflect.get(getClient(), prop);
-  },
-}) as SupabaseClient;
+export function setStoredToken(token: string | null): void {
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+}
 
-// Type definitions for our database tables
-export type Tables = {
-  events: {
-    id: string;
-    host_id: string;
-    name: string;
-    event_date: string;
-    location: string;
-    spotify_playlist_url: string;
-    active_game_id: string | null;
-    created_at: string;
-  };
-  guests: {
-    id: string;
-    event_id: string;
-    name: string;
-    email: string;
-    is_checked_in: boolean;
-    created_at: string;
-  };
-  games: {
-    id: string;
-    event_id: string;
-    type: string;
-    settings: Record<string, unknown>;
-    content: Record<string, unknown>;
-    order_index: number;
-    created_at: string;
-  };
-  game_sessions: {
-    id: string;
-    game_id: string;
-    status: 'pending' | 'active' | 'completed';
-    current_round: number;
-    scores: Record<string, number>;
-    created_at: string;
-    updated_at: string;
-  };
+export function getStoredUser(): { id: string; email: string; name?: string } | null {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredUser(user: { id: string; email: string; name?: string } | null): void {
+  if (user) {
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+  } else {
+    localStorage.removeItem(USER_KEY);
+  }
+}
+
+export function clearAuth(): void {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
+// Backward-compatible stub — no Supabase SDK at all
+export const supabase = {
+  auth: {
+    getSession: async () => {
+      const token = getStoredToken();
+      const user = getStoredUser();
+      if (!token || !user) return { data: { session: null } };
+      return {
+        data: {
+          session: {
+            access_token: token,
+            user,
+          },
+        },
+      };
+    },
+    getUser: async () => {
+      const user = getStoredUser();
+      return { data: { user } };
+    },
+    signOut: async () => {
+      clearAuth();
+      return { error: null };
+    },
+    signInWithPassword: async () => {
+      return { data: { user: null }, error: new Error('Use authService.signIn() instead') };
+    },
+    signUp: async () => {
+      return { data: { user: null }, error: new Error('Use authService.signUp() instead') };
+    },
+    resetPasswordForEmail: async () => {
+      return { error: new Error('Use authService.resetPassword() instead') };
+    },
+    verifyOtp: async () => {
+      return { error: new Error('Use authService.verifyEmail() instead') };
+    },
+    onAuthStateChange: () => {
+      return { data: { subscription: { unsubscribe: () => {} } } };
+    },
+    updateUser: async () => {
+      return { data: { user: null }, error: null };
+    },
+  },
+  from: () => ({
+    select: () => ({
+      eq: () => ({
+        single: async () => ({ data: null, error: new Error('Direct DB queries disabled — use API') }),
+        order: () => ({
+          limit: () => Promise.resolve({ data: [], error: null }),
+        }),
+      }),
+      or: () => ({
+        order: () => Promise.resolve({ data: [], error: null }),
+      }),
+      in: () => ({
+        order: () => Promise.resolve({ data: [], error: null }),
+      }),
+      order: () => Promise.resolve({ data: [], error: null }),
+    }),
+    insert: () => ({
+      select: () => ({
+        single: async () => ({ data: null, error: new Error('Direct DB queries disabled — use API') }),
+      }),
+    }),
+    update: () => ({
+      eq: () => ({
+        select: () => ({
+          single: async () => ({ data: null, error: new Error('Direct DB queries disabled — use API') }),
+        }),
+      }),
+    }),
+    delete: () => ({
+      eq: () => Promise.resolve({ data: null, error: null }),
+    }),
+    rpc: () => Promise.resolve({ data: null, error: new Error('RPC disabled — use API') }),
+  }),
 };

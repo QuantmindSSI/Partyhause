@@ -7,8 +7,15 @@ import express from 'express';
 import cors from 'cors';
 import { Resend } from 'resend';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Route imports
+import authRouter from './routes/auth';
 import eventsRouter from './routes/events';
 import guestsRouter from './routes/guests';
 import timelineRouter from './routes/timeline';
@@ -129,6 +136,7 @@ app.post('/api/send-email', async (req, res) => {
 });
 
 // ===== API Routes =====
+app.use('/api/auth', authRouter);
 app.use('/api/events', eventsRouter);
 app.use('/api/guests', guestsRouter);
 app.use('/api/timeline', timelineRouter);
@@ -146,6 +154,22 @@ app.use('/api/ai', aiRouter);
 app.use('/api/email-logs', emailLogsRouter);
 app.use('/api/storage', storageRouter);
 app.use('/api/realtime', realtimeRouter);
+
+// Serve built static files from dist/ when present (local preview / combined mode)
+const distPath = path.resolve(__dirname, '../dist');
+if (fs.existsSync(distPath)) {
+  // Browser auto-requests /favicon.ico; serve the 32x32 PNG as fallback
+  app.get('/favicon.ico', (_req, res) => {
+    res.sendFile(path.join(distPath, 'icons', 'favicon-32x32.png'));
+  });
+
+  app.use(express.static(distPath));
+
+  // SPA fallback for client-side routes
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
 
 // 404 handler
 app.use('/api', (_req, res) => {

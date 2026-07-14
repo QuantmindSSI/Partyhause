@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { usePartyStore, type UserRole } from '@/store/usePartyStore';
-import { supabase } from '@/lib/supabase';
 import { Ticket, Sparkles, Briefcase, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -42,7 +41,6 @@ export const RoleSelection = () => {
     if (!selected || !user) return;
     setSaving(true);
     try {
-      await supabase.auth.updateUser({ data: { role: selected } });
       usePartyStore.getState().setUser({ ...user, role: selected });
       const page = selected === 'creator' ? 'creator-dashboard'
                  : selected === 'vendor'  ? 'vendor-dashboard'

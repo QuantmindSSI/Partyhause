@@ -37,10 +37,6 @@ env:
 #   POSTGRES_ADMIN_PASSWORD    — PostgreSQL cluster admin password (Bicep @secure param)
 #   RESEND_API_KEY             — Resend API key (API container secret)
 #   RESEND_FROM_EMAIL          — verified Resend sending address (e.g. "PartyHause <noreply@partyhause.com>")
-#   SUPABASE_URL               — Supabase project URL (API container, transitional)
-#   SUPABASE_SERVICE_ROLE_KEY  — Supabase service role key (API container secret, transitional)
-#   VITE_SUPABASE_URL          — Supabase project URL (baked into web bundle at build time)
-#   VITE_SUPABASE_ANON_KEY     — Supabase anon key (baked into web bundle at build time)
 #   ENTRA_API_CLIENT_SECRET    — Entra External ID (B2C) API app client secret (Bicep @secure param)
 #
 # Optional (only needed for first provision or infra changes):
@@ -142,8 +138,6 @@ jobs:
             --image partyhause-web:latest \
             --image partyhause-web:${{ env.IMAGE_TAG }} \
             --file Dockerfile \
-            --build-arg VITE_SUPABASE_URL="${{ secrets.VITE_SUPABASE_URL }}" \
-            --build-arg VITE_SUPABASE_ANON_KEY="${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
             --build-arg VITE_API_URL="${{ env.API_PUBLIC_URL }}" \
             --build-arg VITE_APP_NAME="PartyHause" \
             --build-arg VITE_APP_URL="${{ env.WEB_PUBLIC_URL }}" \
@@ -184,7 +178,7 @@ jobs:
           imageToDeploy: ${{ env.ACR_LOGIN_SERVER }}/partyhause-api:${{ env.IMAGE_TAG }}
           targetPort: 3001
           ingress: external
-          environmentVariables: "RESEND_API_KEY=secretref:RESEND_API_KEY RESEND_FROM_EMAIL=${{ secrets.RESEND_FROM_EMAIL }} RESEND_FROM_NAME=PartyHause SUPABASE_URL=${{ secrets.SUPABASE_URL }} SUPABASE_SERVICE_ROLE_KEY=secretref:SUPABASE_SERVICE_ROLE_KEY CORS_ALLOWED_ORIGINS=${{ env.WEB_PUBLIC_URL }} PORT=3001"
+          environmentVariables: "RESEND_API_KEY=secretref:RESEND_API_KEY RESEND_FROM_EMAIL=${{ secrets.RESEND_FROM_EMAIL }} RESEND_FROM_NAME=PartyHause CORS_ALLOWED_ORIGINS=${{ env.WEB_PUBLIC_URL }} PORT=3001"
 
       - name: Health check (API)
         # Poll the API /api/health endpoint and fail the workflow if it does

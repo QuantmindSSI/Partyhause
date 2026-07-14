@@ -57,6 +57,7 @@ vi.mock('@/lib/supabase', () => ({
       signOut: vi.fn(() => Promise.resolve({ error: null })),
       getSession: vi.fn(),
       onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
+      updateUser: vi.fn(),
     },
     from: vi.fn(() => ({
       select: vi.fn(() => ({
@@ -85,6 +86,12 @@ vi.mock('@/lib/supabase', () => ({
       })),
     })),
   },
+  isSupabaseConfigured: false,
+  getStoredToken: vi.fn(),
+  setStoredToken: vi.fn(),
+  getStoredUser: vi.fn(),
+  setStoredUser: vi.fn(),
+  clearAuth: vi.fn(),
 }));
 
 describe('Party Store', () => {
