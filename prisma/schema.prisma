@@ -65,14 +65,17 @@ enum PriceTier {
 // LEGACY TABLES
 // ============================================================================
 
-// Legacy users table — mirrors auth.users rows. After Entra migration this
-// table may be deprecated in favor of user_profiles.
+// Users table — stores auth + profile data. Replaces Supabase auth.users.
+// Password hash stored for local auth; can be null for SSO/OAuth users.
 model User {
-  id         String   @id // references auth.users(id) ON DELETE CASCADE
-  email      String
-  name       String?
-  created_at DateTime @default(now())
-  updated_at DateTime @default(now()) @updatedAt
+  id                  String   @id @default(dbgenerated("gen_random_uuid()"))
+  email               String   @unique
+  name                String?
+  password_hash       String?
+  reset_token         String?  @unique
+  reset_token_expires DateTime?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @default(now()) @updatedAt
 
   // Relations
   events                  Event[]               @relation("UserHostedEvents")

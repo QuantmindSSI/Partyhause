@@ -14,8 +14,15 @@ vi.mock('@/lib/supabase', () => ({
       signOut: vi.fn(),
       getSession: vi.fn(),
       onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
+      updateUser: vi.fn(),
     },
   },
+  isSupabaseConfigured: false,
+  getStoredToken: vi.fn(),
+  setStoredToken: vi.fn(),
+  getStoredUser: vi.fn(),
+  setStoredUser: vi.fn(),
+  clearAuth: vi.fn(),
 }));
 
 describe('Error Handling', () => {

@@ -1,12 +1,5 @@
 name: CI
 
-# Continuous integration for pull requests and non-main pushes.
-# Runs lint, typecheck, build, and tests. Does NOT deploy — the deploy.yml
-# workflow handles build + deploy on push to main.
-#
-# Azure Container Apps is the active deployment target. Netlify/Vercel
-# deployment has been discontinued (see git history for the removed jobs).
-
 on:
   pull_request:
     branches: [main]
@@ -21,8 +14,6 @@ concurrency:
 
 env:
   NODE_VERSION: '20'
-  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
 jobs:
   build-and-test:
@@ -49,9 +40,3 @@ jobs:
 
       - name: Run tests
         run: npm run test:run
-
-      - name: Migration smoke-test (optional)
-        # Only runs if Supabase credentials are available (set on the repo
-        # for PRs from the same repo; skipped for forked PRs).
-        if: ${{ env.SUPABASE_SERVICE_ROLE_KEY != '' }}
-        run: npm run smoke-test:migration

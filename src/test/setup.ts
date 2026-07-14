@@ -64,50 +64,82 @@ React.createElement = (type: any, props: any, ...children: any[]) => {
   }
 }
 
-// Mock Supabase
+// Mock Supabase — post-migration: stubs that use localStorage for token storage
 vi.mock('@/lib/supabase', () => {
-  // Helper to create a chainable from(...) mock that resolves maybeSingle/single/order etc.
-  const makeFrom = () => {
-    const maybeSingle = vi.fn(async () => ({ data: null, error: null }));
-    const single = vi.fn(async () => ({ data: null, error: null }));
-    const order = vi.fn(() => ({ maybeSingle, single }));
+  const TOKEN_KEY = 'partyhause_auth_token';
+  const USER_KEY = 'partyhause_auth_user';
 
-    const eq = vi.fn(() => ({ maybeSingle, single, order }));
-    const select = vi.fn(() => ({ eq, insert: vi.fn(async () => ({ data: null, error: null })), update: vi.fn(() => ({ eq })) , delete: vi.fn(() => ({ eq })) }));
-
-    const from = vi.fn(() => ({ select }));
-
-    return { from, _internals: { maybeSingle, single, eq, select, order } };
+  const getStoredToken = () => localStorage.getItem(TOKEN_KEY);
+  const setStoredToken = (token: string | null) => {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
   };
-
-  const chain = makeFrom();
+  const getStoredUser = () => {
+    try {
+      const raw = localStorage.getItem(USER_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  };
+  const setStoredUser = (user: any) => {
+    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+    else localStorage.removeItem(USER_KEY);
+  };
+  const clearAuth = () => {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+  };
 
   return {
     supabase: {
       auth: {
+        getSession: async () => {
+          const token = getStoredToken();
+          const user = getStoredUser();
+          return { data: { session: token && user ? { access_token: token, user } : null } };
+        },
+        getUser: async () => ({ data: { user: getStoredUser() } }),
+        signOut: async () => { clearAuth(); return { error: null }; },
         signInWithPassword: vi.fn().mockResolvedValue({ data: { user: null, session: null }, error: null }),
         signUp: vi.fn().mockResolvedValue({ data: { user: null, session: null }, error: null }),
-        signOut: vi.fn().mockResolvedValue({ error: null }),
-        getSession: vi.fn().mockResolvedValue({ data: { session: null }, error: null }),
         onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
+        updateUser: async () => ({ data: { user: null }, error: null }),
+        resetPasswordForEmail: async () => ({ error: null }),
+        verifyOtp: async () => ({ error: null }),
       },
-      from: chain.from,
-      // expose internals for tests to override if needed
-      __mockChain: chain._internals,
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            single: async () => ({ data: null, error: new Error('disabled') }),
+            order: () => ({ limit: () => Promise.resolve({ data: [], error: null }) }),
+          }),
+          or: () => ({ order: () => Promise.resolve({ data: [], error: null }) }),
+          order: () => Promise.resolve({ data: [], error: null }),
+        }),
+        insert: () => ({ select: () => ({ single: async () => ({ data: null, error: new Error('disabled') }) }) }),
+        update: () => ({ eq: () => ({ select: () => ({ single: async () => ({ data: null, error: new Error('disabled') }) }) }) }),
+        delete: () => ({ eq: () => Promise.resolve({ data: null, error: null }) }),
+        rpc: () => Promise.resolve({ data: null, error: new Error('disabled') }),
+      }),
     },
+    isSupabaseConfigured: false,
+    getStoredToken,
+    setStoredToken,
+    getStoredUser,
+    setStoredUser,
+    clearAuth,
   };
 })
 
-// Mock localStorage
-const localStorageMock = {
-  getItem: vi.fn(),
-  setItem: vi.fn(),
-  removeItem: vi.fn(),
-  clear: vi.fn(),
+// Real localStorage for jsdom (used by supabase stub for token storage)
+let store: Record<string, string> = {};
+global.localStorage = {
+  getItem: (key: string) => store[key] ?? null,
+  setItem: (key: string, value: string) => { store[key] = value; },
+  removeItem: (key: string) => { delete store[key]; },
+  clear: () => { store = {}; },
   length: 0,
-  key: vi.fn(),
-}
-global.localStorage = localStorageMock as any
+  key: (_index: number) => null,
+} as any
 
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
@@ -221,6 +253,10 @@ vi.mock('lucide-react', () => ({
   EyeOff: ({ ...props }: any) => React.createElement('svg', props),
   CheckCircle: ({ ...props }: any) => React.createElement('svg', props),
   CheckCircle2: ({ ...props }: any) => React.createElement('svg', props),
+  Ticket: ({ ...props }: any) => React.createElement('svg', props),
+  Bot: ({ ...props }: any) => React.createElement('svg', props),
+  Send: ({ ...props }: any) => React.createElement('svg', props),
+  Briefcase: ({ ...props }: any) => React.createElement('svg', props),
 }))
 
 // Mock UI components to prevent undefined component errors

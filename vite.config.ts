@@ -30,26 +30,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-cache',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 24 // 24 hours
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
-            }
-          },
-          {
-            urlPattern: /^https:\/\/api\.mailersend\.com\/.*/i,
-            handler: 'NetworkOnly'
-          }
-        ],
+        runtimeCaching: [],
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true
@@ -97,7 +78,6 @@ export default defineConfig({
           'react-vendor': ['react', 'react-dom'],
           'router-vendor': ['react-router-dom'],
           'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu'],
-          'supabase-vendor': ['@supabase/supabase-js'],
         },
       }
     },
@@ -108,7 +88,6 @@ export default defineConfig({
       'react',
       'react-dom',
       'react-router-dom',
-      '@supabase/supabase-js',
     ]
   },
 })

@@ -1,8 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { eventService } from '@/lib/events';
-import { supabase } from '@/lib/supabase';
+import { clearAuth } from '@/lib/supabase';
 import type { TimelineBlock } from '@/features/timeline/types';
 
 export type UserRole = 'user' | 'creator' | 'vendor';
@@ -242,9 +241,7 @@ export const usePartyStore = create<PartyState>()(
           loadedEventIds: new Set<string>()
         });
         
-        supabase.auth.signOut().catch(e => {
-          console.warn('Logout: Supabase sign out failed:', e);
-        });
+        clearAuth();
       },
     }),
     {
