@@ -1,4 +1,6 @@
-import { Configuration } from '@azure/msal-browser';
+// Type-only import — erased at build time so @azure/msal-browser stays out
+// of the bundle until src/lib/msal.ts dynamically imports it.
+import type { Configuration } from '@azure/msal-browser';
 
 /**
  * MSAL configuration for Microsoft Entra External ID (CIAM).

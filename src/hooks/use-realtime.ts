@@ -3,17 +3,22 @@
 // Realtime subscriptions via Azure Web PubSub (replaces Supabase Realtime).
 //
 // On mount the hook calls GET /api/realtime/negotiate to obtain a Web PubSub
-// connection URL, then connects with socket.io-client. It listens for the
-// following server-broadcast events and refreshes the relevant store data:
+// connection URL, then connects with a NATIVE WebSocket using the
+// `json.webpubsub.azure.v1` subprotocol. The server broadcasts JSON envelopes
+// `{ event, data }` via sendToAll (server/lib/pubsub.ts); the subprotocol
+// wraps them as `{ type: 'message', from: 'server', dataType: 'json', data }`.
 //
+// Handled events:
 //   'event-updated'    -> refetch the user's events list
 //   'guest-updated'    -> refetch guests for the current event
 //   'poll-updated'     -> (forwarded; consumers can refetch polls)
 //   'timeline-updated' -> (forwarded; consumers can refetch timeline)
 //
-// If Web PubSub is not configured (the negotiate endpoint returns 503 / no
-// url), the hook degrades to a no-op so the rest of the app keeps working.
-// Reconnection is handled by socket.io-client's built-in retry logic.
+// Failure model (all paths degrade to polling — never to a dead UI):
+//   - negotiate unavailable/unconfigured  -> polling
+//   - socket errors/closes                -> bounded exponential backoff
+//     reconnects (MAX_RECONNECT_ATTEMPTS), polling is active the whole time
+//     the socket is down, and permanently once attempts are exhausted.
 
 // Add global type for cleanup
 declare global {
@@ -23,7 +28,6 @@ declare global {
 }
 
 import { useEffect, useRef } from 'react';
-import { io, type Socket } from 'socket.io-client';
 import { usePartyStore } from '@/store/usePartyStore';
 import { eventService } from '@/lib/events';
 import { apiGet } from '@/lib/api-client';
@@ -42,16 +46,22 @@ interface NegotiateResponse {
   configured?: boolean;
 }
 
+const WEBPUBSUB_SUBPROTOCOL = 'json.webpubsub.azure.v1';
+const POLL_INTERVAL_MS = 30_000;
+const MAX_RECONNECT_ATTEMPTS = 8; // bounded: ~1s,2s,4s,...,30s capped
+const RECONNECT_BASE_DELAY_MS = 1_000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
+
 export const useRealtimeSubscriptions = (eventId?: string) => {
   const { setGuests, addGuest, updateGuest, setEvents, user } = usePartyStore();
-  const socketRef = useRef<Socket | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!user) return;
 
     let cancelled = false;
-    let socket: Socket | null = null;
 
     const refreshEvents = async () => {
       const events = await eventService.getUserEvents(user.id);
@@ -96,68 +106,123 @@ export const useRealtimeSubscriptions = (eventId?: string) => {
       }
     };
 
-    const setup = async () => {
-      // 1. Negotiate a Web PubSub connection URL.
-      let negotiateUrl: string | null = null;
+    const startPolling = () => {
+      if (cancelled || pollingRef.current) return;
+      if (!eventId) return;
+      pollingRef.current = setInterval(() => {
+        refreshGuests(eventId);
+      }, POLL_INTERVAL_MS);
+    };
+
+    const stopPolling = () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+
+    const negotiate = async (): Promise<string | null> => {
       try {
         const { data, error } = await apiGet<NegotiateResponse>('/api/realtime/negotiate');
-        if (!error && data?.url) {
-          negotiateUrl = data.url;
-        }
+        if (!error && data?.url) return data.url;
       } catch (err) {
         console.warn('[realtime] negotiate failed:', err);
       }
+      return null;
+    };
 
-      if (cancelled || !negotiateUrl) {
+    const scheduleReconnect = (attempt: number) => {
+      if (cancelled) return;
+      // While the socket is down, poll so the UI keeps updating.
+      startPolling();
+      if (attempt > MAX_RECONNECT_ATTEMPTS) {
+        console.warn('[realtime] max reconnect attempts reached — staying on polling');
+        return;
+      }
+      const delay = Math.min(
+        RECONNECT_BASE_DELAY_MS * 2 ** (attempt - 1),
+        RECONNECT_MAX_DELAY_MS,
+      );
+      reconnectTimerRef.current = setTimeout(async () => {
+        if (cancelled) return;
+        // Re-negotiate: the previous access token may have expired.
+        const freshUrl = await negotiate();
+        if (cancelled) return;
+        if (freshUrl) {
+          connectSocket(freshUrl, attempt);
+        } else {
+          scheduleReconnect(attempt + 1);
+        }
+      }, delay);
+    };
+
+    const connectSocket = (url: string, attempt: number) => {
+      if (cancelled) return;
+      let ws: WebSocket;
+      try {
+        ws = new WebSocket(url, WEBPUBSUB_SUBPROTOCOL);
+      } catch (err) {
+        console.warn('[realtime] WebSocket construction failed:', err);
+        scheduleReconnect(attempt + 1);
+        return;
+      }
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        // Live channel established — polling is redundant while connected.
+        stopPolling();
+      };
+
+      ws.onmessage = (msg: MessageEvent) => {
+        try {
+          const frame = JSON.parse(String(msg.data));
+          // Native subprotocol frames: system frames have type 'system';
+          // data frames are { type: 'message', from, dataType, data }.
+          // A raw-WebSocket (no subprotocol) delivery would be the envelope
+          // itself — handle both shapes.
+          const envelope = frame?.type === 'message' ? frame.data : frame;
+          if (envelope && typeof envelope.event === 'string') {
+            handleEvent(envelope.event as RealtimeEvent, envelope.data);
+          }
+        } catch {
+          // Non-JSON frame — ignore.
+        }
+      };
+
+      ws.onclose = () => {
+        wsRef.current = null;
+        if (!cancelled) {
+          scheduleReconnect(attempt + 1);
+        }
+      };
+
+      ws.onerror = () => {
+        // onclose fires after onerror; reconnection is handled there.
+        try {
+          ws.close();
+        } catch {
+          // Already closing/closed.
+        }
+      };
+    };
+
+    const setup = async () => {
+      // 1. Negotiate a Web PubSub connection URL.
+      const negotiateUrl = await negotiate();
+
+      if (cancelled) return;
+
+      if (!negotiateUrl) {
         // Web PubSub not configured / unavailable — fall back to light polling
         // for guests so the UI still updates without a manual refresh.
-        if (!cancelled && eventId) {
-          pollingRef.current = setInterval(() => {
-            refreshGuests(eventId);
-          }, 30_000);
-        }
+        startPolling();
         return;
       }
 
-      // 2. Connect with socket.io-client using the negotiate URL.
-      // The negotiate URL already contains the access token. We pass the
-      // socket.io hub path so the service routes the connection to the
-      // "partyhause" hub.
-      socket = io(negotiateUrl, {
-        path: '/clients/socketio/hubs/partyhause',
-        transports: ['websocket'],
-        reconnection: true,
-        reconnectionAttempts: Infinity,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 10_000,
-      });
-      socketRef.current = socket;
+      // 2. Connect with a native WebSocket (json.webpubsub.azure.v1).
+      connectSocket(negotiateUrl, 0);
 
-      socket.on('connect', () => {
-        // Connection established; nothing else to do — listeners below handle
-        // inbound events.
-      });
-
-      socket.on('disconnect', (reason: string) => {
-        console.warn('[realtime] disconnected:', reason);
-      });
-
-      socket.on('connect_error', (err: Error) => {
-        console.warn('[realtime] connect_error:', err?.message);
-      });
-
-      // 3. Listen for server-broadcast events.
-      const events: RealtimeEvent[] = [
-        'event-updated',
-        'guest-updated',
-        'poll-updated',
-        'timeline-updated',
-      ];
-      for (const e of events) {
-        socket.on(e, (payload: any) => handleEvent(e, payload));
-      }
-
-      // 4. Initial fetch of guests for the current event (mirrors the old hook).
+      // 3. Initial fetch of guests for the current event (mirrors the old hook).
       const initialEventId = eventId || usePartyStore.getState().currentEvent?.id;
       if (initialEventId) {
         refreshGuests(initialEventId);
@@ -166,25 +231,23 @@ export const useRealtimeSubscriptions = (eventId?: string) => {
 
     setup();
 
-    // Expose a global cleanup for logout.
-    window.__partyhausCleanupRealtime = () => {
+    const cleanup = () => {
       cancelled = true;
-      socket?.disconnect();
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
       }
+      wsRef.current?.close();
+      wsRef.current = null;
+      stopPolling();
     };
 
+    // Expose a global cleanup for logout.
+    window.__partyhausCleanupRealtime = cleanup;
+
     return () => {
-      cancelled = true;
-      socket?.disconnect();
-      socketRef.current = null;
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-      if (window.__partyhausCleanupRealtime) {
+      cleanup();
+      if (window.__partyhausCleanupRealtime === cleanup) {
         window.__partyhausCleanupRealtime = undefined;
       }
     };

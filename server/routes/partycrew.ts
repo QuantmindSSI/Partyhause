@@ -17,8 +17,10 @@ router.get('/members', requireAuth, async (req: AuthenticatedRequest, res: Respo
   try {
     const userId = req.user!.id;
     const targetUserId = req.query.userId as string;
-    const limit = Math.min(parseInt((req.query.limit as string) || '20'), 100);
-    const offset = parseInt((req.query.offset as string) || '0');
+    const parsedLimit = parseInt((req.query.limit as string) || '20', 10);
+    const limit = Math.min(Math.max(Number.isNaN(parsedLimit) ? 20 : parsedLimit, 1), 100);
+    const parsedOffset = parseInt((req.query.offset as string) || '0', 10);
+    const offset = Math.max(Number.isNaN(parsedOffset) ? 0 : parsedOffset, 0);
 
     if (!targetUserId) {
       return res.status(400).json({ error: 'Missing userId parameter' });
@@ -34,18 +36,31 @@ router.get('/members', requireAuth, async (req: AuthenticatedRequest, res: Respo
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Privacy check - if private and not showing crew list and not self
-    if (targetProfile.is_private && !targetProfile.show_partycrew_list && targetUserId !== userId) {
-      const isFollowing = await prisma.connection.findFirst({
-        where: { follower_id: userId, following_id: targetUserId },
-        select: { id: true },
-      });
-
-      if (!isFollowing) {
+    // Privacy: two INDEPENDENT gates (the old conjunction leaked private
+    // accounts' member lists whenever show_partycrew_list kept its default
+    // `true`, and gave public accounts with the list hidden zero protection).
+    if (targetUserId !== userId) {
+      // Gate 1: hidden member list — owner only, regardless of privacy.
+      if (!targetProfile.show_partycrew_list) {
         return res.status(403).json({
-          error: 'This account is private',
-          message: 'Join their PartyCrew to see their members',
+          error: 'This member list is hidden',
+          message: 'The owner has hidden their PartyCrew list',
         });
+      }
+
+      // Gate 2: private account — followers only.
+      if (targetProfile.is_private) {
+        const isFollowing = await prisma.connection.findFirst({
+          where: { follower_id: userId, following_id: targetUserId },
+          select: { id: true },
+        });
+
+        if (!isFollowing) {
+          return res.status(403).json({
+            error: 'This account is private',
+            message: 'Join their PartyCrew to see their members',
+          });
+        }
       }
     }
 
@@ -112,13 +127,38 @@ router.get('/members', requireAuth, async (req: AuthenticatedRequest, res: Respo
       followed_at: conn.created_at,
     }));
 
-    // Optionally get mutual crew count for each member
-    if (req.query.include_mutual_count === 'true') {
-      for (const member of members) {
-        const result = await prisma.$queryRaw<{ count: number }[]>`
-          SELECT get_mutual_crew_count(${userId}::uuid, ${member.id}::uuid) AS count
-        `;
-        member.mutual_crew_count = Number(result[0]?.count) || 0;
+    // Optionally get mutual crew count for each member.
+    // Computed in two queries (viewer's following set + one grouped count)
+    // instead of the previous per-member `get_mutual_crew_count(::uuid)` RPC
+    // loop — which was an N+1 AND type-incompatible with the prisma-pushed
+    // TEXT id columns. Semantics match the SQL INTERSECT definition:
+    // |following(viewer) ∩ following(member)|.
+    if (req.query.include_mutual_count === 'true' && members.length > 0) {
+      const viewerFollowing = await prisma.connection.findMany({
+        where: { follower_id: userId },
+        select: { following_id: true },
+      });
+      const viewerFollowingIds = viewerFollowing.map((c) => c.following_id);
+
+      if (viewerFollowingIds.length > 0) {
+        const grouped = await prisma.connection.groupBy({
+          by: ['follower_id'],
+          where: {
+            follower_id: { in: members.map((m) => m.id) },
+            following_id: { in: viewerFollowingIds },
+          },
+          _count: { following_id: true },
+        });
+        const countByMember = new Map(
+          grouped.map((g) => [g.follower_id, g._count.following_id]),
+        );
+        members.forEach((m) => {
+          m.mutual_crew_count = countByMember.get(m.id) || 0;
+        });
+      } else {
+        members.forEach((m) => {
+          m.mutual_crew_count = 0;
+        });
       }
     }
 
@@ -145,8 +185,10 @@ router.get('/crewing-with', requireAuth, async (req: AuthenticatedRequest, res: 
   try {
     const userId = req.user!.id;
     const targetUserId = req.query.userId as string;
-    const limit = Math.min(parseInt((req.query.limit as string) || '20'), 100);
-    const offset = parseInt((req.query.offset as string) || '0');
+    const parsedLimit = parseInt((req.query.limit as string) || '20', 10);
+    const limit = Math.min(Math.max(Number.isNaN(parsedLimit) ? 20 : parsedLimit, 1), 100);
+    const parsedOffset = parseInt((req.query.offset as string) || '0', 10);
+    const offset = Math.max(Number.isNaN(parsedOffset) ? 0 : parsedOffset, 0);
 
     if (!targetUserId) {
       return res.status(400).json({ error: 'Missing userId parameter' });
@@ -380,15 +422,23 @@ router.post('/toggle', requireAuth, async (req: AuthenticatedRequest, res: Respo
         where: { follower_id: userId, following_id: creatorId },
       });
 
-      // Also delete any pending requests
+      // Also delete any request rows so a future join starts clean
+      // (rejected/cancelled rows are unique-key tombstones otherwise).
       await prisma.connectionRequest.deleteMany({
         where: { requester_id: userId, target_id: creatorId },
+      });
+
+      // Re-read the trigger-maintained count instead of doing ±1 arithmetic
+      // on the pre-write value (stale under any concurrency).
+      const freshProfile = await prisma.userProfile.findUnique({
+        where: { id: creatorId },
+        select: { partycrew_count: true },
       });
 
       return res.status(200).json({
         success: true,
         action: 'left',
-        partycrew_count: Math.max((creator.partycrew_count || 0) - 1, 0),
+        partycrew_count: freshProfile?.partycrew_count ?? 0,
         message: `Left ${creator.display_name}'s PartyCrew`,
       });
     }
@@ -402,26 +452,31 @@ router.post('/toggle', requireAuth, async (req: AuthenticatedRequest, res: Respo
       });
     }
 
-    // Check for existing pending request
+    // Check for an existing request row of ANY status. Rejected/cancelled
+    // rows persist under the (requester_id, target_id) unique key — a bare
+    // create after one rejection used to throw P2002 → 500 forever.
     const existingRequest = await prisma.connectionRequest.findFirst({
       where: { requester_id: userId, target_id: creatorId },
       select: { id: true, status: true },
     });
 
-    if (existingRequest) {
-      if (existingRequest.status === 'pending') {
+    // PRIVATE ACCOUNT - Create (or revive) a request
+    if (creator.is_private) {
+      if (existingRequest?.status === 'pending') {
         return res.status(200).json({
           success: true,
           action: 'requested',
           message: `Request already pending for ${creator.display_name}'s PartyCrew`,
         });
       }
-    }
 
-    // PRIVATE ACCOUNT - Create request
-    if (creator.is_private) {
-      await prisma.connectionRequest.create({
-        data: {
+      // Upsert revives rejected/cancelled tombstones back to pending.
+      await prisma.connectionRequest.upsert({
+        where: {
+          requester_id_target_id: { requester_id: userId, target_id: creatorId },
+        },
+        update: { status: 'pending', message: null },
+        create: {
           requester_id: userId,
           target_id: creatorId,
           status: 'pending',
@@ -447,30 +502,63 @@ router.post('/toggle', requireAuth, async (req: AuthenticatedRequest, res: Respo
       });
     }
 
-    // PUBLIC ACCOUNT - Create connection immediately
-    await prisma.connection.create({
-      data: {
-        follower_id: userId,
-        following_id: creatorId,
-      },
-    });
+    // PUBLIC ACCOUNT - Create connection immediately.
+    // P2002 (concurrent double-join) is idempotent success, not a 500.
+    let alreadyJoined = false;
+    try {
+      await prisma.connection.create({
+        data: {
+          follower_id: userId,
+          following_id: creatorId,
+        },
+      });
+    } catch (createError: unknown) {
+      if (
+        createError &&
+        typeof createError === 'object' &&
+        'code' in createError &&
+        (createError as { code: string }).code === 'P2002'
+      ) {
+        alreadyJoined = true;
+      } else {
+        throw createError;
+      }
+    }
 
-    // Create notification for creator
-    await prisma.notification.create({
-      data: {
-        user_id: creatorId,
-        type: 'new_partycrew_member',
-        title: 'New PartyCrew Member! 🎉',
-        body: 'joined your PartyCrew',
-        actor_id: userId,
-      },
+    // If a pending request predates the account going public, resolve it.
+    if (existingRequest?.status === 'pending') {
+      await prisma.connectionRequest.update({
+        where: { id: existingRequest.id },
+        data: { status: 'accepted' },
+      });
+    }
+
+    if (!alreadyJoined) {
+      // Create notification for creator
+      await prisma.notification.create({
+        data: {
+          user_id: creatorId,
+          type: 'new_partycrew_member',
+          title: 'New PartyCrew Member! 🎉',
+          body: 'joined your PartyCrew',
+          actor_id: userId,
+        },
+      });
+    }
+
+    // Trigger-maintained count, re-read after the write.
+    const freshCreator = await prisma.userProfile.findUnique({
+      where: { id: creatorId },
+      select: { partycrew_count: true },
     });
 
     return res.status(200).json({
       success: true,
       action: 'joined',
-      partycrew_count: (creator.partycrew_count || 0) + 1,
-      message: `Joined ${creator.display_name}'s PartyCrew!`,
+      partycrew_count: freshCreator?.partycrew_count ?? 0,
+      message: alreadyJoined
+        ? `Already in ${creator.display_name}'s PartyCrew`
+        : `Joined ${creator.display_name}'s PartyCrew!`,
     });
   } catch (error: unknown) {
     console.error('[PartyCrew Toggle Error]:', error);
@@ -489,14 +577,29 @@ router.post('/toggle', requireAuth, async (req: AuthenticatedRequest, res: Respo
 router.get('/requests', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const limit = Math.min(parseInt((req.query.limit as string) || '20'), 100);
-    const offset = parseInt((req.query.offset as string) || '0');
+    const parsedLimit = parseInt((req.query.limit as string) || '20', 10);
+    const limit = Math.min(Math.max(Number.isNaN(parsedLimit) ? 20 : parsedLimit, 1), 100);
+    const parsedOffset = parseInt((req.query.offset as string) || '0', 10);
+    const offset = Math.max(Number.isNaN(parsedOffset) ? 0 : parsedOffset, 0);
     const type = (req.query.type as string) || 'received';
+
+    if (type !== 'received' && type !== 'sent') {
+      return res.status(400).json({ error: "type must be 'received' or 'sent'" });
+    }
 
     const where = {
       status: 'pending' as string,
       ...(type === 'received' ? { target_id: userId } : { requester_id: userId }),
     };
+
+    const profileSelect = {
+      id: true,
+      username: true,
+      display_name: true,
+      avatar_url: true,
+      is_verified: true,
+      bio: true,
+    } as const;
 
     const [requests, totalCount] = await Promise.all([
       prisma.connectionRequest.findMany({
@@ -507,16 +610,11 @@ router.get('/requests', requireAuth, async (req: AuthenticatedRequest, res: Resp
           created_at: true,
           requester_id: true,
           target_id: true,
-          requester: {
-            select: {
-              id: true,
-              username: true,
-              display_name: true,
-              avatar_url: true,
-              is_verified: true,
-              bio: true,
-            },
-          },
+          // For received requests the interesting party is the requester;
+          // for sent requests it is the target (the previous version
+          // returned N copies of the caller's own profile for type=sent).
+          requester: { select: profileSelect },
+          target: { select: profileSelect },
         },
         orderBy: { created_at: 'desc' },
         skip: offset,
@@ -525,19 +623,24 @@ router.get('/requests', requireAuth, async (req: AuthenticatedRequest, res: Resp
       prisma.connectionRequest.count({ where }),
     ]);
 
-    const formattedRequests = requests.map((r) => ({
-      id: r.id,
-      requester: {
-        id: r.requester.id,
-        username: r.requester.username,
-        display_name: r.requester.display_name,
-        avatar_url: r.requester.avatar_url,
-        is_verified: r.requester.is_verified,
-        bio: r.requester.bio,
-      },
-      message: r.message,
-      created_at: r.created_at,
-    }));
+    const formattedRequests = requests.map((r) => {
+      const counterpart = type === 'received' ? r.requester : r.target;
+      return {
+        id: r.id,
+        // Kept under the `requester` key for backward compatibility with
+        // existing clients; semantically it is "the other party".
+        requester: {
+          id: counterpart.id,
+          username: counterpart.username,
+          display_name: counterpart.display_name,
+          avatar_url: counterpart.avatar_url,
+          is_verified: counterpart.is_verified,
+          bio: counterpart.bio,
+        },
+        message: r.message,
+        created_at: r.created_at,
+      };
+    });
 
     return res.status(200).json({
       requests: formattedRequests,
@@ -576,7 +679,11 @@ router.post('/requests', requireAuth, async (req: AuthenticatedRequest, res: Res
       return res.status(404).json({ error: 'Request not found or already processed' });
     }
 
-    // Create the connection
+    // Create the connection. P2002 means the connection already exists
+    // (e.g. requester followed while the account was public) — that is an
+    // acceptance, not an error: the request must still be marked accepted,
+    // otherwise it stays pending in the inbox forever and every re-accept
+    // fails the same way.
     try {
       await prisma.connection.create({
         data: {
@@ -585,17 +692,15 @@ router.post('/requests', requireAuth, async (req: AuthenticatedRequest, res: Res
         },
       });
     } catch (error) {
-      // Check if already exists (P2002 = unique constraint violation)
-      if (
+      const isDuplicate =
         error &&
         typeof error === 'object' &&
         'code' in error &&
-        (error as { code: string }).code === 'P2002'
-      ) {
-        return res.status(400).json({ error: 'Connection already exists' });
+        (error as { code: string }).code === 'P2002';
+      if (!isDuplicate) {
+        console.error('[Create Connection Error]:', error);
+        return res.status(500).json({ error: 'Failed to create connection' });
       }
-      console.error('[Create Connection Error]:', error);
-      return res.status(500).json({ error: 'Failed to create connection' });
     }
 
     // Update request status
@@ -662,7 +767,9 @@ router.delete('/requests', requireAuth, async (req: AuthenticatedRequest, res: R
       data: { status: newStatus },
     });
 
-    // Optionally create notification if rejected (not cancelled)
+    // Optionally create notification if rejected (not cancelled).
+    // NOTE: `reason` is the rejecter's private note — it is deliberately NOT
+    // copied into the requester-visible notification payload.
     if (isRejection && reason) {
       await prisma.notification.create({
         data: {
@@ -671,7 +778,7 @@ router.delete('/requests', requireAuth, async (req: AuthenticatedRequest, res: R
           title: 'Request Not Accepted',
           body: 'Your PartyCrew request was not accepted',
           actor_id: userId,
-          action_data: { request_id: requestId, reason },
+          action_data: { request_id: requestId },
         },
       });
     }

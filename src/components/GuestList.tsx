@@ -67,7 +67,7 @@ export const GuestList = ({ eventId }: GuestListProps) => {
     
     // Check for duplicate email in this event
     const existingGuest = eventGuests.find(guest => 
-      guest.email.toLowerCase() === newGuest.email.toLowerCase()
+      (guest.email || '').toLowerCase() === newGuest.email.toLowerCase()
     );
     
     if (existingGuest) {
@@ -291,7 +291,7 @@ export const GuestList = ({ eventId }: GuestListProps) => {
               <TableCell>{guest.name}</TableCell>
               <TableCell>{guest.email}</TableCell>
               <TableCell>
-                {guest.status === 'checked_in' ? (
+                {guest.checked_in ? (
                   <span className="flex items-center text-green-500">
                     <UserCheck className="mr-2 h-4 w-4" />
                     Checked In

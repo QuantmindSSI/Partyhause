@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { supabase } from '@/lib/supabase';
+import { apiUrl } from '@/lib/apiBase';
 
 interface Event {
   id: string;
@@ -75,7 +76,8 @@ export function JoinEventPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
 
-      const response = await fetch('/api/join-event', {
+      // Express endpoint (the old /api/join-event was a deleted Vercel fn).
+      const response = await fetch(apiUrl('/api/invites/join'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -100,9 +102,10 @@ export function JoinEventPage() {
       if (data.show_crew_prompt && !addToCrew) {
         setShowCrewModal(true);
       } else {
-        // Show success message briefly, then navigate
+        // Show success message briefly, then go home — the app's event UI is
+        // driven by store state, there is no /events/:id URL route.
         setTimeout(() => {
-          navigate(`/events/${data.event.id}`);
+          navigate('/');
         }, 2000);
       }
     } catch (error) {

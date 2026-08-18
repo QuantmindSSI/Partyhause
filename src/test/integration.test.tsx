@@ -89,6 +89,16 @@ describe('User Creation + Event Creation Integration Tests', () => {
       });
 
       render(<EventCreation />);
+
+      // Step 1 of the creation flow is the AI planner.
+      expect(screen.getByRole('heading', { name: /ai event planner/i })).toBeInTheDocument();
+
+      // Backing out of the AI step lands on manual template selection.
+      fireEvent.click(screen.getByRole('button', { name: /back/i }));
+      expect(screen.getByText(/choose your event template/i)).toBeInTheDocument();
+
+      // Skipping templates lands on the classic creation form.
+      fireEvent.click(screen.getByText(/skip templates and create from scratch/i));
       expect(screen.getByText(/create new event/i)).toBeInTheDocument();
     });
 
@@ -108,14 +118,20 @@ describe('User Creation + Event Creation Integration Tests', () => {
 
       render(<EventCreation />);
 
-      // Find form inputs
-      const eventNameInput = screen.getByLabelText(/event name/i);
-      const locationInput = screen.getByLabelText(/location/i);
+      // Navigate past the AI planner and template-selection steps to reach the form.
+      fireEvent.click(screen.getByRole('button', { name: /back/i }));
+      fireEvent.click(screen.getByText(/skip templates and create from scratch/i));
 
-      // Test input changes
+      // Find form inputs
+      const eventNameInput = screen.getByLabelText(/event name/i) as HTMLInputElement;
+      const locationInput = screen.getByLabelText(/^location/i) as HTMLInputElement;
+
+      // Test input changes propagate to controlled inputs
       fireEvent.change(eventNameInput, { target: { value: 'Test Party' } });
       fireEvent.change(locationInput, { target: { value: 'Test Venue' } });
 
+      expect(eventNameInput.value).toBe('Test Party');
+      expect(locationInput.value).toBe('Test Venue');
     });
   });
 

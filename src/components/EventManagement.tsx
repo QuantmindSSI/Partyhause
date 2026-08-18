@@ -58,7 +58,7 @@ export const EventManagement = () => {
   });
 
   const eventGuests = currentEvent ? guests.filter(guest => guest.event_id === currentEvent.id) : [];
-  const checkedInCount = eventGuests.filter(guest => (guest as any).is_checked_in).length;
+  const checkedInCount = eventGuests.filter(guest => guest.checked_in).length;
 
   if (isLoading) {
     return (
@@ -340,9 +340,11 @@ export const EventManagement = () => {
               setEditError(null);
               setIsUpdatingEvent(true);
 
-              const startDateTime = `${editForm.start_date}T${editForm.start_time}:00`;
+              // Interpret the naive local datetime in the browser's timezone
+              // and send a UTC instant (the API parses dates in UTC).
+              const startDateTime = new Date(`${editForm.start_date}T${editForm.start_time}:00`).toISOString();
               const effectiveEndDate = requiresEndDate ? editForm.end_date : editForm.start_date;
-              const endDateTime = `${effectiveEndDate}T${editForm.end_time}:00`;
+              const endDateTime = new Date(`${effectiveEndDate}T${editForm.end_time}:00`).toISOString();
 
               try {
                 const updates = {

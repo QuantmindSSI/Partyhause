@@ -68,36 +68,43 @@ export const AuthScreen = ({
       }
     }, []);
 
-    // Real-time validation
+    // Real-time validation.
+    // Password minimum is 8 — the API rejects anything shorter
+    // (server/routes/auth.ts), so a 6-char client rule just deferred the
+    // failure to a confusing post-submit error.
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const MIN_PASSWORD = 8;
+
     useEffect(() => {
       const errors: Record<string, string> = {};
-      
-      if (email && !email.includes('@')) {
+
+      if (email && !EMAIL_RE.test(email)) {
         errors.email = 'Please enter a valid email address';
       }
-      
-      if (password && password.length < 6) {
-        errors.password = 'Password must be at least 6 characters';
+
+      if (password && password.length < MIN_PASSWORD) {
+        errors.password = `Password must be at least ${MIN_PASSWORD} characters`;
       }
-      
+
       if (!isLogin && name && name.trim().length < 2) {
         errors.name = 'Name must be at least 2 characters';
       }
 
       setValidationErrors(errors);
       setIsFormValid(
-        email.includes('@') && 
-        password.length >= 6 && 
+        EMAIL_RE.test(email) &&
+        password.length >= MIN_PASSWORD &&
         (isLogin || name.trim().length >= 2)
       );
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [email, password, name, isLogin]);
 
     const validateForm = () => {
-      if (password.length < 6) {
-        throw new Error('Password must be at least 6 characters long');
-      }
-      if (!email.includes('@')) {
+      if (!EMAIL_RE.test(email)) {
         throw new Error('Please enter a valid email address');
+      }
+      if (password.length < MIN_PASSWORD) {
+        throw new Error(`Password must be at least ${MIN_PASSWORD} characters long`);
       }
       if (!isLogin && !name.trim()) {
         throw new Error('Please enter your name');

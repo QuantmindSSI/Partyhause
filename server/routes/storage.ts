@@ -17,11 +17,64 @@ import {
   SASProtocol,
 } from '@azure/storage-blob';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
 
 // All storage routes require authentication.
 router.use(requireAuth);
+
+// ----- Blob-name safety ------------------------------------------------------
+
+/**
+ * Sanitize a client-supplied blob path segment: only word chars, dot, dash.
+ * Rejects traversal-ish ('..') and empty segments by returning null.
+ */
+function sanitizeSegment(segment: string): string | null {
+  const cleaned = segment.trim();
+  if (!cleaned || cleaned === '.' || cleaned === '..') return null;
+  if (!/^[A-Za-z0-9._-]+$/.test(cleaned)) return null;
+  return cleaned;
+}
+
+/**
+ * Sanitize a client-supplied blob path (may contain '/' separators).
+ * Returns null when any segment is invalid.
+ */
+function sanitizeBlobPath(path: string): string | null {
+  const segments = path.split('/').filter((s) => s.length > 0);
+  if (segments.length === 0) return null;
+  const cleaned: string[] = [];
+  for (const seg of segments) {
+    const ok = sanitizeSegment(seg);
+    if (!ok) return null;
+    cleaned.push(ok);
+  }
+  return cleaned.join('/');
+}
+
+/**
+ * Ownership check for delete/SAS: a caller may operate on a blob when
+ *   (a) the blob lives under their own user-id prefix (`<userId>/...`), or
+ *   (b) the blob follows the legacy root convention `<eventId>_invite.<ext>`
+ *       and the caller hosts that event.
+ */
+async function callerOwnsBlob(blobName: string, userId: string): Promise<boolean> {
+  const firstSegment = blobName.split('/')[0];
+  if (firstSegment === userId) return true;
+
+  // Legacy root-level names: <eventId>_invite.<ext>
+  const legacyMatch = /^([^/]+)_invite\.[A-Za-z0-9]+$/.exec(blobName);
+  if (legacyMatch) {
+    const event = await prisma.event.findUnique({
+      where: { id: legacyMatch[1] },
+      select: { host_id: true },
+    });
+    return event?.host_id === userId;
+  }
+
+  return false;
+}
 
 // ----- Configuration -------------------------------------------------------
 
@@ -122,14 +175,24 @@ router.post(
       }
 
       const eventId = (req.body.eventId as string | undefined)?.trim();
-      const folder = (req.body.folder as string | undefined)?.trim();
-      const userId = req.user?.id;
+      const folderRaw = (req.body.folder as string | undefined)?.trim();
+      const userId = req.user!.id;
 
       // Build a unique blob name. Prefer the caller-supplied name, otherwise
       // derive one from the original filename + timestamp.
-      const requestedName = (req.body.fileName as string | undefined)?.trim();
+      const requestedNameRaw = (req.body.fileName as string | undefined)?.trim();
+
+      const requestedName = requestedNameRaw ? sanitizeBlobPath(requestedNameRaw) : null;
+      if (requestedNameRaw && !requestedName) {
+        return res.status(400).json({ success: false, error: 'Invalid fileName' });
+      }
+      const folder = folderRaw ? sanitizeBlobPath(folderRaw) : null;
+      if (folderRaw && !folder) {
+        return res.status(400).json({ success: false, error: 'Invalid folder' });
+      }
+
       const ext =
-        file.originalname.split('.').pop()?.toLowerCase() ||
+        sanitizeSegment(file.originalname.split('.').pop()?.toLowerCase() || '') ||
         file.mimetype.split('/')[1] ||
         'jpg';
 
@@ -139,17 +202,20 @@ router.post(
       } else {
         const stamp = Date.now();
         const rand = Math.random().toString(36).slice(2, 8);
-        const base = eventId
-          ? `${eventId}_invite`
+        const base = eventId && sanitizeSegment(eventId)
+          ? `${sanitizeSegment(eventId)}_invite`
           : `invite_${stamp}_${rand}`;
         blobName = `${base}.${ext}`;
       }
 
-      // Apply optional folder prefix (e.g. user id) for organization.
-      if (folder) {
-        blobName = `${folder.replace(/^\/+|\/+$/g, '')}/${blobName}`;
-      } else if (userId && !requestedName) {
-        // Default: namespace by user id when no explicit folder/name given.
+      // Namespace every upload under the CALLER's user id so one user cannot
+      // overwrite another user's blobs by guessing their fileName. A folder
+      // equal to the caller's id is collapsed (the standard client sends
+      // folder=<own user id>); any other folder nests INSIDE the caller's
+      // namespace.
+      if (folder && folder !== userId) {
+        blobName = `${userId}/${folder}/${blobName}`;
+      } else {
         blobName = `${userId}/${blobName}`;
       }
 
@@ -188,9 +254,18 @@ router.post(
  */
 router.delete('/:blobName', async (req: AuthenticatedRequest, res) => {
   try {
-    const blobName = decodeURIComponent(req.params.blobName);
+    // Express has already URL-decoded the param once — decoding again would
+    // corrupt names containing literal % sequences.
+    const blobName = req.params.blobName;
     if (!blobName) {
       return res.status(400).json({ success: false, error: 'Missing blob name' });
+    }
+
+    // Only the owner (user-namespace or legacy event-host convention) may
+    // delete a blob — previously ANY authenticated user could delete ANY
+    // blob in the container.
+    if (!(await callerOwnsBlob(blobName, req.user!.id))) {
+      return res.status(403).json({ success: false, error: 'Not authorized to delete this blob' });
     }
 
     const containerClient = blobServiceClient().getContainerClient(
@@ -224,7 +299,8 @@ router.delete('/:blobName', async (req: AuthenticatedRequest, res) => {
  */
 router.get('/url/:blobName', async (req: AuthenticatedRequest, res) => {
   try {
-    const blobName = decodeURIComponent(req.params.blobName);
+    // Express has already URL-decoded the param once.
+    const blobName = req.params.blobName;
     if (!blobName) {
       return res.status(400).json({ success: false, error: 'Missing blob name' });
     }

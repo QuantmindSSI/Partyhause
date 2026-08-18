@@ -114,10 +114,13 @@ describe('Error Handling', () => {
 describe('Validation', () => {
   describe('Event Validation', () => {
     it('should validate valid event data', () => {
+      // event_date must be strictly in the future (eventSchema refinement) —
+      // compute it dynamically so the fixture never goes stale.
+      const futureDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
       const validEvent = {
         host_id: '123e4567-e89b-12d3-a456-426614174000',
         name: 'Test Event',
-        event_date: '2025-12-25T10:00:00Z',
+        event_date: futureDate,
         location: 'Test Location',
         spotify_playlist_url: 'https://open.spotify.com/playlist/test',
       };

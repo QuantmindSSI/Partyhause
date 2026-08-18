@@ -93,20 +93,17 @@ router.post('/join', optionalAuth, async (req: AuthenticatedRequest, res: Respon
       return res.status(400).json({ error: 'token required' });
     }
 
-    // Validate and increment token usage via RPC
-    const usageResult = await prisma.$queryRaw<{ valid: boolean }[]>`
-      SELECT increment_token_usage(${token}, ${user?.id || null}::uuid) AS valid
-    `;
-    const isValid = usageResult[0]?.valid;
-
-    if (!isValid) {
+    // Anonymous joins must self-identify — guests.name and guests.email are
+    // NOT NULL, so reject before consuming a token use.
+    if (!user && (!name || !email)) {
       return res.status(400).json({
-        error: 'Invalid or expired invite token',
-        code: 'TOKEN_INVALID',
+        error: 'name and email are required to join without an account',
       });
     }
 
-    // Get token details with event
+    // Get token details with event (read-only; usage is incremented later,
+    // after the idempotent "already joined" check, so re-scanning a QR code
+    // does not burn max_uses).
     const tokenData = await prisma.eventInviteToken.findUnique({
       where: { token },
       include: {
@@ -121,7 +118,8 @@ router.post('/join', optionalAuth, async (req: AuthenticatedRequest, res: Respon
     const event_id = tokenData.event_id;
     const token_type = tokenData.token_type;
 
-    // Check if user is already a guest
+    // Check if user is already a guest — must happen BEFORE the usage
+    // increment so repeat scans are idempotent and free.
     if (user) {
       const existingGuest = await prisma.guest.findFirst({
         where: {
@@ -140,14 +138,32 @@ router.post('/join', optionalAuth, async (req: AuthenticatedRequest, res: Respon
       }
     }
 
-    // Create guest entry
+    // Validate and atomically increment token usage via RPC
+    // (SELECT ... FOR UPDATE inside the function guards max_uses races).
+    const usageResult = await prisma.$queryRaw<{ valid: boolean }[]>`
+      SELECT increment_token_usage(${token}, ${user?.id || null}::uuid) AS valid
+    `;
+    const isValid = usageResult[0]?.valid;
+
+    if (!isValid) {
+      return res.status(400).json({
+        error: 'Invalid or expired invite token',
+        code: 'TOKEN_INVALID',
+      });
+    }
+
+    // Create guest entry. rsvp_status vocabulary is
+    // ('pending','accepted','declined','maybe') — see prisma/schema.prisma
+    // Guest.rsvp_status and the CHECK constraint in
+    // supabase/migrations/20251022000000_template_implementation_phase1.sql.
+    // Joining via invite link counts as accepting the invitation.
     const guest = await prisma.guest.create({
       data: {
         event_id,
-        name: user ? name || 'Guest' : name,
-        email: user?.email || email,
+        name: user ? name || user.name || 'Guest' : name,
+        email: user?.email || email || '',
         user_id: user?.id || null,
-        rsvp_status: tokenData.require_approval ? 'pending' : 'confirmed',
+        rsvp_status: tokenData.require_approval ? 'pending' : 'accepted',
         email_status: 'not_sent',
       },
     });

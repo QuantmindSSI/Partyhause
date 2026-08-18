@@ -9,6 +9,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { supabase } from '@/lib/supabase';
+import { apiUrl } from '@/lib/apiBase';
 
 interface Guest {
   id: string;
@@ -41,7 +42,9 @@ export function GuestListWithCrew({ guests, eventId, onGuestUpdated }: GuestList
     try {
       const { data: { session } } = await supabase.auth.getSession();
 
-      const response = await fetch('/api/convert-guest-to-crew', {
+      // Express endpoint (the old /api/convert-guest-to-crew was a deleted
+      // Vercel fn).
+      const response = await fetch(apiUrl('/api/invites/convert-guest'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -63,8 +66,8 @@ export function GuestListWithCrew({ guests, eventId, onGuestUpdated }: GuestList
       // Success - add to converted set
       setConvertedGuests(prev => new Set(prev).add(guest.id));
 
-      // Show success message
-      alert(`${data.connection.user_profiles.display_name || guest.name} has been added to your crew! 🎉`);
+      // Show success message (server returns connection.follower profile)
+      alert(`${data.connection?.follower?.display_name || guest.name} has been added to your crew! 🎉`);
 
       // Callback to refresh data if needed
       onGuestUpdated?.();

@@ -53,15 +53,14 @@ export default defineConfig({
       '/api': {
         target: process.env.API_TARGET || 'http://localhost:3001',
         changeOrigin: true,
-        configure: (proxy, options) => {
-          // Return 404 JSON for missing API routes instead of HTML
-          proxy.on('error', (err, req, res) => {
-            console.log('Proxy error:', err);
-            res.writeHead(404, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'API endpoint not found locally. Deploy to Vercel/Netlify to use serverless functions.' }));
-          });
-          proxy.on('proxyReq', (proxyReq, req, res) => {
-            console.log('Proxying:', req.method, req.url);
+        configure: (proxy, _options) => {
+          // Return JSON (not HTML) when the local API server is unreachable.
+          proxy.on('error', (err, _req, res) => {
+            console.log('Proxy error:', err.message);
+            if (!res.headersSent) {
+              res.writeHead(502, { 'Content-Type': 'application/json' });
+            }
+            res.end(JSON.stringify({ error: 'API server unreachable. Start it with: npm run server' }));
           });
         },
       },
@@ -74,14 +73,40 @@ export default defineConfig({
     target: 'esnext',
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
-          'router-vendor': ['react-router-dom'],
-          'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu'],
+        // Split stable vendor code from app code so app deploys don't bust
+        // the (large, rarely-changing) vendor caches. Page code is split per
+        // route via React.lazy in src/App.tsx.
+        manualChunks(id: string) {
+          // Lazy-only vendors get their own chunks so they never ride along
+          // in the eager 'vendor' bundle. These rules run FIRST so a
+          // package's commonjs-proxy virtual modules (\0-prefixed but still
+          // containing the package path) stay in the same chunk as the
+          // package — otherwise the proxy lands in eager vendor and drags
+          // the lazy chunk into the entry graph.
+          if (id.includes('@azure/msal-browser')) return 'msal-vendor';
+          if (id.includes('sanitize-html') || id.includes('htmlparser2') || id.includes('domhandler') || id.includes('domutils') || id.includes('dom-serializer') || id.includes('/entities/')) {
+            return 'sanitize-vendor';
+          }
+          if (id.includes('jsqr')) return 'qr-vendor';
+          // Rollup/Vite shared helper modules (preload helper, commonjs
+          // helpers) are used by many chunks — pin them to eager vendor.
+          if (id.startsWith('\0') || id.includes('commonjsHelpers') || id.includes('vite/preload-helper')) {
+            return 'vendor';
+          }
+          if (!id.includes('node_modules')) return undefined;
+          // Eager vendors, split for cache stability across deploys.
+          if (id.includes('react-router')) return 'router-vendor';
+          if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/scheduler/')) {
+            return 'react-vendor';
+          }
+          if (id.includes('framer-motion')) return 'motion-vendor';
+          if (id.includes('@radix-ui')) return 'radix-vendor';
+          if (id.includes('date-fns')) return 'date-vendor';
+          return 'vendor';
         },
       }
     },
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 700,
   },
   optimizeDeps: {
     include: [

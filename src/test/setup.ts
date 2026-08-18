@@ -209,55 +209,40 @@ vi.mock('@/components/ui/sonner', () => ({
   Toaster: () => React.createElement('div', { 'data-testid': 'toaster' }),
 }))
 
-// Mock lucide-react icons
-vi.mock('lucide-react', () => ({
-  LogOut: ({ ...props }: any) => React.createElement('svg', props),
-  Plus: ({ ...props }: any) => React.createElement('svg', props),
-  Calendar: ({ ...props }: any) => React.createElement('svg', props),
-  MapPin: ({ ...props }: any) => React.createElement('svg', props),
-  Music: ({ ...props }: any) => React.createElement('svg', props),
-  Users: ({ ...props }: any) => React.createElement('svg', props),
-  Mail: ({ ...props }: any) => React.createElement('svg', props),
-  Sparkles: ({ ...props }: any) => React.createElement('svg', props),
-  BookOpen: ({ ...props }: any) => React.createElement('svg', props),
-  Heart: ({ ...props }: any) => React.createElement('svg', props),
-  Share2: ({ ...props }: any) => React.createElement('svg', props),
-  Filter: ({ ...props }: any) => React.createElement('svg', props),
-  Search: ({ ...props }: any) => React.createElement('svg', props),
-  Coffee: ({ ...props }: any) => React.createElement('svg', props),
-  Lightbulb: ({ ...props }: any) => React.createElement('svg', props),
-  User: ({ ...props }: any) => React.createElement('svg', props),
-  Globe: ({ ...props }: any) => React.createElement('svg', props),
-  ArrowLeft: ({ ...props }: any) => React.createElement('svg', props),
-  ArrowRight: ({ ...props }: any) => React.createElement('svg', props),
-  QrCode: ({ ...props }: any) => React.createElement('svg', props),
-  Loader2: ({ ...props }: any) => React.createElement('svg', props),
-  Lock: ({ ...props }: any) => React.createElement('svg', props),
-  UserCheck: ({ ...props }: any) => React.createElement('svg', props),
-  UserX: ({ ...props }: any) => React.createElement('svg', props),
-  Copy: ({ ...props }: any) => React.createElement('svg', props),
-  Check: ({ ...props }: any) => React.createElement('svg', props),
-  Star: ({ ...props }: any) => React.createElement('svg', props),
-  Gamepad2: ({ ...props }: any) => React.createElement('svg', props),
-  Camera: ({ ...props }: any) => React.createElement('svg', props),
-  AlertCircle: ({ ...props }: any) => React.createElement('svg', props),
-  Clock: ({ ...props }: any) => React.createElement('svg', props),
-  PanelLeft: ({ ...props }: any) => React.createElement('svg', props),
-  ChevronLeft: ({ ...props }: any) => React.createElement('svg', props),
-  ChevronRight: ({ ...props }: any) => React.createElement('svg', props),
-  MoreHorizontal: ({ ...props }: any) => React.createElement('svg', props),
-  ChevronDown: ({ ...props }: any) => React.createElement('svg', props),
-  Circle: ({ ...props }: any) => React.createElement('svg', props),
-  X: ({ ...props }: any) => React.createElement('svg', props),
-  Eye: ({ ...props }: any) => React.createElement('svg', props),
-  EyeOff: ({ ...props }: any) => React.createElement('svg', props),
-  CheckCircle: ({ ...props }: any) => React.createElement('svg', props),
-  CheckCircle2: ({ ...props }: any) => React.createElement('svg', props),
-  Ticket: ({ ...props }: any) => React.createElement('svg', props),
-  Bot: ({ ...props }: any) => React.createElement('svg', props),
-  Send: ({ ...props }: any) => React.createElement('svg', props),
-  Briefcase: ({ ...props }: any) => React.createElement('svg', props),
-}))
+// Mock lucide-react icons.
+// Proxy-based so ANY icon name resolves to an svg stub — a hand-enumerated
+// list goes stale whenever a component starts using a new icon (previously
+// caused "No 'Bell' export is defined on the 'lucide-react' mock" crashes).
+vi.mock('lucide-react', () => {
+  const iconCache = new Map<string, (props: any) => React.ReactElement>();
+  const makeIcon = (name: string) => {
+    if (!iconCache.has(name)) {
+      iconCache.set(name, ({ ...props }: any) =>
+        React.createElement('svg', { 'data-lucide': name, ...props }),
+      );
+    }
+    return iconCache.get(name);
+  };
+  // NOTE: must NOT fabricate 'then' — a module namespace with a callable
+  // 'then' becomes a thenable and `await import()` hangs forever. Vitest
+  // checks `prop in mock` before reading, so `has` must return true for
+  // icon names or it reports "No export is defined on the mock".
+  const RESERVED = new Set(['then', 'catch', 'finally', 'toJSON']);
+  return new Proxy(
+    {},
+    {
+      get: (_target, prop: string | symbol) => {
+        if (prop === '__esModule') return true;
+        if (prop === 'default') return {};
+        if (typeof prop === 'symbol') return undefined;
+        if (RESERVED.has(prop)) return undefined;
+        return makeIcon(prop);
+      },
+      has: (_target, prop: string | symbol) =>
+        typeof prop === 'string' && !RESERVED.has(prop),
+    },
+  );
+})
 
 // Mock UI components to prevent undefined component errors
 vi.mock('@/components/ui/button', () => ({

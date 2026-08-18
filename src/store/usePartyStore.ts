@@ -47,7 +47,11 @@ export interface Guest {
   name: string;
   email?: string;
   phone?: string;
-  status: 'pending' | 'confirmed' | 'checked_in' | 'no_show';
+  // API rows carry rsvp_status + checked_in (see server/routes/guests.ts).
+  // `status` is a legacy client-side field kept optional for old call sites.
+  status?: 'pending' | 'confirmed' | 'checked_in' | 'no_show';
+  rsvp_status?: 'pending' | 'accepted' | 'declined' | 'maybe' | 'confirmed';
+  checked_in?: boolean;
   plus_ones: number;
   special_requirements?: string;
   checked_in_at?: string;
@@ -240,8 +244,14 @@ export const usePartyStore = create<PartyState>()(
           isLoading: false,
           loadedEventIds: new Set<string>()
         });
-        
-        clearAuth();
+
+        try {
+          clearAuth();
+        } catch (error) {
+          // Storage may be unavailable (e.g. disabled localStorage). In-memory
+          // state is already cleared above; logout must never throw.
+          console.error('Failed to clear stored auth credentials:', error);
+        }
       },
     }),
     {

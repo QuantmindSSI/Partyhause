@@ -1,8 +1,8 @@
 // server/routes/realtime.ts — Azure Web PubSub negotiate endpoint.
 //
 // GET /api/realtime/negotiate
-//   Returns a Web PubSub connection URL that the frontend uses with
-//   socket.io-client to establish a realtime connection. The authenticated
+//   Returns a native Web PubSub connection URL that the frontend uses with a
+//   plain WebSocket (json.webpubsub.azure.v1 subprotocol). The authenticated
 //   user's id is embedded in the token so connections can be filtered/ targeted
 //   by user on the server side.
 //
@@ -12,10 +12,9 @@
 import { Router } from 'express';
 import { WebPubSubServiceClient } from '@azure/web-pubsub';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { HUB_NAME } from '../lib/pubsub';
 
 const router = Router();
-
-const HUB_NAME = process.env.WEBPUBSUB_HUB || 'partyhause';
 
 // Cache the service client so we don't re-parse the connection string per request.
 let serviceClient: WebPubSubServiceClient | null = null;
@@ -56,11 +55,16 @@ router.get('/negotiate', requireAuth, async (req: AuthenticatedRequest, res) => 
 
     // Issue a client access token scoped to this user. The userId is embedded
     // in the token so the server can filter/target messages by user, and so
-    // connections are attributable. We request the socket.io client protocol
-    // so the returned URL is compatible with socket.io-client.
+    // connections are attributable.
+    //
+    // NATIVE protocol (default `/client/hubs/<hub>` URL): the frontend
+    // connects with a plain WebSocket + the `json.webpubsub.azure.v1`
+    // subprotocol and receives the `{event,data}` envelopes that
+    // server/lib/pubsub.ts broadcasts via sendToAll. (The previous
+    // `clientProtocol: 'socketio'` URL pointed clients at the Socket.IO
+    // gateway, which native sendToAll messages never reach.)
     const tokenResponse = await client.getClientAccessToken({
       userId,
-      clientProtocol: 'socketio',
       expirationTimeInMinutes: 60,
     });
 

@@ -105,11 +105,14 @@ export const EventCreation = () => {
     setIsSubmitting(true);
     setError(null);
 
-    // Calculate start and end dates - use proper ISO format
-    const startDateTime = `${formData.start_date}T${formData.start_time}:00`;
-    const endDateTime = formData.event_type === 'multi_day' 
-      ? `${formData.end_date}T${formData.end_time}:00`
-      : `${formData.start_date}T${formData.end_time}:00`;
+    // Calculate start and end dates. The naive `YYYY-MM-DDTHH:MM:00` string
+    // is interpreted in the BROWSER's local timezone by `new Date()`, then
+    // serialized as a UTC instant — without this the API (running in UTC)
+    // would shift every event time by the host's UTC offset.
+    const startDateTime = new Date(`${formData.start_date}T${formData.start_time}:00`).toISOString();
+    const endDateTime = formData.event_type === 'multi_day'
+      ? new Date(`${formData.end_date}T${formData.end_time}:00`).toISOString()
+      : new Date(`${formData.start_date}T${formData.end_time}:00`).toISOString();
 
     const newEvent = {
       host_id: user.id,
@@ -300,15 +303,12 @@ export const EventCreation = () => {
         const imageUrl = await uploadInviteImage(inviteFile, createdEvent.id);
         
         if (imageUrl) {
-          // Update the event with the invite image URL
-          const { supabase } = await import('@/lib/supabase');
-          const { error } = await supabase
-            .from('events')
-            .update({ 
-              invite_image_url: imageUrl,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', createdEvent.id);
+          // Update the event with the invite image URL via the Express API
+          // (the old supabase.from() stub always returned an error).
+          const { apiPut } = await import('@/lib/api-client');
+          const { error } = await apiPut(`/api/events/${createdEvent.id}`, {
+            invite_image_url: imageUrl,
+          });
 
           if (error) {
             console.error('Error updating event with invite image:', error);

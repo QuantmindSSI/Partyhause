@@ -7,6 +7,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
+import { SafeImage } from '@/components/ui/safe-image';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -140,7 +141,7 @@ export function ContentFeedCard({
         {post.media_urls && post.media_urls.length > 0 && (
           <div className="grid grid-cols-2 gap-2">
             {post.media_urls.slice(0, 4).map((url, index) => (
-              <img
+              <SafeImage
                 key={index}
                 src={url}
                 alt={`Media ${index + 1}`}

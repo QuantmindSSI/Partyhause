@@ -5,6 +5,11 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import {
+  getEventAccess,
+  canReadEvent,
+  canEditTimeline,
+} from '../lib/event-access';
 
 const router = Router();
 
@@ -20,8 +25,20 @@ router.get('/:eventId', async (req: AuthenticatedRequest, res) => {
       return res.status(400).json({ error: 'eventId required' });
     }
 
+    // RLS parity: hosts/co-hosts see ALL blocks; guests and public-event
+    // viewers see only guest_visible blocks; everyone else sees nothing.
+    const access = await getEventAccess(eventId, req.user!.id, req.user?.email);
+    if (!canReadEvent(access)) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const seesAllBlocks = canEditTimeline(access);
+
     const blocks = await prisma.timelineBlock.findMany({
-      where: { event_id: eventId },
+      where: {
+        event_id: eventId,
+        ...(seesAllBlocks ? {} : { guest_visible: true }),
+      },
       orderBy: { start_time: 'asc' },
     });
 
@@ -58,6 +75,12 @@ router.post('/', async (req: AuthenticatedRequest, res) => {
         error: 'Bad Request',
         message: 'eventId, label, startTime, duration, and type are required',
       });
+    }
+
+    // RLS parity: timeline writes = host or co-host.
+    const access = await getEventAccess(eventId, req.user!.id, req.user?.email);
+    if (!canEditTimeline(access)) {
+      return res.status(403).json({ error: 'Only the event host or co-hosts can edit the timeline' });
     }
 
     // Get max order_index for this event
@@ -120,6 +143,19 @@ router.put('/:id', async (req: AuthenticatedRequest, res) => {
       orderIndex,
     } = req.body;
 
+    // RLS parity: timeline writes = host or co-host of the block's event.
+    const existingBlock = await prisma.timelineBlock.findUnique({
+      where: { id },
+      select: { event_id: true },
+    });
+    if (!existingBlock) {
+      return res.status(404).json({ error: 'Timeline block not found' });
+    }
+    const access = await getEventAccess(existingBlock.event_id, req.user!.id, req.user?.email);
+    if (!canEditTimeline(access)) {
+      return res.status(403).json({ error: 'Only the event host or co-hosts can edit the timeline' });
+    }
+
     const updateData: Record<string, unknown> = {};
 
     if (label !== undefined) updateData.label = label;
@@ -160,6 +196,19 @@ router.delete('/:id', async (req: AuthenticatedRequest, res) => {
 
     if (!id) {
       return res.status(400).json({ error: 'Timeline block ID required' });
+    }
+
+    // RLS parity: timeline writes = host or co-host of the block's event.
+    const existingBlock = await prisma.timelineBlock.findUnique({
+      where: { id },
+      select: { event_id: true },
+    });
+    if (!existingBlock) {
+      return res.status(404).json({ error: 'Timeline block not found' });
+    }
+    const access = await getEventAccess(existingBlock.event_id, req.user!.id, req.user?.email);
+    if (!canEditTimeline(access)) {
+      return res.status(403).json({ error: 'Only the event host or co-hosts can edit the timeline' });
     }
 
     await prisma.timelineBlock.delete({
