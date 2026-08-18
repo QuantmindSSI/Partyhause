@@ -1,7 +1,37 @@
 import React, { useEffect, useState, useRef } from 'react';
-// Simple sanitizer for preview: strip <script> tags (lightweight; consider replacing with DOMPurify)
-const safePreview = (html: string) => html.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '');
+import sanitize from 'sanitize-html';
 import { useToast } from '@/hooks/use-toast';
+
+// Strict allowlist sanitizer for template previews. The previous regex-based
+// strip (<script> only) was trivially bypassed with event-handler attributes
+// (<img onerror=...>), <iframe>, javascript: URLs, etc.
+const safePreview = (html: string): string =>
+  sanitize(html, {
+    allowedTags: [
+      'a', 'b', 'strong', 'i', 'em', 'u', 's', 'p', 'br', 'hr', 'span', 'div',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote',
+      'table', 'thead', 'tbody', 'tr', 'td', 'th', 'img', 'pre', 'code',
+    ],
+    allowedAttributes: {
+      a: ['href', 'target', 'rel'],
+      img: ['src', 'alt', 'width', 'height'],
+      '*': ['style', 'class', 'align'],
+    },
+    allowedSchemes: ['http', 'https', 'mailto'],
+    // Never allow scriptable style expressions
+    allowedStyles: {
+      '*': {
+        color: [/^.*$/],
+        'background-color': [/^.*$/],
+        'text-align': [/^.*$/],
+        'font-size': [/^.*$/],
+        'font-weight': [/^.*$/],
+        padding: [/^.*$/],
+        margin: [/^.*$/],
+        'border-radius': [/^.*$/],
+      },
+    },
+  });
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api-client';
 import { usePartyStore } from '@/store/usePartyStore';
 
@@ -28,6 +58,9 @@ export const TemplateManager: React.FC = () => {
   const [isMarkdown, setIsMarkdown] = useState(false);
   const [isDefault, setIsDefault] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
+  // Sandboxed full preview (replaces the old window.open + document.write,
+  // which executed template HTML in a fully-privileged new document).
+  const [popupPreviewHtml, setPopupPreviewHtml] = useState<string | null>(null);
   // Dirty-check & confirm discard
   const initialFormRef = useRef<{ name: string; subject: string; body: string; isMarkdown: boolean } | null>(null);
   const [showConfirmDiscard, setShowConfirmDiscard] = useState(false);
@@ -249,7 +282,7 @@ export const TemplateManager: React.FC = () => {
               <div className="flex gap-2">
                 <button className="btn btn-ghost" onClick={() => openEdit(t)}>Edit</button>
                 <button className="btn btn-ghost" onClick={() => setDefault(t.id)}>Set Default</button>
-                <button className="btn btn-ghost" onClick={() => { const safe = safePreview(t.body_html || t.body_markdown || ''); const w = window.open(); if (w) { w.document.write(safe); w.document.close(); } }}>Preview</button>
+                <button className="btn btn-ghost" onClick={() => setPopupPreviewHtml(safePreview(t.body_html || t.body_markdown || ''))}>Preview</button>
                 <button className="btn btn-destructive" onClick={() => deleteTemplate(t.id)}>Delete</button>
               </div>
             </div>
@@ -328,6 +361,36 @@ export const TemplateManager: React.FC = () => {
               <button className="btn" onClick={() => setShowConfirmDiscard(false)}>Continue editing</button>
               <button className="btn btn-destructive" onClick={() => { closeFormImmediate(); usePartyStore.getState().setCurrentPage('dashboard'); }}>Discard changes</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sandboxed template preview modal */}
+      {popupPreviewHtml !== null && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-6"
+          onClick={() => setPopupPreviewHtml(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Template preview"
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-3xl w-full h-[80vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <h4 className="font-semibold">Template Preview</h4>
+              <button className="btn btn-ghost" onClick={() => setPopupPreviewHtml(null)} aria-label="Close preview">
+                Close
+              </button>
+            </div>
+            {/* Empty sandbox: no scripts, no same-origin, no forms/popups. */}
+            <iframe
+              title="Template preview"
+              sandbox=""
+              srcDoc={popupPreviewHtml}
+              className="flex-1 w-full border-0 bg-white"
+            />
           </div>
         </div>
       )}

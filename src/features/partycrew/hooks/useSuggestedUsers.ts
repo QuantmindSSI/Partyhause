@@ -32,11 +32,12 @@ export function useSuggestedUsers(limit: number = 20): UseSuggestedUsersResult {
     setError(null);
 
     try {
-      const data = await apiRequest<{ users: Creator[] }>(
+      // Server returns { suggestions, total } (not { users }).
+      const data = await apiRequest<{ suggestions: Creator[]; total: number }>(
         `/api/users/suggested?limit=${limit}`
       );
 
-      setUsers(data.users || []);
+      setUsers(data.suggestions || []);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to load suggested users';
       setError(errorMsg);

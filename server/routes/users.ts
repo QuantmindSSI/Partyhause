@@ -17,7 +17,8 @@ const router = Router();
 router.get('/suggested', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const limit = Math.min(parseInt((req.query.limit as string) || '10'), 50);
+    const parsedLimit = parseInt((req.query.limit as string) || '10', 10);
+    const limit = Math.min(Math.max(Number.isNaN(parsedLimit) ? 10 : parsedLimit, 1), 50);
 
     // Get user's profile
     const userProfile = await prisma.userProfile.findUnique({
@@ -25,14 +26,31 @@ router.get('/suggested', requireAuth, async (req: AuthenticatedRequest, res: Res
       select: { location: true },
     });
 
-    // Get users already following
-    const following = await prisma.connection.findMany({
-      where: { follower_id: userId },
-      select: { following_id: true },
-    });
+    // Get users already following, blocked (either direction), and users
+    // with a pending outgoing request — none should be suggested.
+    const [following, blocks, pendingRequests] = await Promise.all([
+      prisma.connection.findMany({
+        where: { follower_id: userId },
+        select: { following_id: true },
+      }),
+      prisma.userBlock.findMany({
+        where: { OR: [{ blocker_id: userId }, { blocked_id: userId }] },
+        select: { blocker_id: true, blocked_id: true },
+      }),
+      prisma.connectionRequest.findMany({
+        where: { requester_id: userId, status: 'pending' },
+        select: { target_id: true },
+      }),
+    ]);
 
     const followingIds = following.map((f) => f.following_id);
-    const excludeIds = [...followingIds, userId];
+    const blockedIds = blocks.flatMap((b) =>
+      [b.blocker_id, b.blocked_id].filter((id) => id !== userId),
+    );
+    const pendingTargetIds = pendingRequests.map((r) => r.target_id);
+    const excludeIds = [
+      ...new Set([...followingIds, ...blockedIds, ...pendingTargetIds, userId]),
+    ];
 
     // STRATEGY 1: Users with mutual connections
     // Find users followed by the people I follow (friends-of-friends)
@@ -56,14 +74,30 @@ router.get('/suggested', requireAuth, async (req: AuthenticatedRequest, res: Res
     > = new Map();
 
     if (followingIds.length > 0) {
-      const friendsOfFriends = await prisma.connection.findMany({
+      // Friends-of-friends, aggregated in ONE grouped query: candidates are
+      // ranked by how many of MY follows also follow them. (The previous
+      // version took 20 arbitrary connection ROWS with no orderBy — heap
+      // order, nondeterministic — then ran a per-candidate RPC that was
+      // type-incompatible with the prisma-pushed TEXT id columns.)
+      const grouped = await prisma.connection.groupBy({
+        by: ['following_id'],
         where: {
           follower_id: { in: followingIds },
           following_id: { notIn: excludeIds },
         },
-        select: {
-          following_id: true,
-          following: {
+        _count: { following_id: true },
+        orderBy: { _count: { following_id: 'desc' } },
+        take: 20,
+      });
+
+      const candidateIds = grouped.map((g) => g.following_id);
+      const countByCandidate = new Map(
+        grouped.map((g) => [g.following_id, g._count.following_id]),
+      );
+
+      const candidateProfiles = candidateIds.length
+        ? await prisma.userProfile.findMany({
+            where: { id: { in: candidateIds }, is_private: false },
             select: {
               id: true,
               username: true,
@@ -76,40 +110,29 @@ router.get('/suggested', requireAuth, async (req: AuthenticatedRequest, res: Res
               events_hosted: true,
               haus_score: true,
               location: true,
-              is_private: true,
             },
-          },
-        },
-        take: 20,
-      });
+          })
+        : [];
 
-      for (const conn of friendsOfFriends) {
-        const profile = conn.following;
-        if (!profile || profile.is_private) continue;
-
-        if (!mutualCrewSuggestions.has(profile.id)) {
-          // Count mutual connections
-          const result = await prisma.$queryRaw<{ count: number }[]>`
-            SELECT get_mutual_crew_count(${userId}::uuid, ${profile.id}::uuid) AS count
-          `;
-          const mutualCount = Number(result[0]?.count) || 0;
-
-          mutualCrewSuggestions.set(profile.id, {
-            id: profile.id,
-            username: profile.username,
-            display_name: profile.display_name,
-            avatar_url: profile.avatar_url,
-            bio: profile.bio,
-            is_verified: profile.is_verified,
-            account_type: profile.account_type,
-            partycrew_count: profile.partycrew_count,
-            events_hosted: profile.events_hosted,
-            haus_score: profile.haus_score,
-            reason: `${mutualCount} mutual PartyCrew member${mutualCount === 1 ? '' : 's'}`,
-            mutual_crew_count: mutualCount,
-            same_location: userProfile?.location === profile.location && !!profile.location,
-          });
-        }
+      for (const profile of candidateProfiles) {
+        // "Followed by K of the people I follow" — the shared-third-party
+        // INTERSECT definition of mutual crew.
+        const mutualCount = countByCandidate.get(profile.id) || 0;
+        mutualCrewSuggestions.set(profile.id, {
+          id: profile.id,
+          username: profile.username,
+          display_name: profile.display_name,
+          avatar_url: profile.avatar_url,
+          bio: profile.bio,
+          is_verified: profile.is_verified,
+          account_type: profile.account_type,
+          partycrew_count: profile.partycrew_count,
+          events_hosted: profile.events_hosted,
+          haus_score: profile.haus_score,
+          reason: `${mutualCount} mutual PartyCrew member${mutualCount === 1 ? '' : 's'}`,
+          mutual_crew_count: mutualCount,
+          same_location: userProfile?.location === profile.location && !!profile.location,
+        });
       }
     }
 
@@ -287,11 +310,75 @@ router.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response
       });
       viewerHasBlocked = !!hasBlocked;
 
-      // Get mutual crew count
-      const result = await prisma.$queryRaw<{ count: number }[]>`
-        SELECT get_mutual_crew_count(${viewerId}::uuid, ${userId}::uuid) AS count
-      `;
-      mutualCrewCount = Number(result[0]?.count) || 0;
+      // Mutual crew count = |following(viewer) ∩ following(target)|.
+      // Computed with two Prisma queries instead of the get_mutual_crew_count
+      // RPC, whose uuid-typed params cannot bind against the prisma-pushed
+      // TEXT id columns. Skipped for self-view (it would just equal
+      // crewing_count and mean nothing).
+      if (viewerId !== userId) {
+        const viewerFollowing = await prisma.connection.findMany({
+          where: { follower_id: viewerId },
+          select: { following_id: true },
+        });
+        const viewerFollowingIds = viewerFollowing.map((c) => c.following_id);
+        mutualCrewCount = viewerFollowingIds.length
+          ? await prisma.connection.count({
+              where: {
+                follower_id: userId,
+                following_id: { in: viewerFollowingIds },
+              },
+            })
+          : 0;
+      }
+    }
+
+    // A viewer the owner has blocked should not see the profile at all —
+    // indistinguishable from a nonexistent account.
+    if (viewerIsBlocked) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const isSelf = viewerId === userId;
+
+    const viewerFlags = {
+      viewer_is_following: viewerIsFollowing,
+      viewer_is_follower: viewerIsFollower,
+      viewer_is_mutual: viewerIsMutual,
+      viewer_has_pending_request: viewerHasPendingRequest,
+      viewer_is_blocked: viewerIsBlocked,
+      viewer_has_blocked: viewerHasBlocked,
+      mutual_crew_count: mutualCrewCount,
+    };
+
+    // Private account viewed by a non-follower: minimal public card only.
+    // (Under the original Supabase RLS, private profiles were not selectable
+    // by other users at all — see 20251101 migration "Public profiles are
+    // viewable by everyone" policy.)
+    if (profile.is_private && !isSelf && !viewerIsFollowing) {
+      return res.status(200).json({
+        id: profile.id,
+        username: profile.username,
+        display_name: profile.display_name,
+        bio: null,
+        avatar_url: profile.avatar_url,
+        cover_photo_url: null,
+        location: null,
+        website_url: null,
+
+        partycrew_count: profile.partycrew_count,
+        crewing_count: profile.crewing_count,
+        events_hosted: profile.events_hosted,
+        haus_score: profile.haus_score,
+
+        is_verified: profile.is_verified,
+        is_private: profile.is_private,
+        account_type: profile.account_type,
+
+        ...viewerFlags,
+
+        created_at: profile.created_at,
+        last_active_at: null,
+      });
     }
 
     return res.status(200).json({
@@ -313,16 +400,11 @@ router.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response
       is_private: profile.is_private,
       account_type: profile.account_type,
 
-      viewer_is_following: viewerIsFollowing,
-      viewer_is_follower: viewerIsFollower,
-      viewer_is_mutual: viewerIsMutual,
-      viewer_has_pending_request: viewerHasPendingRequest,
-      viewer_is_blocked: viewerIsBlocked,
-      viewer_has_blocked: viewerHasBlocked,
-      mutual_crew_count: mutualCrewCount,
+      ...viewerFlags,
 
       created_at: profile.created_at,
-      last_active_at: profile.last_active_at,
+      // Honor the owner's activity-visibility preference.
+      last_active_at: isSelf || profile.show_activity_status ? profile.last_active_at : null,
     });
   } catch (error: unknown) {
     console.error('[User Profile Error]:', error);

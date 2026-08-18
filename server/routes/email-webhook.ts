@@ -1,11 +1,79 @@
 // Express route: /api/email-webhook
 // Resend webhook receiver for email delivery status updates (Prisma-based
-// replacement for api/email-webhook.ts). No auth — verified by webhook secret.
+// replacement for api/email-webhook.ts). No auth — verified by the svix
+// signature when RESEND_WEBHOOK_SECRET is configured.
 
 import { Router } from 'express';
+import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 
 const router = Router();
+
+/**
+ * Verify a Resend (svix) webhook signature.
+ *
+ * Resend signs webhooks with svix: headers `svix-id`, `svix-timestamp`,
+ * `svix-signature`; the signed content is `${id}.${timestamp}.${rawBody}`,
+ * HMAC-SHA256 with the base64 secret portion of `whsec_...`, and the
+ * signature header holds space-separated `v1,<base64>` entries.
+ *
+ * Returns { ok } — with a reason string on failure for logging.
+ */
+function verifySvixSignature(
+  secret: string,
+  headers: Record<string, string | string[] | undefined>,
+  rawBody: Buffer | undefined,
+): { ok: boolean; reason?: string } {
+  const svixId = headers['svix-id'];
+  const svixTimestamp = headers['svix-timestamp'];
+  const svixSignature = headers['svix-signature'];
+
+  if (
+    typeof svixId !== 'string' ||
+    typeof svixTimestamp !== 'string' ||
+    typeof svixSignature !== 'string'
+  ) {
+    return { ok: false, reason: 'missing svix headers' };
+  }
+
+  if (!rawBody) {
+    return { ok: false, reason: 'raw body unavailable for verification' };
+  }
+
+  // Replay-window check: reject timestamps older/newer than 5 minutes.
+  const ts = parseInt(svixTimestamp, 10);
+  if (Number.isNaN(ts) || Math.abs(Date.now() / 1000 - ts) > 300) {
+    return { ok: false, reason: 'timestamp outside tolerance' };
+  }
+
+  const secretB64 = secret.startsWith('whsec_') ? secret.slice(6) : secret;
+  let secretBytes: Buffer;
+  try {
+    secretBytes = Buffer.from(secretB64, 'base64');
+  } catch {
+    return { ok: false, reason: 'malformed secret' };
+  }
+
+  const signedContent = `${svixId}.${svixTimestamp}.${rawBody.toString('utf8')}`;
+  const expected = crypto.createHmac('sha256', secretBytes).update(signedContent).digest();
+
+  // Header may contain multiple space-separated versioned signatures.
+  for (const part of svixSignature.split(' ')) {
+    const [version, sig] = part.split(',');
+    if (version !== 'v1' || !sig) continue;
+    let candidate: Buffer;
+    try {
+      candidate = Buffer.from(sig, 'base64');
+    } catch {
+      continue;
+    }
+    if (candidate.length === expected.length && crypto.timingSafeEqual(candidate, expected)) {
+      return { ok: true };
+    }
+  }
+
+  return { ok: false, reason: 'no matching signature' };
+}
 
 // Types for Resend webhook payload (partial, only fields we consume)
 interface ResendWebhookData {
@@ -36,13 +104,27 @@ router.post('/', async (req, res) => {
   try {
     console.log('📨 Received webhook:', JSON.stringify(req.body, null, 2));
 
-    // Verify webhook signature (optional but recommended)
+    // Verify webhook signature when a secret is configured. Resend uses the
+    // svix scheme (svix-id/svix-timestamp/svix-signature headers) — the old
+    // `resend-webhook-secret` header check matched nothing Resend sends, so
+    // real webhooks were rejected whenever the secret was set. The legacy
+    // plain-header check is kept as a fallback for proxy setups that inject
+    // it deliberately.
     const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
     if (webhookSecret) {
-      const signature = req.headers['resend-webhook-secret'];
-      if (signature !== webhookSecret) {
-        console.error('❌ Invalid webhook signature');
-        return res.status(401).json({ error: 'Invalid webhook signature' });
+      const legacyHeader = req.headers['resend-webhook-secret'];
+      const legacyOk =
+        typeof legacyHeader === 'string' &&
+        legacyHeader.length === webhookSecret.length &&
+        crypto.timingSafeEqual(Buffer.from(legacyHeader), Buffer.from(webhookSecret));
+
+      if (!legacyOk) {
+        const rawBody = (req as unknown as { rawBody?: Buffer }).rawBody;
+        const svix = verifySvixSignature(webhookSecret, req.headers, rawBody);
+        if (!svix.ok) {
+          console.error(`❌ Invalid webhook signature: ${svix.reason}`);
+          return res.status(401).json({ error: 'Invalid webhook signature' });
+        }
       }
     }
 
@@ -105,8 +187,10 @@ router.post('/', async (req, res) => {
       webhook_data: data as any,
     };
 
-    // Set specific timestamp fields
-    const timestamp = created_at || new Date().toISOString();
+    // Set specific timestamp fields (guard against unparseable created_at)
+    const parsedTs = created_at ? new Date(created_at) : null;
+    const timestamp =
+      parsedTs && !isNaN(parsedTs.getTime()) ? parsedTs.toISOString() : new Date().toISOString();
     switch (newStatus) {
       case 'sent':
         updateData.sent_at = new Date(timestamp);

@@ -104,7 +104,8 @@ export const eventService = {
         guests: [
           {
             name: guest.name,
-            email: guest.email || null,
+            // guests.email is NOT NULL server-side; '' means "no email".
+            email: guest.email || '',
             phone: guest.phone || null,
             plusOnes: guest.plus_ones ?? 0,
           },
@@ -128,8 +129,24 @@ export const eventService = {
       if (updates.email !== undefined) body.email = updates.email;
       if (updates.phone !== undefined) body.phone = updates.phone;
       if (updates.plus_ones !== undefined) body.plusOnes = updates.plus_ones;
-      if (updates.status !== undefined) body.rsvpStatus = updates.status;
-      if ((updates as any).is_checked_in !== undefined) body.checkedIn = (updates as any).is_checked_in;
+      // Canonical API fields
+      if (updates.rsvp_status !== undefined) body.rsvpStatus = updates.rsvp_status;
+      if (updates.checked_in !== undefined) body.checkedIn = updates.checked_in;
+      // Legacy `status` vocabulary: 'checked_in' is a check-in flag, not an
+      // RSVP value; 'confirmed' maps to the canonical 'accepted'.
+      if (updates.status !== undefined && body.rsvpStatus === undefined) {
+        if (updates.status === 'checked_in') {
+          if (body.checkedIn === undefined) body.checkedIn = true;
+        } else if (updates.status === 'confirmed') {
+          body.rsvpStatus = 'accepted';
+        } else if (updates.status === 'pending') {
+          body.rsvpStatus = 'pending';
+        }
+        // 'no_show' has no API equivalent — ignored.
+      }
+      if ((updates as any).is_checked_in !== undefined && body.checkedIn === undefined) {
+        body.checkedIn = (updates as any).is_checked_in;
+      }
 
       const { data, error } = await apiPut<{ guest?: any; success?: boolean }>(`/api/guests/${id}`, body);
       if (error) throw error;

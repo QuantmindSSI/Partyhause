@@ -16,6 +16,8 @@ interface UseCrewFeedResult {
   refetch: () => Promise<void>;
   loadMore: () => Promise<void>;
   hasMore: boolean;
+  /** Report real impressions (posts actually scrolled into view). */
+  markSeen: (postIds: string[]) => Promise<void>;
 }
 
 export function useCrewFeed(
@@ -50,10 +52,11 @@ export function useCrewFeed(
         url += `&cursor=${cursor}`;
       }
 
+      // Server returns { posts, next_cursor, has_more } (snake_case).
       const data = await apiRequest<{
         posts: FeedPost[];
-        cursor: string | null;
-        hasMore: boolean;
+        next_cursor: string | null;
+        has_more: boolean;
       }>(url);
 
       if (reset) {
@@ -61,9 +64,9 @@ export function useCrewFeed(
       } else {
         setPosts(prev => [...prev, ...data.posts]);
       }
-      
-      setCursor(data.cursor);
-      setHasMore(data.hasMore);
+
+      setCursor(data.next_cursor);
+      setHasMore(data.has_more);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to load feed';
       setError(errorMsg);
@@ -89,6 +92,19 @@ export function useCrewFeed(
     }
   }, [isLoading, hasMore, cursor, fetchFeed]);
 
+  const markSeen = useCallback(async (postIds: string[]) => {
+    if (postIds.length === 0) return;
+    try {
+      await apiRequest('/api/feed/seen', {
+        method: 'POST',
+        body: JSON.stringify({ post_ids: postIds.slice(0, 100) }),
+      });
+    } catch (err) {
+      // Impression reporting is best-effort — never surface to the UI.
+      console.warn('[useCrewFeed] markSeen failed:', err);
+    }
+  }, []);
+
   return {
     posts,
     isLoading,
@@ -96,5 +112,6 @@ export function useCrewFeed(
     refetch,
     loadMore,
     hasMore,
+    markSeen,
   };
 }

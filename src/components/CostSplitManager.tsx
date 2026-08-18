@@ -30,11 +30,14 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/lib/supabase';
+import { apiUrl } from '@/lib/apiBase';
 
 interface CostSplit {
   id: string;
   guest_id: string;
-  amount: number;
+  // Prisma Decimal columns serialize to JSON STRINGS (e.g. "33.34") — never
+  // call number methods on this directly, coerce via asMoney().
+  amount: number | string;
   currency: string;
   status: 'pending' | 'sent' | 'paid' | 'overdue' | 'cancelled';
   payment_method?: string;
@@ -49,13 +52,19 @@ interface CostSplit {
 
 interface CostSummary {
   event_id: string;
-  total_event_cost: number;
-  total_collected: number;
-  total_pending: number;
+  total_event_cost: number | string;
+  total_collected: number | string;
+  total_pending: number | string;
   guests_with_splits: number;
   guests_paid: number;
   guests_pending: number;
 }
+
+// Coerce a Prisma Decimal (JSON string) or number to a display-safe number.
+const asMoney = (value: number | string | null | undefined): number => {
+  const n = typeof value === 'string' ? parseFloat(value) : value ?? 0;
+  return Number.isFinite(n) ? (n as number) : 0;
+};
 
 interface CostSplitManagerProps {
   eventId: string;
@@ -82,7 +91,7 @@ export function CostSplitManager({ eventId }: CostSplitManagerProps) {
     try {
       const { data: { session } } = await supabase.auth.getSession();
 
-      const response = await fetch(`/api/cost-split?event_id=${eventId}`, {
+      const response = await fetch(apiUrl(`/api/cost-split/${encodeURIComponent(eventId)}`), {
         headers: {
           'Authorization': `Bearer ${session?.access_token}`,
         },
@@ -112,13 +121,14 @@ export function CostSplitManager({ eventId }: CostSplitManagerProps) {
     try {
       const { data: { session } } = await supabase.auth.getSession();
 
-      const response = await fetch(`/api/cost-split?event_id=${eventId}`, {
+      const response = await fetch(apiUrl('/api/cost-split'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token}`,
         },
         body: JSON.stringify({
+          event_id: eventId,
           split_method: splitMethod,
           total_amount: parseFloat(totalAmount),
           description: description || 'Event cost share',
@@ -146,14 +156,14 @@ export function CostSplitManager({ eventId }: CostSplitManagerProps) {
     try {
       const { data: { session } } = await supabase.auth.getSession();
 
-      const response = await fetch(`/api/cost-split?event_id=${eventId}`, {
+      const response = await fetch(apiUrl(`/api/cost-split/${encodeURIComponent(splitId)}`), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token}`,
         },
         body: JSON.stringify({
-          split_id: splitId,
+          event_id: eventId,
           status: 'paid',
           payment_method: paymentMethod || 'cash',
           payment_reference: paymentRef,
@@ -219,18 +229,18 @@ export function CostSplitManager({ eventId }: CostSplitManagerProps) {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="space-y-1">
                 <p className="text-sm text-muted-foreground">Total Cost</p>
-                <p className="text-2xl font-bold">${summary.total_event_cost.toFixed(2)}</p>
+                <p className="text-2xl font-bold">${asMoney(summary.total_event_cost).toFixed(2)}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-sm text-muted-foreground">Collected</p>
                 <p className="text-2xl font-bold text-green-600">
-                  ${summary.total_collected.toFixed(2)}
+                  ${asMoney(summary.total_collected).toFixed(2)}
                 </p>
               </div>
               <div className="space-y-1">
                 <p className="text-sm text-muted-foreground">Pending</p>
                 <p className="text-2xl font-bold text-orange-600">
-                  ${summary.total_pending.toFixed(2)}
+                  ${asMoney(summary.total_pending).toFixed(2)}
                 </p>
               </div>
               <div className="space-y-1">
@@ -366,7 +376,7 @@ export function CostSplitManager({ eventId }: CostSplitManagerProps) {
 
                   <div className="flex items-center gap-3">
                     <p className="text-xl font-bold">
-                      ${split.amount.toFixed(2)}
+                      ${asMoney(split.amount).toFixed(2)}
                     </p>
                     {split.status !== 'paid' && (
                       <Dialog>

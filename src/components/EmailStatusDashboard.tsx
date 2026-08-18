@@ -28,19 +28,24 @@ interface EmailLog {
   clicked_at?: string;
   bounced_at?: string;
   error_message?: string;
-  guests?: {
+  // Prisma relation field on EmailLog is `guest` (singular)
+  guest?: {
     name: string;
     email: string;
   };
 }
 
+// Shape returned by getEmailAnalytics: raw counts from
+// GET /api/email-logs/analytics/event plus client-computed rates.
 interface EmailAnalytics {
-  total_emails_sent: number;
-  delivered_count: number;
-  opened_count: number;
-  clicked_count: number;
-  bounced_count: number;
-  failed_count: number;
+  total: number;
+  sent: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  bounced: number;
+  failed: number;
+  pending: number;
   delivery_rate: number;
   open_rate: number;
   click_rate: number;
@@ -171,7 +176,7 @@ export function EmailStatusDashboard({ eventId }: EmailStatusDashboardProps) {
   return (
     <div className="space-y-6">
       {/* Email Analytics */}
-      {analytics && analytics.total_emails_sent > 0 && (
+      {analytics && analytics.total > 0 && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2">
@@ -192,25 +197,25 @@ export function EmailStatusDashboard({ eventId }: EmailStatusDashboardProps) {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <div className="text-center">
                 <div className="text-2xl font-bold text-blue-600">
-                  {analytics.total_emails_sent}
+                  {analytics.total}
                 </div>
                 <div className="text-sm text-gray-600">Total Sent</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-green-600">
-                  {analytics.delivered_count}
+                  {analytics.delivered}
                 </div>
                 <div className="text-sm text-gray-600">Delivered</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-purple-600">
-                  {analytics.opened_count}
+                  {analytics.opened}
                 </div>
                 <div className="text-sm text-gray-600">Opened</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-orange-600">
-                  {analytics.clicked_count}
+                  {analytics.clicked}
                 </div>
                 <div className="text-sm text-gray-600">Clicked</div>
               </div>
@@ -271,7 +276,7 @@ export function EmailStatusDashboard({ eventId }: EmailStatusDashboardProps) {
                     {getStatusIcon(log.status)}
                     <div>
                       <div className="font-medium">
-                        {log.guests?.name || 'Unknown'} 
+                        {log.guest?.name || 'Unknown'} 
                         <span className="text-gray-500 ml-2">
                           ({log.recipient_email})
                         </span>

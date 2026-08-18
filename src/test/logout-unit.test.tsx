@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { usePartyStore } from '@/store/usePartyStore';
-import { supabase } from '@/lib/supabase';
+import { clearAuth } from '@/lib/supabase';
 
 // Mock Supabase
 vi.mock('@/lib/supabase', () => ({
@@ -79,11 +79,6 @@ describe('Logout Functionality Tests', () => {
       isLoading: false,
     });
 
-    // Mock signOut to resolve successfully
-    (supabase.auth.signOut as any).mockResolvedValue({
-      error: null,
-    });
-
     // Trigger logout
     const { logout } = usePartyStore.getState();
     logout();
@@ -97,8 +92,8 @@ describe('Logout Functionality Tests', () => {
     expect(state.currentEvent).toBeNull();
     expect(state.guests).toEqual([]);
 
-    // Verify supabase signOut was called
-    expect(supabase.auth.signOut).toHaveBeenCalled();
+    // Verify stored auth credentials were cleared (post-Supabase-migration behavior)
+    expect(clearAuth).toHaveBeenCalled();
   });
 
   it('should handle logout when currentEvent exists but events array is empty', () => {
@@ -112,11 +107,6 @@ describe('Logout Functionality Tests', () => {
       currentEvent: mockEvent, // But currentEvent is persisted
       guests: [],
       isLoading: false,
-    });
-
-    // Mock signOut to resolve successfully
-    (supabase.auth.signOut as any).mockResolvedValue({
-      error: null,
     });
 
     // Trigger logout
@@ -144,9 +134,9 @@ describe('Logout Functionality Tests', () => {
       isLoading: false,
     });
 
-    // Mock signOut to fail
-    (supabase.auth.signOut as any).mockResolvedValue({
-      error: { message: 'Network error' },
+    // Simulate clearAuth throwing (e.g., storage unavailable) — logout state reset must still succeed
+    (clearAuth as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      throw new Error('Network error');
     });
 
     // Trigger logout
@@ -174,11 +164,6 @@ describe('Logout Functionality Tests', () => {
       isLoading: false,
     });
 
-    // Mock signOut to resolve successfully
-    (supabase.auth.signOut as any).mockResolvedValue({
-      error: null,
-    });
-
     // Trigger logout
     const { logout } = usePartyStore.getState();
     logout();
@@ -201,11 +186,6 @@ describe('Logout Functionality Tests', () => {
         currentEvent: mockEvent,
         guests: [],
         isLoading: false,
-      });
-
-      // Mock signOut
-      (supabase.auth.signOut as any).mockResolvedValue({
-        error: null,
       });
 
       // Trigger logout

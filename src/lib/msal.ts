@@ -1,8 +1,12 @@
-import {
+// Type-only imports — erased at build. The runtime module is loaded lazily
+// via dynamic import() the first time MSAL is actually used, keeping
+// @azure/msal-browser (~300 kB) out of the entry bundle entirely while the
+// Entra CIAM rollout is gated behind env vars.
+import type {
   PublicClientApplication,
-  type AccountInfo,
-  type AuthenticationResult,
-  type SilentRequest,
+  AccountInfo,
+  AuthenticationResult,
+  SilentRequest,
 } from '@azure/msal-browser';
 import { msalConfig, msalScopes, isMsalConfigured } from './msal-config';
 
@@ -10,43 +14,50 @@ import { msalConfig, msalScopes, isMsalConfigured } from './msal-config';
  * MSAL client singleton + helper functions.
  *
  * When MSAL is not configured (env vars missing), all functions are no-ops
- * that return null so callers can fall back to Supabase auth.
+ * that return null so callers can fall back to the JWT auth flow.
  */
 
 let msalInstance: PublicClientApplication | null = null;
+let instancePromise: Promise<PublicClientApplication | null> | null = null;
 let redirectHandled = false;
 
-function getInstance(): PublicClientApplication | null {
+async function getInstance(): Promise<PublicClientApplication | null> {
   if (!isMsalConfigured || !msalConfig) return null;
-  if (!msalInstance) {
-    try {
-      msalInstance = new PublicClientApplication(msalConfig);
-      // Handle the redirect promise returned from login/logout redirects.
-      // Must be called once on app initialization.
-      if (!redirectHandled) {
-        redirectHandled = true;
-        msalInstance
-          .handleRedirectPromise()
-          .then((response: AuthenticationResult | null) => {
-            if (response) {
-              msalInstance?.setActiveAccount(response.account);
-            }
-          })
-          .catch((err) => {
-            console.warn('MSAL handleRedirectPromise error:', err);
-          });
-      }
-    } catch (err) {
-      console.error('MSAL initialization failed:', err);
-      msalInstance = null;
-    }
-  }
-  return msalInstance;
-}
+  if (msalInstance) return msalInstance;
 
-// NOTE: Do NOT eagerly initialize MSAL at module load time. The initialization
-// is deferred to the first call of getInstance() (lazy) so that if the CIAM
-// tenant or user flow is not yet configured, the app doesn't crash on load.
+  if (!instancePromise) {
+    instancePromise = (async () => {
+      try {
+        const { PublicClientApplication: MsalClient } = await import('@azure/msal-browser');
+        const instance = new MsalClient(msalConfig);
+        // Handle the redirect promise returned from login/logout redirects.
+        // Must be called once on app initialization.
+        if (!redirectHandled) {
+          redirectHandled = true;
+          instance
+            .handleRedirectPromise()
+            .then((response: AuthenticationResult | null) => {
+              if (response) {
+                instance.setActiveAccount(response.account);
+              }
+            })
+            .catch((err) => {
+              console.warn('MSAL handleRedirectPromise error:', err);
+            });
+        }
+        msalInstance = instance;
+        return instance;
+      } catch (err) {
+        console.error('MSAL initialization failed:', err);
+        // Allow a later retry rather than caching the failure forever.
+        instancePromise = null;
+        return null;
+      }
+    })();
+  }
+
+  return instancePromise;
+}
 
 /** Returns true if MSAL env vars are set and the client can be used. */
 export function isMsalReady(): boolean {
@@ -55,7 +66,7 @@ export function isMsalReady(): boolean {
 
 /** Triggers a redirect-based login. */
 export async function msalLogin(): Promise<void> {
-  const instance = getInstance();
+  const instance = await getInstance();
   if (!instance) return;
   try {
     await instance.loginRedirect({
@@ -69,7 +80,7 @@ export async function msalLogin(): Promise<void> {
 
 /** Clears the MSAL cache and redirects to logout. */
 export async function msalLogout(): Promise<void> {
-  const instance = getInstance();
+  const instance = await getInstance();
   if (!instance) return;
   const account = instance.getActiveAccount();
   try {
@@ -84,8 +95,8 @@ export async function msalLogout(): Promise<void> {
 }
 
 /** Gets the current logged-in account, or null. */
-export function msalGetAccount(): AccountInfo | null {
-  const instance = getInstance();
+export async function msalGetAccount(): Promise<AccountInfo | null> {
+  const instance = await getInstance();
   if (!instance) return null;
   const active = instance.getActiveAccount();
   if (active) return active;
@@ -102,9 +113,9 @@ export function msalGetAccount(): AccountInfo | null {
  * a redirect. Returns null if MSAL is not configured or no account is signed in.
  */
 export async function msalGetToken(): Promise<string | null> {
-  const instance = getInstance();
+  const instance = await getInstance();
   if (!instance) return null;
-  const account = msalGetAccount();
+  const account = await msalGetAccount();
   if (!account) return null;
 
   const silentRequest: SilentRequest = {

@@ -231,6 +231,22 @@
       scroll-behavior: auto !important;
     }
   }
+
+  /* Keyboard-navigation focus: visible ring on :focus-visible only, so
+     mouse users don't get outlines but keyboard users always do. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring, 24 95% 53%));
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  ::selection {
+    background: hsl(var(--primary, 24 95% 53%) / 0.25);
+  }
 }
 
 @layer components {

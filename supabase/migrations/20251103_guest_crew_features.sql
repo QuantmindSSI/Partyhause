@@ -174,13 +174,24 @@ CREATE TABLE IF NOT EXISTS public.event_cost_summaries (
 );
 
 -- Trigger to keep summary updated
+-- NOTE: on DELETE row triggers NEW is NULL, so the event id must come from
+-- COALESCE(NEW, OLD). The aggregate runs without GROUP BY so it still returns
+-- a (zeroed) row when the last split for an event is removed.
 CREATE OR REPLACE FUNCTION update_event_cost_summary()
 RETURNS TRIGGER AS $$
+DECLARE
+  v_event_id UUID;
 BEGIN
+  IF TG_OP = 'DELETE' THEN
+    v_event_id := OLD.event_id;
+  ELSE
+    v_event_id := NEW.event_id;
+  END IF;
+
   -- Recalculate summary for the event
   INSERT INTO public.event_cost_summaries (event_id, total_event_cost, total_collected, total_pending, total_overdue, guests_with_splits, guests_paid, guests_pending, updated_at)
   SELECT 
-    NEW.event_id,
+    v_event_id,
     COALESCE(SUM(amount), 0) as total_event_cost,
     COALESCE(SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END), 0) as total_collected,
     COALESCE(SUM(CASE WHEN status IN ('pending', 'sent') THEN amount ELSE 0 END), 0) as total_pending,
@@ -190,8 +201,7 @@ BEGIN
     COUNT(DISTINCT CASE WHEN status IN ('pending', 'sent', 'overdue') THEN guest_id END) as guests_pending,
     NOW()
   FROM public.cost_split_requests
-  WHERE event_id = NEW.event_id
-  GROUP BY event_id
+  WHERE event_id = v_event_id
   ON CONFLICT (event_id) DO UPDATE
   SET 
     total_event_cost = EXCLUDED.total_event_cost,
@@ -374,9 +384,18 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Guest not found';
   END IF;
-  
+
+  -- host_id was selected into the record; assign the standalone variable
+  -- (previously never assigned, which made the duplicate check a no-op and
+  -- inserted NULL following_id — the endpoint failed on every call).
+  v_event_host := v_guest_record.host_id;
+
   IF v_guest_record.user_id IS NULL THEN
     RAISE EXCEPTION 'Guest must have a user account to be added to crew';
+  END IF;
+
+  IF v_guest_record.user_id = v_event_host THEN
+    RAISE EXCEPTION 'User is already in crew';
   END IF;
   
   -- Check if connection already exists

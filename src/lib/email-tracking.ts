@@ -41,14 +41,14 @@ export interface EmailLogRow {
   status?: string;
   resend_email_id?: string | null;
   sent_at?: string | null;
-  // relations
-  events?: {
+  // relations (Prisma relation field names on EmailLog are `event`/`guest`)
+  event?: {
     name?: string;
     event_date?: string | null;
     location?: string | null;
     invite_image_url?: string | null;
   } | null;
-  guests?: {
+  guest?: {
     name?: string | null;
     email?: string | null;
   } | null;
@@ -118,7 +118,9 @@ export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate
     }
 
     // Resolve the email endpoint via the centralized API base URL helper.
-    const apiUrl = buildApiUrl('/api/email');
+    // The Express server exposes /api/send-email (the old /api/email was a
+    // Vercel serverless function that no longer exists).
+    const apiUrl = buildApiUrl('/api/send-email');
     // Allow a client-side override for the From header in dev when configured via Vite env vars.
     const allowFromOverride = import.meta.env.VITE_ALLOW_FROM_OVERRIDE === 'true';
     const fromOverride = allowFromOverride ? import.meta.env.VITE_FROM_OVERRIDE : undefined;
@@ -205,13 +207,15 @@ export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate
       } catch (e) { /* ignore */ }
     }
 
-    // Update guest email status if guest_id provided (best-effort via API)
+    // Update guest email status if guest_id provided (best-effort via API).
+    // Only attach email_log_id when a real log row exists — the `temp_...`
+    // fallback id would violate the guests.email_log_id foreign key.
     if (logData.guestId) {
       try {
         await apiPut(`/api/guests/${encodeURIComponent(logData.guestId)}`, {
           email_status: 'sent',
           last_email_sent_at: new Date().toISOString(),
-          email_log_id: emailLogId,
+          ...(emailLog ? { email_log_id: emailLog.id } : {}),
         });
       } catch (e) { /* ignore */ }
     }
@@ -237,7 +241,7 @@ export const sendEmailWithTracking = async ({ to, subject, html }: EmailTemplate
 // Fallback for existing email function (backward compatibility)
 export const sendEmail = async ({ to, subject, html }: EmailTemplate) => {
   try {
-    const apiUrl = buildApiUrl('/api/email');
+    const apiUrl = buildApiUrl('/api/send-email');
 
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -269,16 +273,17 @@ export const sendEmail = async ({ to, subject, html }: EmailTemplate) => {
 // Get email status by email log ID
 export const getEmailStatus = async (emailLogId: string): Promise<EmailStatus | null> => {
   try {
-    const { data, error } = await apiGet<Record<string, any>>(
+    const { data, error } = await apiGet<{ email_log?: Record<string, any> }>(
       `/api/email-logs/${encodeURIComponent(emailLogId)}`,
     );
 
-    if (error || !data) {
+    // Server nests the row under `email_log`.
+    const d = data?.email_log;
+    if (error || !d) {
       console.error('Failed to get email status:', error);
       return null;
     }
 
-    const d = data as Record<string, any>;
     return {
       id: d.id,
       status: d.status,
@@ -295,19 +300,34 @@ export const getEmailStatus = async (emailLogId: string): Promise<EmailStatus | 
   }
 };
 
-// Get email analytics for an event
+// Get email analytics for an event.
+// Returns { total, sent, delivered, opened, clicked, bounced, failed, pending }
+// plus client-computed rates.
 export const getEmailAnalytics = async (eventId: string) => {
   try {
-    const { data, error } = await apiGet<Record<string, any>>(
-      `/api/email-logs/analytics?eventId=${encodeURIComponent(eventId)}`,
+    const { data, error } = await apiGet<{ analytics?: Record<string, number> }>(
+      `/api/email-logs/analytics/event?eventId=${encodeURIComponent(eventId)}`,
     );
 
-    if (error) {
+    // Server route is GET /api/email-logs/analytics/event and nests counts
+    // under `analytics` (a bare `/analytics?eventId=` hits the `/:id` route
+    // with id='analytics' and 500s).
+    const a = data?.analytics;
+    if (error || !a) {
       console.error('Failed to get email analytics:', error);
       return null;
     }
 
-    return data;
+    const total = a.total || 0;
+    const delivered = a.delivered || 0;
+    const opened = a.opened || 0;
+    const clicked = a.clicked || 0;
+    return {
+      ...a,
+      delivery_rate: total > 0 ? Math.round((delivered / total) * 100) : 0,
+      open_rate: delivered > 0 ? Math.round((opened / delivered) * 100) : 0,
+      click_rate: opened > 0 ? Math.round((clicked / opened) * 100) : 0,
+    };
   } catch (error) {
     console.error('Error fetching email analytics:', error);
     return null;
@@ -317,7 +337,7 @@ export const getEmailAnalytics = async (eventId: string) => {
 // Get detailed email logs for an event
 export const getEventEmailLogs = async (eventId: string) => {
   try {
-    const { data, error } = await apiGet<{ logs?: any[] }>(
+    const { data, error } = await apiGet<{ email_logs?: EmailLogRow[] }>(
       `/api/email-logs?eventId=${encodeURIComponent(eventId)}`,
     );
 
@@ -326,7 +346,8 @@ export const getEventEmailLogs = async (eventId: string) => {
       return [];
     }
 
-    return data?.logs || [];
+    // Server returns { email_logs } (not { logs }).
+    return data?.email_logs || [];
   } catch (error) {
     console.error('Error fetching email logs:', error);
     return [];
@@ -336,46 +357,53 @@ export const getEventEmailLogs = async (eventId: string) => {
 // Re-send failed email (now using MailerSend)
 export const resendEmail = async (emailLogId: string) => {
   try {
-    // Get original email log via the API
-    const { data: logResp, error: logError } = await apiGet<Record<string, any>>(
+    // Get original email log via the API (server nests it under `email_log`).
+    const { data: logResp, error: logError } = await apiGet<{ email_log?: EmailLogRow }>(
       `/api/email-logs/${encodeURIComponent(emailLogId)}`,
     );
 
-    const emailLog = (logResp as Record<string, any>) || null;
+    const emailLog = logResp?.email_log || null;
     if (logError || !emailLog) {
       throw new Error('Email log not found');
     }
 
     // Determine email template and data
     let template;
+    const rawEventDate = emailLog.event?.event_date;
+    const parsedEventDate = rawEventDate ? new Date(rawEventDate) : null;
     const eventDetails = {
-      name: emailLog.events?.name || 'Event',
-      date: new Date(emailLog.events?.event_date || '').toLocaleDateString(),
-      location: emailLog.events?.location || 'TBD'
+      name: emailLog.event?.name || 'Event',
+      date:
+        parsedEventDate && !isNaN(parsedEventDate.getTime())
+          ? parsedEventDate.toLocaleDateString()
+          : 'TBD',
+      location: emailLog.event?.location || 'TBD'
     };
 
     switch (emailLog.email_type) {
-      case 'invitation':
-        const invitationUrl = `${window.location.origin}/rsvp/${emailLog.event_id}/${emailLog.guest_id}`;
+      case 'invitation': {
+        // Guest-view route is /event/:eventId/guest/:guestId (see App.tsx).
+        const invitationUrl = `${window.location.origin}/event/${emailLog.event_id}/guest/${emailLog.guest_id}`;
         template = emailTemplates.eventInvitation(
           emailLog.recipient_email,
           eventDetails,
           invitationUrl,
-          emailLog.events?.invite_image_url
+          emailLog.event?.invite_image_url || undefined
         );
         break;
+      }
       case 'confirmation':
         template = emailTemplates.rsvpConfirmation(
           emailLog.recipient_email,
           eventDetails,
-          emailLog.guests?.name || 'Guest'
+          emailLog.guest?.name || 'Guest'
         );
         break;
       case 'reminder':
         template = emailTemplates.eventReminder(
           emailLog.recipient_email,
           eventDetails,
-          emailLog.guests?.name || 'Guest'
+          emailLog.guest?.name || 'Guest'
         );
         break;
       default:
@@ -389,8 +417,8 @@ export const resendEmail = async (emailLogId: string) => {
   const emailType = (allowedTypesArray.includes(emailTypeCandidate) ? (emailTypeCandidate as EmailLogData['emailType']) : 'test');
 
     return await sendEmailWithTracking(template, {
-      eventId: emailLog.event_id,
-      guestId: emailLog.guest_id,
+      eventId: emailLog.event_id || undefined,
+      guestId: emailLog.guest_id || undefined,
       emailType,
       recipientEmail: emailLog.recipient_email,
       subject: template.subject

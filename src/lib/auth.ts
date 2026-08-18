@@ -75,7 +75,9 @@ export const authService = {
 
   resetPassword: async (email: string): Promise<AuthResponse> => {
     try {
-      await apiPostAuth('/api/auth/reset-password', { email });
+      // Requesting a reset link is /forgot-password; /reset-password is the
+      // second step and requires { token, email, password }.
+      await apiPostAuth('/api/auth/forgot-password', { email });
       return { success: true, message: 'Password reset instructions sent to your email' };
     } catch (error: any) {
       return { success: false, error: error.message };

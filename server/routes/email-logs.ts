@@ -7,6 +7,18 @@ import { requireAuth, optionalAuth, type AuthenticatedRequest } from '../middlew
 
 const router = Router();
 
+/**
+ * Email logs contain recipient PII — reads/writes scoped to an event must be
+ * performed by that event's host.
+ */
+async function isEventHost(eventId: string, userId: string): Promise<boolean> {
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+    select: { host_id: true },
+  });
+  return event?.host_id === userId;
+}
+
 // POST /api/email-logs — create an email log entry
 router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
@@ -23,6 +35,10 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     if (!recipient_email || !subject || !email_type) {
       return res.status(400).json({ error: 'Missing required fields: recipient_email, subject, email_type' });
+    }
+
+    if (event_id && !(await isEventHost(event_id, req.user!.id))) {
+      return res.status(403).json({ error: 'Only the event host can log emails for this event' });
     }
 
     const emailLog = await prisma.emailLog.create({
@@ -90,6 +106,24 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { eventId, guestId, limit } = req.query;
 
+    if (!eventId && !guestId) {
+      return res.status(400).json({ error: 'eventId or guestId query parameter required' });
+    }
+
+    if (eventId && !(await isEventHost(String(eventId), req.user!.id))) {
+      return res.status(403).json({ error: 'Only the event host can view email logs for this event' });
+    }
+
+    if (guestId && !eventId) {
+      const guest = await prisma.guest.findUnique({
+        where: { id: String(guestId) },
+        select: { event_id: true },
+      });
+      if (!guest || !(await isEventHost(guest.event_id, req.user!.id))) {
+        return res.status(403).json({ error: 'Only the event host can view email logs for this guest' });
+      }
+    }
+
     const where: Record<string, unknown> = {};
     if (eventId) where.event_id = String(eventId);
     if (guestId) where.guest_id = String(guestId);
@@ -97,11 +131,11 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     const emailLogs = await prisma.emailLog.findMany({
       where,
       include: {
-        events: { select: { name: true, event_date: true, location: true, invite_image_url: true } },
-        guests: { select: { name: true, email: true } },
+        event: { select: { name: true, event_date: true, location: true, invite_image_url: true } },
+        guest: { select: { name: true, email: true } },
       },
       orderBy: { created_at: 'desc' },
-      take: limit ? Math.min(parseInt(String(limit), 10), 500) : 100,
+      take: limit ? Math.min(Math.max(parseInt(String(limit), 10) || 100, 1), 500) : 100,
     });
 
     res.json({ email_logs: emailLogs });
@@ -118,13 +152,18 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     const emailLog = await prisma.emailLog.findUnique({
       where: { id },
       include: {
-        events: { select: { name: true, event_date: true, location: true, invite_image_url: true } },
-        guests: { select: { name: true, email: true } },
+        event: { select: { name: true, event_date: true, location: true, invite_image_url: true } },
+        guest: { select: { name: true, email: true } },
       },
     });
 
     if (!emailLog) {
       return res.status(404).json({ error: 'Email log not found' });
+    }
+
+    // Event-scoped logs are host-only (recipient PII).
+    if (emailLog.event_id && !(await isEventHost(emailLog.event_id, req.user!.id))) {
+      return res.status(403).json({ error: 'Only the event host can view this email log' });
     }
 
     res.json({ email_log: emailLog });
@@ -140,6 +179,10 @@ router.get('/analytics/event', requireAuth, async (req: AuthenticatedRequest, re
     const { eventId } = req.query;
     if (!eventId) {
       return res.status(400).json({ error: 'Missing eventId query parameter' });
+    }
+
+    if (!(await isEventHost(String(eventId), req.user!.id))) {
+      return res.status(403).json({ error: 'Only the event host can view analytics for this event' });
     }
 
     const logs = await prisma.emailLog.findMany({

@@ -6,14 +6,19 @@ import { prisma } from '../lib/prisma';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'partyhause-dev-jwt-secret-change-in-production';
+// Read lazily (not at module load): imports are hoisted above
+// dotenv.config() in server/index.ts, so a module-load constant ignores
+// .env-provided secrets. MUST match middleware/auth.ts getJwtSecret().
+function getJwtSecret(): string {
+  return process.env.JWT_SECRET || 'partyhause-dev-jwt-secret-change-in-production';
+}
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 const APP_URL = process.env.VITE_APP_URL || 'http://localhost:5173';
 
 function signToken(user: { id: string; email: string; name?: string | null }): string {
   return jwt.sign(
     { sub: user.id, email: user.email, name: user.name },
-    JWT_SECRET,
+    getJwtSecret(),
     { expiresIn: JWT_EXPIRES_IN },
   );
 }
@@ -155,7 +160,13 @@ router.post('/forgot-password', async (req, res) => {
 
     // Try to send email if Resend is configured
     const RESEND_API_KEY = process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY;
-    if (RESEND_API_KEY && !RESEND_API_KEY.includes('placeholder') && !RESEND_API_KEY.includes('re_')) {
+    // Real Resend keys all start with "re_" — only skip obvious placeholders
+    // (the previous `!includes('re_')` check rejected every real key).
+    if (
+      RESEND_API_KEY &&
+      !RESEND_API_KEY.includes('placeholder') &&
+      !RESEND_API_KEY.includes('your_resend')
+    ) {
       try {
         const { Resend } = require('resend');
         const resend = new Resend(RESEND_API_KEY);

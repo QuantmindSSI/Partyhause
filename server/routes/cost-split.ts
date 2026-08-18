@@ -100,6 +100,11 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =
       return res.status(400).json({ error: 'split_method and total_amount required' });
     }
 
+    const totalAmountNum = Number(total_amount);
+    if (!Number.isFinite(totalAmountNum) || totalAmountNum <= 0) {
+      return res.status(400).json({ error: 'total_amount must be a positive number' });
+    }
+
     // Verify user is event host
     const event = await prisma.event.findUnique({
       where: { id: event_id },
@@ -114,11 +119,14 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =
       return res.status(403).json({ error: 'Only event host can manage cost splits' });
     }
 
-    // Get confirmed guests
+    // Get attending guests. Canonical rsvp vocabulary is
+    // ('pending','accepted','declined','maybe'); 'confirmed' is accepted for
+    // backward compatibility with rows written before the vocabulary was
+    // unified (invite-join used to write 'confirmed').
     const guests = await prisma.guest.findMany({
       where: {
         event_id,
-        rsvp_status: 'confirmed',
+        rsvp_status: { in: ['accepted', 'confirmed'] },
       },
       select: { id: true, name: true, email: true, user_id: true },
     });
@@ -127,21 +135,56 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =
       return res.status(400).json({ error: 'No confirmed guests to split costs with' });
     }
 
-    // Calculate splits
+    // Calculate splits in integer cents so the parts always sum exactly to
+    // the total (floating-point per-guest rounding drifts: $100/3 would
+    // otherwise collect $99.99 and $100/6 would collect $100.02).
     const splits: Array<{ guest_id: string; amount: number }> = [];
+    const totalCents = Math.round(totalAmountNum * 100);
 
     if (split_method === 'equal') {
-      const amountPerGuest = parseFloat((total_amount / guests.length).toFixed(2));
+      const baseCents = Math.floor(totalCents / guests.length);
+      let remainderCents = totalCents - baseCents * guests.length;
+
       guests.forEach((guest) => {
-        splits.push({ guest_id: guest.id, amount: amountPerGuest });
+        // Distribute the remainder one cent at a time (largest-remainder method).
+        const cents = baseCents + (remainderCents > 0 ? 1 : 0);
+        if (remainderCents > 0) remainderCents -= 1;
+        splits.push({ guest_id: guest.id, amount: cents / 100 });
       });
     } else if (split_method === 'custom') {
-      if (!custom_splits || typeof custom_splits !== 'object') {
+      if (!custom_splits || typeof custom_splits !== 'object' || Array.isArray(custom_splits)) {
         return res.status(400).json({ error: 'custom_splits required for custom split method' });
       }
-      Object.entries(custom_splits).forEach(([guest_id, amount]) => {
-        splits.push({ guest_id, amount: parseFloat(amount as string) });
-      });
+
+      const eventGuestIds = new Set(guests.map((g) => g.id));
+      let sumCents = 0;
+
+      for (const [guest_id, rawAmount] of Object.entries(custom_splits)) {
+        const amount = Number(rawAmount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          return res.status(400).json({
+            error: `custom_splits amount for guest ${guest_id} must be a positive number`,
+          });
+        }
+        if (!eventGuestIds.has(guest_id)) {
+          return res.status(400).json({
+            error: `Guest ${guest_id} is not an attending guest of this event`,
+          });
+        }
+        const cents = Math.round(amount * 100);
+        sumCents += cents;
+        splits.push({ guest_id, amount: cents / 100 });
+      }
+
+      if (splits.length === 0) {
+        return res.status(400).json({ error: 'custom_splits must contain at least one guest' });
+      }
+
+      if (sumCents !== totalCents) {
+        return res.status(400).json({
+          error: `custom_splits must sum to total_amount (expected ${(totalCents / 100).toFixed(2)}, got ${(sumCents / 100).toFixed(2)})`,
+        });
+      }
     } else {
       return res.status(400).json({ error: 'Invalid split_method' });
     }
@@ -176,11 +219,12 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =
       },
     });
 
-    // Update guests table
+    // Update guests table (scoped to this event — guest ids were validated
+    // against the event's guest list above, updateMany keeps it defensive).
     await Promise.all(
       splits.map((split) =>
-        prisma.guest.update({
-          where: { id: split.guest_id },
+        prisma.guest.updateMany({
+          where: { id: split.guest_id, event_id },
           data: {
             cost_share_enabled: true,
             cost_share_amount: split.amount,
@@ -249,19 +293,26 @@ router.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response)
       if (payment_reference) updateData.payment_reference = payment_reference;
     }
 
-    // Update the cost split request
+    // Update the cost split request. findFirst + update (instead of a bare
+    // update) so an id/event mismatch surfaces as 404 rather than a P2025 500.
+    const existing = await prisma.costSplitRequest.findFirst({
+      where: { id: split_id, event_id },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Cost split request not found for this event' });
+    }
+
     const updated = await prisma.costSplitRequest.update({
-      where: {
-        id: split_id,
-        event_id,
-      },
+      where: { id: split_id },
       data: updateData,
     });
 
-    // Update guest payment status
+    // Update guest payment status (scoped to this event)
     if (status === 'paid') {
-      await prisma.guest.update({
-        where: { id: updated.guest_id },
+      await prisma.guest.updateMany({
+        where: { id: updated.guest_id, event_id },
         data: { payment_status: 'paid' },
       });
     }
@@ -308,12 +359,16 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res: Respon
       return res.status(403).json({ error: 'Only event host can manage cost splits' });
     }
 
-    await prisma.costSplitRequest.deleteMany({
+    const deleted = await prisma.costSplitRequest.deleteMany({
       where: {
         id: split_id,
         event_id,
       },
     });
+
+    if (deleted.count === 0) {
+      return res.status(404).json({ error: 'Cost split request not found for this event' });
+    }
 
     return res.status(200).json({ message: 'Cost split deleted' });
   } catch (error: unknown) {

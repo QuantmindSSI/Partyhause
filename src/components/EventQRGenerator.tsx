@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { supabase } from '@/lib/supabase';
+import { apiUrl } from '@/lib/apiBase';
 
 interface EventQRGeneratorProps {
   eventId: string;
@@ -57,13 +58,16 @@ export function EventQRGenerator({ eventId, eventName }: EventQRGeneratorProps) 
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
-      const response = await fetch(`/api/generate-invite?event_id=${eventId}`, {
+      // Express endpoint takes event_id in the BODY (the old
+      // /api/generate-invite?event_id=... was a deleted Vercel fn).
+      const response = await fetch(apiUrl('/api/invites/generate'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token}`,
         },
         body: JSON.stringify({
+          event_id: eventId,
           token_type: tokenType,
           max_uses: maxUses ? parseInt(maxUses) : null,
           expires_in_hours: expiresInHours ? parseInt(expiresInHours) : null,

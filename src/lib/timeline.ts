@@ -1,16 +1,31 @@
 import { apiGet, apiPut } from './api-client';
 import { TimelineBlock } from '@/features/timeline/types';
 
+// Parse "HH:MM" into minutes-since-midnight for sorting. Avoids
+// `new Date('1970-01-01 HH:MM')` non-ISO parsing (Safari-fragile, and NaN
+// for anything that isn't exactly that shape).
+const timeToMinutes = (time: string | undefined): number => {
+  if (!time) return Number.MAX_SAFE_INTEGER;
+  const match = /^(\d{1,2}):(\d{2})/.exec(time);
+  if (!match) return Number.MAX_SAFE_INTEGER;
+  return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+};
+
 export const timelineService = {
-  // Get timeline blocks for an event
+  // Get timeline blocks for an event.
+  // SOURCE OF TRUTH: the events.timeline_blocks JSON column — that is what
+  // every write path updates. (The /api/timeline table endpoint reads the
+  // separate timeline_blocks TABLE which nothing populates; reading it here
+  // returned [] and made add/update/delete destroy existing timelines.)
   getEventTimeline: async (eventId: string): Promise<TimelineBlock[]> => {
     try {
-      const { data, error } = await apiGet<{ blocks?: TimelineBlock[] }>(
-        `/api/timeline/${encodeURIComponent(eventId)}`,
+      const { data, error } = await apiGet<{ event?: { timeline_blocks?: TimelineBlock[] } }>(
+        `/api/events/${encodeURIComponent(eventId)}`,
       );
 
       if (error) throw error;
-      return data?.blocks || [];
+      const blocks = data?.event?.timeline_blocks;
+      return Array.isArray(blocks) ? blocks : [];
     } catch (error) {
       console.error('Error fetching timeline:', error);
       return [];
@@ -20,11 +35,10 @@ export const timelineService = {
   // Update timeline blocks for an event
   updateEventTimeline: async (eventId: string, timelineBlocks: TimelineBlock[]): Promise<TimelineBlock[]> => {
     try {
-      // Sort blocks by start time
-      const sortedBlocks = timelineBlocks.sort((a, b) => {
-        return new Date(`1970-01-01 ${a.start_time}`).getTime() - 
-               new Date(`1970-01-01 ${b.start_time}`).getTime();
-      });
+      // Sort blocks by start time (stable numeric comparison on "HH:MM")
+      const sortedBlocks = [...timelineBlocks].sort(
+        (a, b) => timeToMinutes(a.start_time) - timeToMinutes(b.start_time),
+      );
 
       // Update order based on sort
       const blocksWithOrder = sortedBlocks.map((block, index) => ({

@@ -74,7 +74,16 @@ const corsOptions: cors.CorsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json({ limit: '10mb' }));
+app.use(
+  express.json({
+    limit: '10mb',
+    // Preserve the raw body so webhook signature verification (svix HMAC in
+    // routes/email-webhook.ts) can hash the exact bytes that were signed.
+    verify: (req, _res, buf) => {
+      (req as unknown as { rawBody?: Buffer }).rawBody = buf;
+    },
+  }),
+);
 
 // Health check
 app.get('/api/health', (_req, res) => {

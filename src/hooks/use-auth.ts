@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import type { AccountInfo } from '@azure/msal-browser';
 import { usePartyStore } from '@/store/usePartyStore';
 import { authService } from '@/lib/auth';
 import { getStoredToken, getStoredUser, setStoredUser, clearAuth, isSupabaseConfigured } from '@/lib/supabase';
@@ -12,7 +13,7 @@ interface NormalizedUser {
   user_metadata?: Record<string, unknown>;
 }
 
-function accountToUser(account: ReturnType<typeof msalGetAccount>) {
+function accountToUser(account: AccountInfo | null) {
   if (!account) return null;
   const idClaims = (account.idTokenClaims ?? {}) as Record<string, unknown>;
   const name =
@@ -50,15 +51,26 @@ export const useAuth = () => {
     let mounted = true;
 
     if (isMsalConfigured) {
-      const account = msalGetAccount();
-      if (account) {
-        const normalizedUser = accountToUser(account);
-        if (normalizedUser) {
-          usePartyStore.getState().setUser(normalizedUser);
-        }
-      }
-      usePartyStore.getState().setLoading(false);
-      return;
+      // msalGetAccount lazily loads @azure/msal-browser on first use.
+      msalGetAccount()
+        .then((account) => {
+          if (!mounted) return;
+          if (account) {
+            const normalizedUser = accountToUser(account);
+            if (normalizedUser) {
+              usePartyStore.getState().setUser(normalizedUser);
+            }
+          }
+        })
+        .catch((err) => {
+          console.warn('MSAL account restore failed:', err);
+        })
+        .finally(() => {
+          if (mounted) usePartyStore.getState().setLoading(false);
+        });
+      return () => {
+        mounted = false;
+      };
     }
 
     // Check for existing session from stored token

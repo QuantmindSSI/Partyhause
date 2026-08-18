@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { getEventAccess, isEventParticipant } from '../lib/event-access';
 
 const router = Router();
 
@@ -151,6 +152,12 @@ router.get('/', async (req: AuthenticatedRequest, res) => {
       return res.status(400).json({ error: 'eventId query parameter is required' });
     }
 
+    // RLS parity: polls are visible to event participants (host or guest).
+    const access = await getEventAccess(eventId, userId, req.user?.email);
+    if (!isEventParticipant(access)) {
+      return res.status(403).json({ error: 'Only event participants can view polls' });
+    }
+
     const polls = await prisma.poll.findMany({
       where: { event_id: eventId },
       include: {
@@ -190,6 +197,31 @@ router.post('/', async (req: AuthenticatedRequest, res) => {
 
     if (!event_id || !question || !poll_type || !options || options.length < 2) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Grounded in the polls table CHECK constraints
+    // (supabase/migrations/20251107_polls_feature.sql).
+    const VALID_POLL_TYPES = ['single-choice', 'multiple-choice', 'ranking'];
+    if (!VALID_POLL_TYPES.includes(poll_type)) {
+      return res.status(400).json({
+        error: `poll_type must be one of: ${VALID_POLL_TYPES.join(', ')}`,
+      });
+    }
+
+    if (
+      consensus_threshold !== undefined &&
+      consensus_threshold !== null &&
+      (typeof consensus_threshold !== 'number' ||
+        consensus_threshold < 50 ||
+        consensus_threshold > 100)
+    ) {
+      return res.status(400).json({ error: 'consensus_threshold must be between 50 and 100' });
+    }
+
+    // RLS parity ("Event participants can create polls"): host or guest.
+    const access = await getEventAccess(event_id, userId, req.user?.email);
+    if (!isEventParticipant(access)) {
+      return res.status(403).json({ error: 'Only event participants can create polls' });
     }
 
     // Create poll with options in a transaction
@@ -259,6 +291,19 @@ router.get('/:id', async (req: AuthenticatedRequest, res) => {
       return res.status(400).json({ error: 'Poll ID is required' });
     }
 
+    // RLS parity: participants of the poll's event only.
+    const pollRow = await prisma.poll.findUnique({
+      where: { id },
+      select: { event_id: true },
+    });
+    if (!pollRow) {
+      return res.status(404).json({ error: 'Poll not found' });
+    }
+    const access = await getEventAccess(pollRow.event_id, userId, req.user?.email);
+    if (!isEventParticipant(access)) {
+      return res.status(404).json({ error: 'Poll not found' });
+    }
+
     const transformedPoll = await fetchAndTransformPoll(id, userId);
 
     if (!transformedPoll) {
@@ -293,8 +338,38 @@ router.post('/:id/vote', async (req: AuthenticatedRequest, res) => {
       return res.status(404).json({ error: 'Poll not found' });
     }
 
+    // RLS parity ("Event participants can vote"): host or guest of the
+    // poll's event. Checked BEFORE any poll-state responses so outsiders
+    // learn nothing about the poll (row-invisibility semantics).
+    const voteAccess = await getEventAccess(poll.event_id, userId, req.user?.email);
+    if (!isEventParticipant(voteAccess)) {
+      return res.status(404).json({ error: 'Poll not found' });
+    }
+
     if (poll.status !== 'active') {
       return res.status(400).json({ error: 'Poll is not active' });
+    }
+
+    // Enforce the poll deadline: ends_at is a business rule, not advisory.
+    if (poll.ends_at && new Date(poll.ends_at) <= new Date()) {
+      return res.status(400).json({ error: 'Poll has ended' });
+    }
+
+    // Every submitted option must belong to THIS poll — otherwise cross-poll
+    // option ids create vote rows that inflate total_votes while appearing
+    // under no option.
+    const validOptionIds = new Set(poll.options.map((o) => o.id));
+    const invalidIds = (option_ids as string[]).filter((id) => !validOptionIds.has(id));
+    if (invalidIds.length > 0) {
+      return res.status(400).json({
+        error: `Invalid option_ids for this poll: ${invalidIds.join(', ')}`,
+      });
+    }
+
+    // Single-choice polls accept exactly one option
+    // (poll_type CHECK: 'single-choice' | 'multiple-choice' | 'ranking').
+    if (poll.poll_type === 'single-choice' && option_ids.length > 1) {
+      return res.status(400).json({ error: 'This poll only allows one choice' });
     }
 
     // Remove existing votes by this user, then insert new votes

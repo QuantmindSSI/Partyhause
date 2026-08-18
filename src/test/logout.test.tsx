@@ -6,7 +6,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { BrowserRouter } from 'react-router-dom';
 import App from '@/App';
 import { usePartyStore } from '@/store/usePartyStore';
-import { supabase } from '@/lib/supabase';
+import { supabase, clearAuth } from '@/lib/supabase';
 
 // Mock Supabase
 vi.mock('@/lib/supabase', () => ({
@@ -192,8 +192,8 @@ describe('Logout Userflow Integration Test', () => {
     expect(state.events).toEqual([]);
     expect(state.currentEvent).toBeNull();
 
-    // Verify supabase signOut was called
-    expect(supabase.auth.signOut).toHaveBeenCalled();
+    // Verify stored auth credentials were cleared (post-Supabase-migration behavior)
+    expect(clearAuth).toHaveBeenCalled();
   });
 
   it('should handle logout even when currentEvent exists but events array is empty', async () => {

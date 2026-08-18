@@ -4,12 +4,13 @@
  * Ported from mobile app
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useCrewFeed } from '@/features/partycrew/hooks';
 import { ContentFeedCard, CrewingWithBar } from '@/features/partycrew/components';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, RefreshCw, ArrowLeft } from 'lucide-react';
+import { Loader2, RefreshCw, ArrowLeft, Users } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
 import { FilterTab } from '@/features/partycrew/types';
 import { usePartyStore } from '@/store/usePartyStore';
 
@@ -24,9 +25,59 @@ export default function SocialFeedPage() {
     recaps: 'recap',
   };
 
-  const { posts, isLoading, refetch, loadMore, hasMore } = useCrewFeed(
+  const { posts, isLoading, refetch, loadMore, hasMore, markSeen } = useCrewFeed(
     contentTypeMap[activeFilter]
   );
+
+  // Impression tracking: a post counts as "seen" only when ≥50% of its card
+  // has actually been in the viewport. Reported ids are batched and flushed
+  // every 2s (and deduped for the session) via POST /api/feed/seen.
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const seenQueueRef = useRef<Set<string>>(new Set());
+  const reportedRef = useRef<Set<string>>(new Set());
+
+  const observePost = useCallback((node: HTMLDivElement | null) => {
+    if (!node) return;
+    if (!observerRef.current && typeof IntersectionObserver !== 'undefined') {
+      observerRef.current = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              const id = (entry.target as HTMLElement).dataset.postId;
+              if (id && !reportedRef.current.has(id)) {
+                seenQueueRef.current.add(id);
+              }
+            }
+          }
+        },
+        { threshold: 0.5 },
+      );
+    }
+    observerRef.current?.observe(node);
+  }, []);
+
+  useEffect(() => {
+    const flush = setInterval(() => {
+      if (seenQueueRef.current.size === 0) return;
+      const batch = Array.from(seenQueueRef.current);
+      seenQueueRef.current.clear();
+      batch.forEach((id) => reportedRef.current.add(id));
+      markSeen(batch);
+    }, 2000);
+
+    return () => {
+      clearInterval(flush);
+      // Flush anything still queued on unmount.
+      const remaining = Array.from(seenQueueRef.current);
+      seenQueueRef.current.clear();
+      if (remaining.length > 0) {
+        remaining.forEach((id) => reportedRef.current.add(id));
+        markSeen(remaining);
+      }
+      observerRef.current?.disconnect();
+      observerRef.current = null;
+    };
+  }, [markSeen]);
 
   const handleLike = async (postId: string) => {
     // TODO: Implement like functionality
@@ -91,30 +142,28 @@ export default function SocialFeedPage() {
 
         {/* Empty State */}
         {!isLoading && posts.length === 0 && (
-          <div className="text-center py-12 space-y-4">
-            <div className="text-6xl">🎉</div>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">No posts yet</h3>
-              <p className="text-gray-600">
-                Start following creators to see their content here!
-              </p>
-            </div>
-            <Button onClick={() => usePartyStore.getState().setCurrentPage('explore')}>
-              Discover Creators
-            </Button>
-          </div>
+          <EmptyState
+            icon={Users}
+            title="No posts yet"
+            description="Start following creators to see their content here!"
+            action={{
+              label: 'Discover Creators',
+              onClick: () => usePartyStore.getState().setCurrentPage('explore'),
+            }}
+          />
         )}
 
         {/* Feed Posts */}
         <div className="space-y-4">
           {posts.map((post) => (
-            <ContentFeedCard
-              key={post.id}
-              post={post}
-              onLike={() => handleLike(post.id)}
-              onComment={() => handleComment(post.id)}
-              onShare={() => handleShare(post.id)}
-            />
+            <div key={post.id} data-post-id={post.id} ref={observePost}>
+              <ContentFeedCard
+                post={post}
+                onLike={() => handleLike(post.id)}
+                onComment={() => handleComment(post.id)}
+                onShare={() => handleShare(post.id)}
+              />
+            </div>
           ))}
         </div>
 
