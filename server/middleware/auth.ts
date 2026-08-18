@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { prisma } from '../lib/prisma';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -38,23 +39,51 @@ function extractToken(req: Request): string | null {
   return match ? match[1] : null;
 }
 
-export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
-  if (authBypassEnabled()) {
-    req.user = {
-      id: process.env.AUTH_BYPASS_USER_ID || 'dev-user-00000000-0000-0000-0000-000000000001',
-      email: 'dev@partyhause.local',
-      name: 'Dev User',
-    };
-    next();
-    return;
-  }
+const BYPASS_USER_EMAIL = 'dev@partyhause.local';
+const BYPASS_USER_NAME = 'Dev User';
 
+function bypassUserId(): string {
+  return process.env.AUTH_BYPASS_USER_ID || 'dev-user-00000000-0000-0000-0000-000000000001';
+}
+
+// The bypass identity must exist as real rows: connections, notifications,
+// events, etc. all carry foreign keys to users/user_profiles, so a synthetic
+// req.user with no backing row turns every authenticated WRITE into a P2003
+// foreign-key 500 on a fresh database. Materialize it once per process
+// (idempotent upserts); on failure, log once and continue — reads still work
+// and the log explains any subsequent FK failures instead of them being
+// mysterious.
+let bypassUserReady: Promise<void> | null = null;
+
+function ensureBypassUser(): Promise<void> {
+  if (bypassUserReady === null) {
+    const id = bypassUserId();
+    bypassUserReady = (async () => {
+      await prisma.user.upsert({
+        where: { id },
+        update: {},
+        create: { id, email: BYPASS_USER_EMAIL, name: BYPASS_USER_NAME },
+      });
+      await prisma.userProfile.upsert({
+        where: { id },
+        update: {},
+        create: { id, username: 'dev-user-bypass', display_name: BYPASS_USER_NAME },
+      });
+    })().catch((err: unknown) => {
+      console.warn(
+        '[auth] AUTH_BYPASS user could not be materialized; authenticated writes may fail with FK violations:',
+        err instanceof Error ? err.message : err,
+      );
+    });
+  }
+  return bypassUserReady;
+}
+
+// Try to authenticate the request from its Bearer token. Returns true and
+// sets req.user when the token verifies; returns false otherwise.
+function applyVerifiedToken(req: AuthenticatedRequest): boolean {
   const token = extractToken(req);
-  if (!token) {
-    res.status(401).json({ error: 'Missing Authorization header' });
-    return;
-  }
-
+  if (!token) return false;
   try {
     const payload = jwt.verify(token, getJwtSecret()) as JwtPayload;
     req.user = {
@@ -62,39 +91,63 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
       email: payload.email,
       name: payload.name,
     };
-    next();
-  } catch (err) {
-    res.status(401).json({ error: 'Invalid or expired token' });
+    return true;
+  } catch {
+    return false;
   }
+}
+
+export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  // A valid real session always wins. AUTH_BYPASS is a fallback for
+  // credential-less local requests — it must not clobber genuine logins,
+  // otherwise writes are attributed to the synthetic dev user instead of
+  // the signed-in account.
+  if (applyVerifiedToken(req)) {
+    next();
+    return;
+  }
+
+  if (authBypassEnabled()) {
+    req.user = {
+      id: bypassUserId(),
+      email: BYPASS_USER_EMAIL,
+      name: BYPASS_USER_NAME,
+    };
+    void ensureBypassUser().then(() => next());
+    return;
+  }
+
+  if (!extractToken(req)) {
+    res.status(401).json({ error: 'Missing Authorization header' });
+    return;
+  }
+  res.status(401).json({ error: 'Invalid or expired token' });
 }
 
 export function optionalAuth(req: AuthenticatedRequest, _res: Response, next: NextFunction): void {
   const token = extractToken(req);
   if (!token) {
+    // No credentials at all: stay anonymous even under AUTH_BYPASS —
+    // optional-auth routes are expected to serve anonymous traffic.
+    next();
+    return;
+  }
+
+  if (applyVerifiedToken(req)) {
     next();
     return;
   }
 
   if (authBypassEnabled()) {
     req.user = {
-      id: process.env.AUTH_BYPASS_USER_ID || 'dev-user-00000000-0000-0000-0000-000000000001',
-      email: 'dev@partyhause.local',
-      name: 'Dev User',
+      id: bypassUserId(),
+      email: BYPASS_USER_EMAIL,
+      name: BYPASS_USER_NAME,
     };
-    next();
+    void ensureBypassUser().then(() => next());
     return;
   }
 
-  try {
-    const payload = jwt.verify(token, getJwtSecret()) as JwtPayload;
-    req.user = {
-      id: payload.sub,
-      email: payload.email,
-      name: payload.name,
-    };
-  } catch {
-    // Token invalid — continue without user
-  }
-
+  // Token invalid — continue without user
   next();
 }
