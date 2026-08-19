@@ -117,6 +117,13 @@ export function installGlobalErrorCapture(): void {
     recordRuntimeError('unhandledrejection', 'error', toMessage(event.reason), toStack(event.reason));
   });
 
+  // NOTE ON DEVTOOLS ATTRIBUTION: because these wrappers become the new
+  // console.error/console.warn, browser devtools show THIS file as the top
+  // stack frame for every warning logged after boot (e.g. Vite's "Module
+  // 'path' has been externalized" messages appear as "monitor.ts"). The
+  // wrapper only observes — the original console method is always invoked
+  // first with untouched arguments. Expand the printed stack one frame to
+  // see the real call site.
   const originalError = console.error.bind(console);
   const originalWarn = console.warn.bind(console);
 
