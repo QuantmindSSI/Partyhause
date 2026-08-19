@@ -19,7 +19,11 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
       name: 'standard'
     }
     tenantId: subscription().tenantId
-    accessPolicies: [
+    // Guard against an unset AZURE_DEPLOYER_OBJECT_ID secret: an empty
+    // objectId makes the whole vault write fail with BadRequest ("Invalid
+    // value found at accessPolicies[0].ObjectId"), which took the entire
+    // provision job down. No id -> no policy, vault still deploys.
+    accessPolicies: empty(deployerObjectId) ? [] : [
       {
         tenantId: subscription().tenantId
         objectId: deployerObjectId
