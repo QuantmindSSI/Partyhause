@@ -58,6 +58,10 @@ let bypassUserReady: Promise<void> | null = null;
 function ensureBypassUser(): Promise<void> {
   if (bypassUserReady === null) {
     const id = bypassUserId();
+    // Username derived from the id: a fixed literal would collide (unique
+    // constraint P2002) when AUTH_BYPASS_USER_ID changes against a dev DB
+    // that already has the old bypass profile row.
+    const username = `dev-${id.replace(/[^a-z0-9_]/gi, '_').slice(0, 40)}`.toLowerCase();
     bypassUserReady = (async () => {
       await prisma.user.upsert({
         where: { id },
@@ -67,13 +71,16 @@ function ensureBypassUser(): Promise<void> {
       await prisma.userProfile.upsert({
         where: { id },
         update: {},
-        create: { id, username: 'dev-user-bypass', display_name: BYPASS_USER_NAME },
+        create: { id, username, display_name: BYPASS_USER_NAME },
       });
     })().catch((err: unknown) => {
       console.warn(
-        '[auth] AUTH_BYPASS user could not be materialized; authenticated writes may fail with FK violations:',
+        '[auth] AUTH_BYPASS user could not be materialized; will retry on the next request:',
         err instanceof Error ? err.message : err,
       );
+      // Reset the cache so a transient failure (DB briefly down) is retried
+      // by the next request instead of being latched until process restart.
+      bypassUserReady = null;
     });
   }
   return bypassUserReady;
