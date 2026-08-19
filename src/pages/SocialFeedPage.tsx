@@ -4,13 +4,14 @@
  * Ported from mobile app
  */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useCrewFeed } from '@/features/partycrew/hooks';
 import { ContentFeedCard, CrewingWithBar } from '@/features/partycrew/components';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, RefreshCw, ArrowLeft, Users } from 'lucide-react';
+import { Loader2, RefreshCw, Users } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
+import { PageShell } from '@/components/layout/PageShell';
 import { FilterTab } from '@/features/partycrew/types';
 import { usePartyStore } from '@/store/usePartyStore';
 
@@ -95,41 +96,32 @@ export default function SocialFeedPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-3xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" onClick={() => setCurrentPage('dashboard')}>
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-              <h1 className="text-2xl font-bold text-gray-900">PartyCrew Feed</h1>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => refetch()}
-              disabled={isLoading}
-            >
-              <RefreshCw className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
-            </Button>
-          </div>
-
-          {/* Filter Tabs */}
-          <Tabs value={activeFilter} onValueChange={(value) => setActiveFilter(value as FilterTab)}>
-            <TabsList className="w-full grid grid-cols-4">
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="events">Events</TabsTrigger>
-              <TabsTrigger value="tips">Tips</TabsTrigger>
-              <TabsTrigger value="recaps">Recaps</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+    <PageShell
+      title="PartyCrew Feed"
+      maxWidth="md"
+      onBack={() => setCurrentPage('dashboard')}
+      actions={
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Refresh feed"
+          onClick={() => refetch()}
+          disabled={isLoading}
+        >
+          <RefreshCw className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} />
+        </Button>
+      }
+      headerBottom={
+        <Tabs value={activeFilter} onValueChange={(value) => setActiveFilter(value as FilterTab)}>
+          <TabsList className="w-full grid grid-cols-4">
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="events">Events</TabsTrigger>
+            <TabsTrigger value="tips">Tips</TabsTrigger>
+            <TabsTrigger value="recaps">Recaps</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      }
+    >
         {/* Crewing With Bar */}
         <CrewingWithBar />
 
@@ -189,11 +181,10 @@ export default function SocialFeedPage() {
 
         {/* End of Feed */}
         {!hasMore && posts.length > 0 && (
-          <div className="text-center py-8 text-gray-500">
+          <div className="text-center py-8 text-muted-foreground">
             <p>You've reached the end! 🎊</p>
           </div>
         )}
-      </div>
-    </div>
+    </PageShell>
   );
 }

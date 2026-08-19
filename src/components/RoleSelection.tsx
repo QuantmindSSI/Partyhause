@@ -88,7 +88,7 @@ export const RoleSelection = () => {
         </div>
 
         <Button
-          className="w-full bg-orange-500 hover:bg-orange-600 text-white h-12 text-base font-semibold"
+          className="w-full h-12 text-base font-semibold"
           disabled={!selected || saving}
           onClick={handleConfirm}
         >

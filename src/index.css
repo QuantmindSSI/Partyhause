@@ -81,6 +81,14 @@
     --ring: var(--orange-500);
     --radius: 0.75rem; /* Softer radius */
 
+    /* Gradient tokens consumed by tailwind.config.ts backgroundImage
+       (bg-gradient-primary / bg-gradient-hero / bg-gradient-card).
+       These were referenced by the config but never defined, which made
+       bg-clip-text headings render invisible. */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--orange-500)), hsl(var(--orange-700)));
+    --gradient-hero: linear-gradient(160deg, hsl(var(--orange-50)), hsl(var(--bg-soft)) 55%, hsl(var(--orange-100)));
+    --gradient-card: linear-gradient(180deg, hsl(var(--bg-primary)), hsl(var(--bg-secondary)));
+
     /* ============================================ */
     /* PARTYHAUSE SOLID COLOR SYSTEM              */
     /* ============================================ */

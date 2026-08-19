@@ -144,7 +144,7 @@ export const GuestView = ({ guestId, eventId }: GuestViewProps) => {
                   transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
                   className="mx-auto mb-4"
                 >
-                  <Sparkles className="h-12 w-12 text-primary animate-neon-flicker" />
+                  <Sparkles className="h-12 w-12 text-primary" />
                 </motion.div>
                 <CardTitle className="text-3xl">{event.name}</CardTitle>
                 <CardDescription className="text-lg">
@@ -249,7 +249,7 @@ export const GuestView = ({ guestId, eventId }: GuestViewProps) => {
               <Card className="glass border-primary/20 shadow-2xl">
                 <CardHeader className="text-center">
                   <CardTitle className="flex items-center justify-center">
-                    <Music className="h-6 w-6 mr-2 text-primary animate-neon-flicker" />
+                    <Music className="h-6 w-6 mr-2 text-primary" />
                     Party Playlist
                   </CardTitle>
                   <CardDescription>
