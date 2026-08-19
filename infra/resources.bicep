@@ -131,6 +131,43 @@ resource cae 'Microsoft.App/managedEnvironments@2024-03-01' = {
   }
 }
 
+// ===== Azure OpenAI (semantic event extraction for /api/ai) =====
+// The API's extraction pipeline (server/lib/event-extraction.ts) uses this
+// deployment when the AZURE_OPENAI_* env vars are present and falls back to
+// deterministic heuristics otherwise. gpt-5-mini/GlobalStandard was chosen
+// for structured JSON extraction: low latency, low cost, GA in eastus2.
+resource openai 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
+  name: 'oai-partyhause-${suffix}'
+  location: location
+  kind: 'OpenAI'
+  sku: {
+    name: 'S0'
+  }
+  properties: {
+    customSubDomainName: 'oai-partyhause-${suffix}'
+    publicNetworkAccess: 'Enabled'
+  }
+  tags: {
+    environment: environmentTag
+  }
+}
+
+resource openaiDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+  parent: openai
+  name: 'gpt-5-mini'
+  sku: {
+    name: 'GlobalStandard'
+    capacity: 10 // thousands of tokens-per-minute
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: 'gpt-5-mini'
+      version: '2025-08-07'
+    }
+  }
+}
+
 // ===== Web Container App (PWA served by nginx) =====
 // NOTE: VITE_* variables are build-time only — Vite inlines them into the
 // static bundle during `npm run build:web`. They are passed as --build-arg
@@ -184,6 +221,9 @@ module apiApp 'modules/container-app.bicep' = {
       { name: 'RESEND_API_KEY', secretRef: 'resend-api-key' }
       { name: 'RESEND_FROM_EMAIL', value: RESEND_FROM_EMAIL }
       { name: 'RESEND_FROM_NAME', value: 'PartyHause' }
+      { name: 'AZURE_OPENAI_ENDPOINT', value: openai.properties.endpoint }
+      { name: 'AZURE_OPENAI_DEPLOYMENT', value: openaiDeployment.name }
+      { name: 'AZURE_OPENAI_API_KEY', secretRef: 'azure-openai-api-key' }
     ]
     secrets: [
       { name: 'postgres-password', value: postgresAdminPassword }
@@ -192,6 +232,7 @@ module apiApp 'modules/container-app.bicep' = {
       { name: 'webpubsub-connection-string', value: webPubSub.outputs.primaryConnectionString }
       { name: 'entra-api-client-secret', value: entraApiClientSecret }
       { name: 'resend-api-key', value: RESEND_API_KEY }
+      { name: 'azure-openai-api-key', value: openai.listKeys().key1 }
     ]
   }
 }
