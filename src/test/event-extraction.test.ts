@@ -132,7 +132,7 @@ describe('LLM layer', () => {
       AZURE_OPENAI_DEPLOYMENT: 'gpt-4o-mini',
     } as NodeJS.ProcessEnv);
     expect(config?.url).toBe(
-      'https://example.openai.azure.com/openai/deployments/gpt-4o-mini/chat/completions?api-version=2024-06-01',
+      'https://example.openai.azure.com/openai/deployments/gpt-4o-mini/chat/completions?api-version=2024-10-21',
     );
   });
 
