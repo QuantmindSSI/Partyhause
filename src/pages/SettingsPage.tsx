@@ -3,7 +3,6 @@ import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { PageShell, useBackToDashboard } from '@/components/layout/PageShell';
 import { User, Bell, Shield, LogOut, ChevronRight } from 'lucide-react';
 
@@ -11,7 +10,7 @@ interface SettingsItem {
   icon: typeof User;
   label: string;
   description: string;
-  page: string | null;
+  page: string;
 }
 
 export default function SettingsPage() {
@@ -28,12 +27,10 @@ export default function SettingsPage() {
     setCurrentPage('auth');
   };
 
-  // page: null marks sections that do not exist yet. They render as
-  // non-interactive "Coming soon" rows instead of links back to this page.
   const settingsItems: SettingsItem[] = [
     { icon: User, label: 'Profile', page: 'profile', description: 'View and edit your profile' },
-    { icon: Bell, label: 'Notifications', page: null, description: 'Manage notification preferences' },
-    { icon: Shield, label: 'Privacy', page: null, description: 'Privacy and security settings' },
+    { icon: Bell, label: 'Notifications', page: 'notifications', description: 'Activity from your crew and events' },
+    { icon: Shield, label: 'Privacy', page: 'privacy-settings', description: 'Control what others can see' },
   ];
 
   return (
@@ -55,42 +52,27 @@ export default function SettingsPage() {
 
       {/* Settings List */}
       <div className="space-y-2">
-        {settingsItems.map(({ icon: Icon, label, page, description }) =>
-          page ? (
-            <button
-              key={label}
-              type="button"
-              className="w-full text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => setCurrentPage(page)}
-            >
-              <Card className="hover:shadow-md transition-all">
-                <CardContent className="p-4 flex items-center gap-4">
-                  <div className="p-2 rounded-xl bg-muted">
-                    <Icon className="h-5 w-5 text-foreground" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-foreground">{label}</p>
-                    <p className="text-xs text-muted-foreground">{description}</p>
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                </CardContent>
-              </Card>
-            </button>
-          ) : (
-            <Card key={label} className="opacity-70">
+        {settingsItems.map(({ icon: Icon, label, page, description }) => (
+          <button
+            key={label}
+            type="button"
+            className="w-full text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => setCurrentPage(page)}
+          >
+            <Card className="hover:shadow-md transition-all">
               <CardContent className="p-4 flex items-center gap-4">
                 <div className="p-2 rounded-xl bg-muted">
-                  <Icon className="h-5 w-5 text-muted-foreground" />
+                  <Icon className="h-5 w-5 text-foreground" />
                 </div>
                 <div className="flex-1">
-                  <p className="font-medium text-muted-foreground">{label}</p>
+                  <p className="font-medium text-foreground">{label}</p>
                   <p className="text-xs text-muted-foreground">{description}</p>
                 </div>
-                <Badge variant="outline" className="text-xs">Coming soon</Badge>
+                <ChevronRight className="h-5 w-5 text-muted-foreground" />
               </CardContent>
             </Card>
-          ),
-        )}
+          </button>
+        ))}
       </div>
 
       {/* Switch Role */}

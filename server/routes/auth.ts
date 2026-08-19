@@ -23,6 +23,72 @@ function signToken(user: { id: string; email: string; name?: string | null }): s
   );
 }
 
+/**
+ * Send a transactional auth email via Resend. Returns true when the email
+ * was handed to Resend, false when Resend is unconfigured or the send
+ * failed. Callers must treat false as non-fatal: auth flows always print
+ * the actionable link to the server log so local development works with no
+ * email provider at all.
+ */
+async function sendAuthEmail(to: string, subject: string, html: string): Promise<boolean> {
+  const RESEND_API_KEY = process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY;
+  if (
+    !RESEND_API_KEY ||
+    RESEND_API_KEY.includes('placeholder') ||
+    RESEND_API_KEY.includes('your_resend')
+  ) {
+    return false;
+  }
+  try {
+    const { Resend } = require('resend');
+    const resend = new Resend(RESEND_API_KEY);
+    await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL || 'PartyHause <noreply@partyhause.com>',
+      to,
+      subject,
+      html,
+    });
+    return true;
+  } catch (emailErr) {
+    console.warn(`Failed to send "${subject}" email:`, emailErr);
+    return false;
+  }
+}
+
+const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+/**
+ * Generate a fresh verification token for the user, persist its bcrypt hash,
+ * and send (or log, in dev) the verification link. Failures are contained:
+ * signup must never fail because the verification email could not be sent.
+ */
+async function issueVerificationEmail(user: { id: string; email: string }): Promise<void> {
+  try {
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = await bcrypt.hash(rawToken, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        verification_token: tokenHash,
+        verification_token_expires: new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS),
+      },
+    });
+
+    const verifyLink = `${APP_URL}/auth/verify-email?token=${rawToken}&email=${encodeURIComponent(user.email)}`;
+    console.log('\n=== EMAIL VERIFICATION LINK (dev mode) ===');
+    console.log(verifyLink);
+    console.log('==========================================\n');
+
+    await sendAuthEmail(
+      user.email,
+      'Verify your PartyHause email',
+      `<p>Welcome to PartyHause! Click <a href="${verifyLink}">here</a> to verify your email address. This link expires in 24 hours.</p>`,
+    );
+  } catch (err) {
+    console.warn('Failed to issue verification email:', err);
+  }
+}
+
 // POST /api/auth/signup
 router.post('/signup', async (req, res) => {
   try {
@@ -63,12 +129,85 @@ router.post('/signup', async (req, res) => {
 
     const token = signToken(user);
 
+    // Fire the verification email after the account exists. Non-blocking
+    // for the response only in effect: we await so serverless-style runtimes
+    // don't drop the work, but failures inside are contained and logged.
+    await issueVerificationEmail({ id: user.id, email: user.email });
+
     res.status(201).json({
-      user: { id: user.id, email: user.email, name: user.name },
+      user: { id: user.id, email: user.email, name: user.name, email_verified: false },
       token,
     });
   } catch (err) {
     console.error('Signup error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/auth/verify-email — completes the email-verification loop.
+router.post('/verify-email', async (req, res) => {
+  try {
+    const { email, token } = req.body;
+
+    if (!email || !token) {
+      return res.status(400).json({ error: 'Email and token are required' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      return res.status(404).json({ error: 'Invalid verification link' });
+    }
+
+    if (user.email_verified) {
+      return res.json({ success: true, message: 'Email is already verified' });
+    }
+
+    if (!user.verification_token || !user.verification_token_expires) {
+      return res.status(400).json({ error: 'No pending verification. Request a new link.' });
+    }
+
+    if (new Date() > user.verification_token_expires) {
+      return res.status(400).json({ error: 'Verification link has expired. Request a new link.' });
+    }
+
+    const valid = await bcrypt.compare(token, user.verification_token);
+    if (!valid) {
+      return res.status(400).json({ error: 'Invalid verification link' });
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        email_verified: true,
+        verification_token: null,
+        verification_token_expires: null,
+      },
+    });
+
+    res.json({ success: true, message: 'Email verified successfully' });
+  } catch (err) {
+    console.error('Verify email error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/auth/resend-verification — re-issues the verification link for
+// the signed-in user. Idempotent for already-verified accounts.
+router.post('/resend-verification', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (user.email_verified) {
+      return res.json({ success: true, message: 'Email is already verified' });
+    }
+
+    await issueVerificationEmail({ id: user.id, email: user.email });
+    res.json({ success: true, message: 'Verification email sent' });
+  } catch (err) {
+    console.error('Resend verification error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -109,7 +248,7 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.id },
-      select: { id: true, email: true, name: true, created_at: true },
+      select: { id: true, email: true, name: true, created_at: true, email_verified: true },
     });
 
     if (!user) {
