@@ -86,6 +86,12 @@ router.put('/me/profile', requireAuth, async (req: AuthenticatedRequest, res: Re
         if (required && trimmed.length === 0) {
           return res.status(400).json({ error: `${key} cannot be empty` });
         }
+        // website_url is rendered as a clickable link (window.open on the
+        // profile page): anything other than http(s) — javascript:, data:,
+        // vbscript: — is a stored-XSS payload, not a website.
+        if (key === 'website_url' && trimmed.length > 0 && !/^https?:\/\//i.test(trimmed)) {
+          return res.status(400).json({ error: 'website_url must start with http:// or https://' });
+        }
         data[key] = trimmed.length === 0 ? null : trimmed;
       }
     }
