@@ -71,8 +71,11 @@ function toStack(value: unknown): string | null {
   return null;
 }
 
-/** Record one completed API request. Called by src/lib/api-client.ts. */
+/** Record one completed API request. Called by src/lib/api-client.ts.
+ * No-op until installGlobalErrorCapture() enables monitoring (i.e. a WebMCP
+ * agent bridge is present) — buffers nothing can read must not be filled. */
 export function recordApiCall(record: ApiCallRecord): void {
+  if (!errorCaptureInstalled) return;
   apiCalls.push(record);
   if (apiCalls.length > MAX_API_RECORDS) {
     apiCalls.shift();
@@ -127,10 +130,17 @@ export function installGlobalErrorCapture(): void {
   const originalError = console.error.bind(console);
   const originalWarn = console.warn.bind(console);
 
+  // NOTE: per-arg truncation alone is insufficient — a call with many args
+  // would still produce an unbounded joined string. Truncate the JOINED
+  // message so the bounded-memory guarantee holds for any argument count.
+  // Captured console text is whatever the app logged: it may contain user
+  // identifiers. It stays in this in-memory ring buffer only (never sent
+  // anywhere) and is readable solely by a locally connected WebMCP agent.
   console.error = (...args: unknown[]): void => {
     originalError(...args);
     try {
-      recordRuntimeError('console.error', 'error', args.map(toMessage).join(' '), toStack(args[0]));
+      const joined = args.map(toMessage).join(' ').slice(0, MAX_MESSAGE_CHARS);
+      recordRuntimeError('console.error', 'error', joined, toStack(args[0]));
     } catch {
       // Recording must never break console output.
     }
@@ -139,7 +149,8 @@ export function installGlobalErrorCapture(): void {
   console.warn = (...args: unknown[]): void => {
     originalWarn(...args);
     try {
-      recordRuntimeError('console.warn', 'warning', args.map(toMessage).join(' '), toStack(args[0]));
+      const joined = args.map(toMessage).join(' ').slice(0, MAX_MESSAGE_CHARS);
+      recordRuntimeError('console.warn', 'warning', joined, toStack(args[0]));
     } catch {
       // Recording must never break console output.
     }
