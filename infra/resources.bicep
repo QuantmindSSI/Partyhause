@@ -238,7 +238,10 @@ module apiApp 'modules/container-app.bicep' = {
     ]
     secrets: [
       { name: 'postgres-password', value: postgresAdminPassword }
-      { name: 'database-url', value: 'postgresql://${postgresAdminLogin}:${postgresAdminPassword}@${postgres.outputs.serverFqdn}:5432/${postgresDbName}?sslmode=require' }
+      // uriComponent(): raw passwords containing URL-reserved characters
+      // ('#' in particular) truncate the URL at the fragment marker and fail
+      // pg/Prisma parsing — prod DB access was broken by exactly this.
+      { name: 'database-url', value: 'postgresql://${postgresAdminLogin}:${uriComponent(postgresAdminPassword)}@${postgres.outputs.serverFqdn}:5432/${postgresDbName}?sslmode=require' }
       { name: 'storage-conn-str', value: 'DefaultEndpointsProtocol=https;AccountName=${storage.outputs.storageAccountName};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=core.windows.net' }
       { name: 'webpubsub-connection-string', value: webPubSub.outputs.primaryConnectionString }
       { name: 'entra-api-client-secret', value: entraApiClientSecret }
