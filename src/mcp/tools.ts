@@ -126,8 +126,9 @@ function buildTools(): ModelContextToolDescriptor[] {
         }
         let events = state.events;
         if (args.refresh === true) {
+          // Read-only: return the fresh fetch WITHOUT writing it into the
+          // app store — observation tools must never mutate app state.
           events = await eventService.getUserEvents(state.user.id);
-          usePartyStore.getState().setEvents(events);
         }
         return {
           status: 'success',
