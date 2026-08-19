@@ -1,5 +1,6 @@
 import { getStoredToken, clearAuth } from './supabase';
 import { apiUrl } from './apiBase';
+import { recordApiCall } from '@/mcp/monitor';
 
 export interface ApiResponse<T = unknown> {
   data: T | null;
@@ -60,6 +61,29 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
 async function request<T = unknown>(path: string, options: FetchOptions): Promise<ApiResponse<T>> {
   const { method, body, headers } = options;
 
+  // WebMCP monitoring: record every completed request (path/status/duration
+  // only — never headers or bodies). Recording failures must never affect
+  // the request outcome.
+  const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  let attemptsUsed = 1;
+  const record = (status: number | null, ok: boolean, errorMessage: string | null): void => {
+    try {
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      recordApiCall({
+        timestamp: new Date().toISOString(),
+        method,
+        path,
+        status,
+        ok,
+        durationMs: Math.round(now - startedAt),
+        attempts: attemptsUsed,
+        errorMessage,
+      });
+    } catch {
+      // Monitoring must never break API calls.
+    }
+  };
+
   const finalHeaders: Record<string, string> = {
     Accept: 'application/json',
     ...(headers || {}),
@@ -89,6 +113,7 @@ async function request<T = unknown>(path: string, options: FetchOptions): Promis
   let lastNetworkError: string | null = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    attemptsUsed = attempt;
     try {
       response = await fetchWithTimeout(url, init);
     } catch (err) {
@@ -111,10 +136,12 @@ async function request<T = unknown>(path: string, options: FetchOptions): Promis
   }
 
   if (!response) {
+    record(null, false, lastNetworkError || 'Network request failed');
     return { data: null, error: { message: lastNetworkError || 'Network request failed' } };
   }
 
   if (response.status === 401) {
+    record(401, false, 'Unauthorized');
     redirectToLogin();
     return { data: null, error: { message: 'Unauthorized', status: 401 } };
   }
@@ -138,9 +165,11 @@ async function request<T = unknown>(path: string, options: FetchOptions): Promis
     } else if (typeof parsed === 'string' && parsed.length > 0) {
       message = parsed;
     }
+    record(response.status, false, message);
     return { data: null, error: { message, status: response.status } };
   }
 
+  record(response.status, true, null);
   return { data: parsed as T, error: null };
 }
 
