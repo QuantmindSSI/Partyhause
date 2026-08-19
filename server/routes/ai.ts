@@ -6,12 +6,27 @@
 
 import { Router } from 'express';
 import type { Response } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { requireAuth } from '../middleware/auth';
 import type { AuthenticatedRequest } from '../middleware/auth';
 import { extractEventDetails } from '../lib/event-extraction';
 import { runChatTurn, sanitizeMessages, MAX_MESSAGES } from '../lib/event-chat';
 
 const router = Router();
+
+// Every request here can cost LLM tokens. Auth alone does not bound spend —
+// one signed-in user in a loop would. 30 requests / 5 min per user keeps
+// interactive planning fluid (~1 turn / 10s) while capping worst-case burn.
+// Mounted AFTER requireAuth on each route so req.user is populated; keyed
+// by user id, falling back to IP for defense in depth.
+const aiLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => (req as AuthenticatedRequest).user?.id ?? req.ip ?? 'unknown',
+  message: { error: 'Too many AI requests. Try again in a few minutes.' },
+});
 
 const MAX_INPUT_CHARS = 8000;
 
@@ -21,7 +36,7 @@ const MAX_INPUT_CHARS = 8000;
 // (full history, last message from the user). Stateless per request.
 // Returns { reply, extracted, complete, source }.
 // ---------------------------------------------------------------------------
-router.post('/chat', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/chat', requireAuth, aiLimiter, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const messages = sanitizeMessages((req.body as { messages?: unknown })?.messages);
     if (!messages) {
@@ -46,6 +61,7 @@ router.post('/chat', requireAuth, async (req: AuthenticatedRequest, res: Respons
 router.post(
   '/extract-event-details',
   requireAuth,
+  aiLimiter,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { conversation, text } = req.body as {

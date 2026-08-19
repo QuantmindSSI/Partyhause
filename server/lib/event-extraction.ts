@@ -540,7 +540,12 @@ export function resolveLlmConfig(env: NodeJS.ProcessEnv = process.env): LlmConfi
   const azureKey = env.AZURE_OPENAI_API_KEY;
   const azureDeployment = env.AZURE_OPENAI_DEPLOYMENT;
   if (azureEndpoint && azureKey && azureDeployment) {
-    const apiVersion = env.AZURE_OPENAI_API_VERSION || '2024-06-01';
+    // Default must support the gpt-5 family + max_completion_tokens; the old
+    // 2024-06-01 default rejected the request shape and silently forced the
+    // heuristic fallback on every call.
+    // Newest GA data-plane version (supports gpt-5-family reasoning params).
+    // Prefer GA over -preview defaults: previews get retired on short notice.
+    const apiVersion = env.AZURE_OPENAI_API_VERSION || '2024-10-21';
     const base = azureEndpoint.replace(/\/+$/, '');
     return {
       url: `${base}/openai/deployments/${azureDeployment}/chat/completions?api-version=${apiVersion}`,
