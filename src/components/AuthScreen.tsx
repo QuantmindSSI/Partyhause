@@ -400,6 +400,9 @@ export const AuthScreen = ({
                           <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                           <Input
                             type="text"
+                            id="auth-name"
+                            name="name"
+                            aria-label="Full name"
                             placeholder="Your full name"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
@@ -425,6 +428,9 @@ export const AuthScreen = ({
                         <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                         <Input
                           type="email"
+                          id="auth-email"
+                          name="email"
+                          aria-label="Email address"
                           placeholder="Email address"
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
@@ -450,6 +456,9 @@ export const AuthScreen = ({
                         <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                         <Input
                           type={showPassword ? "text" : "password"}
+                          id="auth-password"
+                          name="password"
+                          aria-label="Password"
                           placeholder="Password"
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
@@ -461,6 +470,7 @@ export const AuthScreen = ({
                           type="button"
                           variant="ghost"
                           size="sm"
+                          aria-label={showPassword ? 'Hide password' : 'Show password'}
                           onClick={() => setShowPassword(!showPassword)}
                           className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0 hover:bg-transparent"
                         >

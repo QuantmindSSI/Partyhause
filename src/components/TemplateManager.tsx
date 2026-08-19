@@ -1,6 +1,36 @@
 import React, { useEffect, useState, useRef } from 'react';
 import sanitize from 'sanitize-html';
 import { useToast } from '@/hooks/use-toast';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api-client';
+import { usePartyStore } from '@/store/usePartyStore';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { PageShell } from '@/components/layout/PageShell';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
+import { Mail, Plus, Loader2 } from 'lucide-react';
 
 // Strict allowlist sanitizer for template previews. The previous regex-based
 // strip (<script> only) was trivially bypassed with event-handler attributes
@@ -32,8 +62,6 @@ const safePreview = (html: string): string =>
       },
     },
   });
-import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api-client';
-import { usePartyStore } from '@/store/usePartyStore';
 
 interface Template {
   id: string;
@@ -64,7 +92,8 @@ export const TemplateManager: React.FC = () => {
   // Dirty-check & confirm discard
   const initialFormRef = useRef<{ name: string; subject: string; body: string; isMarkdown: boolean } | null>(null);
   const [showConfirmDiscard, setShowConfirmDiscard] = useState(false);
-  const modalRef = useRef<HTMLDivElement | null>(null);
+  // Delete confirmation (replaces window.confirm)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const fetchTemplates = async () => {
     setLoading(true);
@@ -87,17 +116,12 @@ export const TemplateManager: React.FC = () => {
   useEffect(() => {
     if (isMarkdown) {
       // simple markdown -> html: use a minimal converter to avoid adding a heavy dep
-      try {
-        // Basic conversion for headers, links and paragraphs
-        let html = body
-          .replace(/\r\n/g, '\n')
-          .split('\n\n')
-          .map(p => `<p>${p.replace(/\n/g, '<br/>')}</p>`)
-          .join('');
-        setPreviewHtml(html);
-      } catch (e) {
-        setPreviewHtml(body);
-      }
+      const html = body
+        .replace(/\r\n/g, '\n')
+        .split('\n\n')
+        .map((p) => `<p>${p.replace(/\n/g, '<br/>')}</p>`)
+        .join('');
+      setPreviewHtml(html);
     } else {
       setPreviewHtml(body);
     }
@@ -109,18 +133,9 @@ export const TemplateManager: React.FC = () => {
     setSubject('');
     setBody('');
     initialFormRef.current = { name: '', subject: '', body: '', isMarkdown: false };
+    setIsMarkdown(false);
     setIsDefault(false);
     setOpenForm(true);
-  };
-
-  const navigateBackToDashboard = () => {
-    if (isFormDirty()) {
-      setShowConfirmDiscard(true);
-      // If user confirms discard, the confirm dialog's Discard handler will call closeFormImmediate.
-      // We'll navigate after closing the form by listening for close; but to keep it simple, call navigation in Discard handler instead.
-    } else {
-      usePartyStore.getState().setCurrentPage('dashboard');
-    }
   };
 
   const openEdit = (t: Template) => {
@@ -129,7 +144,12 @@ export const TemplateManager: React.FC = () => {
     setSubject(t.subject);
     setBody(t.body_html || t.body_markdown || '');
     setIsMarkdown(!!t.body_markdown && !t.body_html);
-    initialFormRef.current = { name: t.name, subject: t.subject, body: t.body_html || t.body_markdown || '', isMarkdown: !!t.body_markdown && !t.body_html };
+    initialFormRef.current = {
+      name: t.name,
+      subject: t.subject,
+      body: t.body_html || t.body_markdown || '',
+      isMarkdown: !!t.body_markdown && !t.body_html,
+    };
     setIsDefault(!!t.is_default);
     setOpenForm(true);
   };
@@ -155,40 +175,6 @@ export const TemplateManager: React.FC = () => {
     }
   };
 
-  // Focus trap: keep focus within modal when open
-  useEffect(() => {
-    if (!openForm || !modalRef.current) return;
-    const modal = modalRef.current;
-    const focusable = modal.querySelectorAll<HTMLElement>(
-      'a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])'
-    );
-    if (focusable.length) focusable[0].focus();
-
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Tab') {
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (e.shiftKey) {
-          if (document.activeElement === first) {
-            e.preventDefault();
-            last.focus();
-          }
-        } else {
-          if (document.activeElement === last) {
-            e.preventDefault();
-            first.focus();
-          }
-        }
-      }
-      if (e.key === 'Escape') {
-        attemptCloseForm();
-      }
-    };
-
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [openForm, modalRef.current, name, subject, body, isMarkdown]);
-
   const saveTemplate = async () => {
     if (!name.trim() || !subject.trim()) {
       toast({ title: 'Name and subject required', variant: 'destructive' });
@@ -197,11 +183,9 @@ export const TemplateManager: React.FC = () => {
 
     try {
       // The API clears other defaults for this host automatically when
-      // is_default=true is sent on create/update, so no explicit clear is
-      // needed here. Auth stays on Supabase; the user id is not required.
-
+      // is_default=true is sent on create/update.
       if (editing) {
-        const updates: any = { name: name.trim(), subject: subject.trim() };
+        const updates: Record<string, unknown> = { name: name.trim(), subject: subject.trim() };
         if (isMarkdown) updates.body_markdown = body;
         else updates.body_html = body;
         updates.is_default = !!isDefault;
@@ -210,7 +194,7 @@ export const TemplateManager: React.FC = () => {
         if (error) throw error;
         toast({ title: 'Template updated' });
       } else {
-        const insert: any = { name: name.trim(), subject: subject.trim() };
+        const insert: Record<string, unknown> = { name: name.trim(), subject: subject.trim() };
         if (isMarkdown) insert.body_markdown = body;
         else insert.body_html = body;
         insert.is_default = !!isDefault;
@@ -220,7 +204,7 @@ export const TemplateManager: React.FC = () => {
         toast({ title: 'Template created' });
       }
 
-      setOpenForm(false);
+      closeFormImmediate();
       fetchTemplates();
     } catch (e: any) {
       console.error('Save failed', e);
@@ -229,7 +213,6 @@ export const TemplateManager: React.FC = () => {
   };
 
   const deleteTemplate = async (id: string) => {
-    if (!confirm('Delete this template? This cannot be undone.')) return;
     try {
       const { error } = await apiDelete(`/api/invite-templates/${encodeURIComponent(id)}`);
       if (error) throw error;
@@ -238,6 +221,8 @@ export const TemplateManager: React.FC = () => {
     } catch (e: any) {
       console.error('Delete failed', e);
       toast({ title: 'Delete failed', variant: 'destructive' });
+    } finally {
+      setPendingDeleteId(null);
     }
   };
 
@@ -255,146 +240,206 @@ export const TemplateManager: React.FC = () => {
   };
 
   return (
-    <div className="p-4">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <button className="btn btn-ghost" onClick={() => usePartyStore.getState().setCurrentPage('dashboard')}>Back to dashboard</button>
-          <h2 className="text-xl font-semibold">Invite Templates</h2>
-        </div>
-        <div>
-          <button className="btn" onClick={openCreate}>Create Template</button>
-        </div>
-      </div>
-
+    <PageShell
+      title="Invite Templates"
+      subtitle="Reusable email templates for your event invitations"
+      maxWidth="lg"
+      onBack={() => usePartyStore.getState().setCurrentPage('dashboard')}
+      actions={
+        <Button onClick={openCreate}>
+          <Plus className="h-4 w-4 mr-2" /> Create Template
+        </Button>
+      }
+    >
       {loading ? (
-        <div>Loading…</div>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : templates.length === 0 ? (
+        <EmptyState
+          icon={Mail}
+          title="No templates yet"
+          description="Create your first invitation template to reuse across events."
+          action={{ label: 'Create Template', onClick: openCreate }}
+        />
       ) : (
         <div className="space-y-3">
-          {templates.map(t => (
-            <div key={t.id} className="p-3 border rounded flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <strong>{t.name}</strong>
-                  {t.is_default && <span className="text-sm px-2 py-1 bg-yellow-100 text-yellow-800 rounded">Default</span>}
+          {templates.map((t) => (
+            <Card key={t.id}>
+              <CardContent className="p-4 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-foreground truncate">{t.name}</p>
+                    {t.is_default && <Badge variant="secondary">Default</Badge>}
+                  </div>
+                  <p className="text-sm text-muted-foreground truncate">{t.subject}</p>
                 </div>
-                <div className="text-sm text-muted-foreground">{t.subject}</div>
-              </div>
-              <div className="flex gap-2">
-                <button className="btn btn-ghost" onClick={() => openEdit(t)}>Edit</button>
-                <button className="btn btn-ghost" onClick={() => setDefault(t.id)}>Set Default</button>
-                <button className="btn btn-ghost" onClick={() => setPopupPreviewHtml(safePreview(t.body_html || t.body_markdown || ''))}>Preview</button>
-                <button className="btn btn-destructive" onClick={() => deleteTemplate(t.id)}>Delete</button>
-              </div>
-            </div>
+                <div className="flex flex-wrap gap-2 flex-shrink-0">
+                  <Button variant="ghost" size="sm" onClick={() => openEdit(t)}>
+                    Edit
+                  </Button>
+                  {!t.is_default && (
+                    <Button variant="ghost" size="sm" onClick={() => setDefault(t.id)}>
+                      Set Default
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPopupPreviewHtml(safePreview(t.body_html || t.body_markdown || ''))}
+                  >
+                    Preview
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => setPendingDeleteId(t.id)}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}
 
-      {/* Form modal */}
-      {openForm && (
-        <div
-          className="fixed inset-0 bg-black/40 flex items-start justify-center p-8 z-50"
-          onClick={() => attemptCloseForm()}
-          tabIndex={-1}
-        >
-          <div ref={modalRef} className="bg-white rounded-lg shadow max-w-3xl w-full p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between">
-              <h3 className="text-lg font-semibold mb-4">{editing ? 'Edit Template' : 'Create Template'}</h3>
-              <div className="flex items-center gap-2">
-                <button className="btn btn-ghost" onClick={() => navigateBackToDashboard()}>Back to dashboard</button>
-                <button aria-label="Close" className="ml-4 text-gray-500 hover:text-gray-700" onClick={() => attemptCloseForm()}>✕</button>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium">Name</label>
-                <input value={name} onChange={(e) => setName(e.target.value)} className="input mt-1 w-full" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium">Subject</label>
-                <input value={subject} onChange={(e) => setSubject(e.target.value)} className="input mt-1 w-full" />
-              </div>
-            </div>
+      {/* Create / Edit form (Radix Dialog: focus trap, Escape and aria handled) */}
+      <Dialog open={openForm} onOpenChange={(open) => { if (!open) attemptCloseForm(); }}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{editing ? 'Edit Template' : 'Create Template'}</DialogTitle>
+            <DialogDescription>
+              Placeholders like <code>{'{{guest_name}}'}</code>, <code>{'{{event_name}}'}</code> and{' '}
+              <code>{'{{rsvp_url}}'}</code> are replaced when invitations are sent.
+            </DialogDescription>
+          </DialogHeader>
 
-            <div className="mt-4">
-              <label className="flex items-center gap-3">
-                <input type="checkbox" checked={isMarkdown} onChange={(e) => setIsMarkdown(e.target.checked)} />
-                <span className="text-sm">Use Markdown</span>
-              </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="template-name">Name</Label>
+              <Input
+                id="template-name"
+                name="template-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
             </div>
-            <div className="mt-2">
-              <label className="flex items-center gap-3">
-                <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
-                <span className="text-sm">Set as default</span>
-              </label>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium">Body</label>
-                <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={12} className="textarea mt-1 w-full" />
-                <div className="text-sm text-muted-foreground mt-2">You can use placeholders like <code>{"{{guest_name}}"}</code>, <code>{"{{event_name}}"}</code>, <code>{"{{rsvp_url}}"}</code></div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium">Preview</label>
-                <div className="border rounded p-3 mt-1 h-72 overflow-auto" dangerouslySetInnerHTML={{ __html: safePreview(previewHtml) }} />
-              </div>
-            </div>
-
-            <div className="mt-4 flex justify-between items-center gap-2">
-              <div>
-                <button className="btn" onClick={() => attemptCloseForm()}>Cancel</button>
-              </div>
-              <div>
-                <button className="btn btn-primary" onClick={saveTemplate}>{editing ? 'Save' : 'Create'}</button>
-              </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="template-subject">Subject</Label>
+              <Input
+                id="template-subject"
+                name="template-subject"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+              />
             </div>
           </div>
-        </div>
-      )}
-      {showConfirmDiscard && (
-        <div className="fixed inset-0 bg-black/50 z-60 flex items-center justify-center">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full shadow">
-            <h4 className="text-lg font-semibold mb-2">Are you sure?</h4>
-            <p className="text-sm text-muted-foreground mb-4">You have unsaved changes. Discard them?</p>
-            <div className="flex justify-end gap-2">
-              <button className="btn" onClick={() => setShowConfirmDiscard(false)}>Continue editing</button>
-              <button className="btn btn-destructive" onClick={() => { closeFormImmediate(); usePartyStore.getState().setCurrentPage('dashboard'); }}>Discard changes</button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Sandboxed template preview modal */}
-      {popupPreviewHtml !== null && (
-        <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-6"
-          onClick={() => setPopupPreviewHtml(null)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Template preview"
-        >
-          <div
-            className="bg-white rounded-lg shadow-xl max-w-3xl w-full h-[80vh] flex flex-col overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b">
-              <h4 className="font-semibold">Template Preview</h4>
-              <button className="btn btn-ghost" onClick={() => setPopupPreviewHtml(null)} aria-label="Close preview">
-                Close
-              </button>
+          <div className="flex flex-wrap gap-6">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="template-markdown"
+                checked={isMarkdown}
+                onCheckedChange={(checked) => setIsMarkdown(checked === true)}
+              />
+              <Label htmlFor="template-markdown" className="text-sm font-normal">
+                Use Markdown
+              </Label>
             </div>
-            {/* Empty sandbox: no scripts, no same-origin, no forms/popups. */}
-            <iframe
-              title="Template preview"
-              sandbox=""
-              srcDoc={popupPreviewHtml}
-              className="flex-1 w-full border-0 bg-white"
-            />
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="template-default"
+                checked={isDefault}
+                onCheckedChange={(checked) => setIsDefault(checked === true)}
+              />
+              <Label htmlFor="template-default" className="text-sm font-normal">
+                Set as default
+              </Label>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="template-body">Body</Label>
+              <Textarea
+                id="template-body"
+                name="template-body"
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                rows={12}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Preview</Label>
+              <div
+                className="border rounded-md p-3 h-72 overflow-auto bg-card"
+                dangerouslySetInnerHTML={{ __html: safePreview(previewHtml) }}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={attemptCloseForm}>
+              Cancel
+            </Button>
+            <Button onClick={saveTemplate}>{editing ? 'Save' : 'Create'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unsaved changes confirmation */}
+      <AlertDialog open={showConfirmDiscard} onOpenChange={setShowConfirmDiscard}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes in this template. Discarding them cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continue editing</AlertDialogCancel>
+            <AlertDialogAction onClick={closeFormImmediate}>Discard changes</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={pendingDeleteId !== null} onOpenChange={(open) => { if (!open) setPendingDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this template?</AlertDialogTitle>
+            <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (pendingDeleteId) deleteTemplate(pendingDeleteId); }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Sandboxed template preview */}
+      <Dialog open={popupPreviewHtml !== null} onOpenChange={(open) => { if (!open) setPopupPreviewHtml(null); }}>
+        <DialogContent className="max-w-3xl h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Template Preview</DialogTitle>
+          </DialogHeader>
+          {/* Empty sandbox: no scripts, no same-origin, no forms/popups. */}
+          <iframe
+            title="Template preview"
+            sandbox=""
+            srcDoc={popupPreviewHtml ?? ''}
+            className="flex-1 w-full border-0 bg-white rounded-md"
+          />
+        </DialogContent>
+      </Dialog>
+    </PageShell>
   );
 };
 

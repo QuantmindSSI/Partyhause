@@ -908,7 +908,7 @@ export const EventCreation = () => {
                       onChange={(e) => handleInputChange('name', e.target.value)}
                       required
                       disabled={isSubmitting}
-                      className="input-shimmer w-full"
+                      className="input-liquid w-full"
                     />
                   </div>
 
