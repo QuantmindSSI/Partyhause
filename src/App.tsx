@@ -54,6 +54,10 @@ const UserDashboard = lazy(() => import("@/pages/UserDashboard"));
 const CreatorDashboard = lazy(() => import("@/pages/CreatorDashboard"));
 const VendorDashboard = lazy(() => import("@/pages/VendorDashboard"));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
+const NotificationsPage = lazy(() => import("@/pages/NotificationsPage"));
+const PrivacySettingsPage = lazy(() => import("@/pages/PrivacySettingsPage"));
+const VerifyEmailPage = lazy(() => import("@/pages/VerifyEmailPage"));
+const ResetPasswordPage = lazy(() => import("@/pages/ResetPasswordPage"));
 
 // One QueryClient for the app: bounded retries, no aggressive refetching.
 const queryClient = new QueryClient({
@@ -219,6 +223,12 @@ const App = () => {
             case 'settings':
               return <SettingsPage />;
 
+            case 'notifications':
+              return <NotificationsPage />;
+
+            case 'privacy-settings':
+              return <PrivacySettingsPage />;
+
             case 'feed':
               return <SocialFeedPage />;
 
@@ -246,6 +256,10 @@ const App = () => {
                 <Routes>
                   <Route path="/join/:token" element={<JoinEventPage />} />
                   <Route path="/event/:eventId/guest/:guestId" element={<GuestRoute />} />
+                  {/* Email deep links — must resolve outside the state machine
+                      or the emailed URLs dead-end on the default screen. */}
+                  <Route path="/auth/verify-email" element={<VerifyEmailPage />} />
+                  <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
                   <Route path="/templates" element={<ProtectedRoute><TemplateManager /></ProtectedRoute>} />
                   <Route path="/profile/:id" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
                   <Route path="/feed" element={<ProtectedRoute><SocialFeedPage /></ProtectedRoute>} />

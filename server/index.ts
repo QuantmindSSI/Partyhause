@@ -5,6 +5,7 @@
 
 import express from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import { Resend } from 'resend';
 import dotenv from 'dotenv';
 import fs from 'fs';
@@ -33,12 +34,30 @@ import aiRouter from './routes/ai';
 import emailLogsRouter from './routes/email-logs';
 import storageRouter from './routes/storage';
 import realtimeRouter from './routes/realtime';
+import notificationsRouter from './routes/notifications';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3001;
+
+// Behind Azure Container Apps ingress there is exactly one trusted proxy hop;
+// required so the rate limiters key on the real client IP, not the ingress.
+app.set('trust proxy', 1);
+
+// Umbrella limit for the whole API surface: generous enough that legitimate
+// clients never see it (dashboard polling + page-load bursts are well under
+// 60/min), hostile to scripted hammering of authenticated DB routes. The
+// expensive endpoints keep their own stricter limiters (credential endpoints
+// in routes/auth.ts, LLM endpoints in routes/ai.ts).
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 300,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Slow down.' },
+});
 
 // Resend credentials
 const RESEND_API_KEY = process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY;
@@ -74,6 +93,11 @@ const corsOptions: cors.CorsOptions = {
 };
 
 app.use(cors(corsOptions));
+// Behind Azure Container Apps ingress: exactly one trusted proxy hop, so
+// req.ip reflects the client (required for per-IP rate limiting) without
+// letting clients spoof arbitrary X-Forwarded-For chains.
+app.set('trust proxy', 1);
+
 app.use(
   express.json({
     limit: '10mb',
@@ -145,6 +169,7 @@ app.post('/api/send-email', async (req, res) => {
 });
 
 // ===== API Routes =====
+app.use('/api', apiLimiter);
 app.use('/api/auth', authRouter);
 app.use('/api/events', eventsRouter);
 app.use('/api/guests', guestsRouter);
@@ -163,6 +188,7 @@ app.use('/api/ai', aiRouter);
 app.use('/api/email-logs', emailLogsRouter);
 app.use('/api/storage', storageRouter);
 app.use('/api/realtime', realtimeRouter);
+app.use('/api/notifications', notificationsRouter);
 
 // Serve built static files from dist/ when present (local preview / combined mode)
 const distPath = path.resolve(__dirname, '../dist');

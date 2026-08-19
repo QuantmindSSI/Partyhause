@@ -16,7 +16,7 @@ export default function VendorDashboard() {
       title="PartyHause"
       subtitle="Vendor Portal"
       maxWidth="xl"
-      actions={<UserMenu showSettingsButton showNotificationDot />}
+      actions={<UserMenu showSettingsButton />}
     >
         {/* Welcome */}
         <div className="flex items-start justify-between">

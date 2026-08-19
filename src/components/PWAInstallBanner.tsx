@@ -418,7 +418,7 @@ export const PWAInstallBanner = () => {
                     </li>
                     <li className="flex items-center gap-2">
                       <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full"></div>
-                      Push notifications - stay updated (coming soon)
+                      In-app notifications - crew and event activity
                     </li>
                   </ul>
                 </div>

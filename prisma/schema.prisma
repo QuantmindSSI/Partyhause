@@ -68,14 +68,17 @@ enum PriceTier {
 // Users table — stores auth + profile data. Replaces Supabase auth.users.
 // Password hash stored for local auth; can be null for SSO/OAuth users.
 model User {
-  id                  String   @id @default(dbgenerated("gen_random_uuid()"))
-  email               String   @unique
-  name                String?
-  password_hash       String?
-  reset_token         String?  @unique
-  reset_token_expires DateTime?
-  created_at          DateTime @default(now())
-  updated_at          DateTime @default(now()) @updatedAt
+  id                            String   @id @default(dbgenerated("gen_random_uuid()"))
+  email                         String   @unique
+  name                          String?
+  password_hash                 String?
+  reset_token                   String?  @unique
+  reset_token_expires           DateTime?
+  email_verified                Boolean  @default(false)
+  verification_token            String?  @unique
+  verification_token_expires    DateTime?
+  created_at                    DateTime @default(now())
+  updated_at                    DateTime @default(now()) @updatedAt
 
   // Relations
   events                  Event[]               @relation("UserHostedEvents")
