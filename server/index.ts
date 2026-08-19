@@ -5,7 +5,7 @@
 
 import express from 'express';
 import cors from 'cors';
-
+import rateLimit from 'express-rate-limit';
 import { Resend } from 'resend';
 import dotenv from 'dotenv';
 import fs from 'fs';
@@ -43,9 +43,21 @@ const app = express();
 const port = process.env.PORT || 3001;
 
 // Behind Azure Container Apps ingress there is exactly one trusted proxy hop;
-// required so the route-level rate limiters (server/routes/auth.ts and
-// server/routes/ai.ts) key on the real client IP, not the ingress address.
+// required so the rate limiters key on the real client IP, not the ingress.
 app.set('trust proxy', 1);
+
+// Umbrella limit for the whole API surface: generous enough that legitimate
+// clients never see it (dashboard polling + page-load bursts are well under
+// 60/min), hostile to scripted hammering of authenticated DB routes. The
+// expensive endpoints keep their own stricter limiters (credential endpoints
+// in routes/auth.ts, LLM endpoints in routes/ai.ts).
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 300,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Slow down.' },
+});
 
 // Resend credentials
 const RESEND_API_KEY = process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY;
@@ -157,6 +169,7 @@ app.post('/api/send-email', async (req, res) => {
 });
 
 // ===== API Routes =====
+app.use('/api', apiLimiter);
 app.use('/api/auth', authRouter);
 app.use('/api/events', eventsRouter);
 app.use('/api/guests', guestsRouter);

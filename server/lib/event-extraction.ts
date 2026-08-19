@@ -243,12 +243,15 @@ export function extractDateTime(text: string, referenceDate = new Date()): DateT
 export function extractNumbers(text: string): { guests?: number; budget?: number } {
   const result: { guests?: number; budget?: number } = {};
 
+  // All quantifiers are BOUNDED (\d{1,6}, \s{0,3}) so no pattern can
+  // backtrack polynomially over attacker-shaped repetition (CodeQL
+  // js/polynomial-redos). {1,6} digits covers the accepted range (<100000).
   const guestPatterns = [
-    /(\d+)\s*(?:people|guests|attendees|friends|folks|persons|invitees|kids|children|adults|players|developers|students)/gi,
-    /expecting\s+(?:about\s+|around\s+|roughly\s+)?(\d+)/gi,
-    /for\s+(\d+)\s+(?:people|guests)/gi,
-    /invite\s+(?:about\s+|around\s+)?(\d+)/gi,
-    /(?:about|around|roughly)\s+(\d+)\s+(?:people|guests|kids|children|attendees)/gi,
+    /(\d{1,6})\s{0,3}(?:people|guests|attendees|friends|folks|persons|invitees|kids|children|adults|players|developers|students)/gi,
+    /expecting\s{1,3}(?:about\s{1,3}|around\s{1,3}|roughly\s{1,3})?(\d{1,6})/gi,
+    /for\s{1,3}(\d{1,6})\s{1,3}(?:people|guests)/gi,
+    /invite\s{1,3}(?:about\s{1,3}|around\s{1,3})?(\d{1,6})/gi,
+    /(?:about|around|roughly)\s{1,3}(\d{1,6})\s{1,3}(?:people|guests|kids|children|attendees)/gi,
   ];
   // LAST valid mention wins: in a conversation, "25 kids ... actually make
   // it 40 kids" must resolve to 40. Track the rightmost match across all
@@ -264,11 +267,13 @@ export function extractNumbers(text: string): { guests?: number; budget?: number
     }
   }
 
+  // Amounts must START with a digit and are length-bounded: a bare comma run
+  // (",,,,,") can neither start nor extend a match quadratically.
   const budgetPatterns = [
-    /budget\s+(?:of\s+|is\s+|around\s+|about\s+)?\$?([\d,]+)(?:k\b)?/i,
-    /\$([\d,]+)\s*k\b/i,
-    /\$([\d,]+)/,
-    /([\d,]+)\s*(?:dollar|usd)/i,
+    /budget\s{1,3}(?:of\s{1,3}|is\s{1,3}|around\s{1,3}|about\s{1,3})?\$?(\d[\d,]{0,14})(?:k\b)?/i,
+    /\$(\d[\d,]{0,14})\s{0,3}k\b/i,
+    /\$(\d[\d,]{0,14})/,
+    /(\d[\d,]{0,14})\s{0,3}(?:dollar|usd)/i,
   ];
   for (const pattern of budgetPatterns) {
     const match = text.match(pattern);
@@ -302,12 +307,14 @@ const LOCATION_STOPWORDS = /^(?:a|an|my|our|this|that|it|home|noon|midnight|leas
 /** Remove prepositions left dangling after date/time spans were masked out. */
 function stripDanglingWords(location: string): string {
   // Cut trailing subordinate clauses first: "Innovation Hub for 120
-  // developers" -> "Innovation Hub".
-  let cleaned = location.split(/\s+(?:for|with)\s+\d/i)[0];
+  // developers" -> "Innovation Hub". Whitespace quantifiers are bounded so a
+  // long space run cannot trigger polynomial backtracking (callers collapse
+  // runs already; the bound makes it provable here).
+  let cleaned = location.split(/\s{1,3}(?:for|with)\s{1,3}(?=\d)/i)[0];
   let previous = '';
   while (previous !== cleaned) {
     previous = cleaned;
-    cleaned = cleaned.replace(/\s+(?:on|at|in|from|by|for|this|next|and|,)$/i, '').trim();
+    cleaned = cleaned.replace(/(?:\s{1,3}(?:on|at|in|from|by|for|this|next|and)|\s{0,3},)$/i, '').trim();
   }
   return cleaned;
 }
@@ -348,9 +355,12 @@ export function extractLocation(
 }
 
 export function extractEventName(text: string, templateId: string): string | undefined {
+  // The article group consumes its own trailing space: the old
+  // `\s+(?:a|an|the)?\s*` pair of adjacent unbounded quantifiers could split
+  // a space run exponentially many ways (CodeQL js/polynomial-redos).
   const patterns = [
-    /(?:planning|organizing|hosting|throwing)\s+(?:a|an|the)?\s*([^,.!?\n]{4,60}?)\s+(?:party|event|celebration|gathering)\b/i,
-    /\bfor\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)'s\s+(?:birthday|party|wedding|shower)/i,
+    /(?:planning|organizing|hosting|throwing)\s{1,3}(?:(?:a|an|the)\s{1,3})?([^,.!?\n]{4,60}?)\s{1,3}(?:party|event|celebration|gathering)\b/i,
+    /\bfor\s{1,3}([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)'s\s{1,3}(?:birthday|party|wedding|shower)/i,
   ];
 
   for (const pattern of patterns) {
@@ -477,14 +487,27 @@ export function generateFormData(
 }
 
 /** The always-available deterministic pipeline. */
+/**
+ * Heuristic-layer input cap. Every regex in this module scans the text; with
+ * bounded quantifiers the worst case is quadratic in input length, so a hard
+ * cap makes total work provably small (2000² ≈ 4M char-ops, sub-millisecond).
+ * Real event descriptions are far shorter; the LLM path keeps the 8000 cap.
+ */
+const HEURISTIC_INPUT_MAX_CHARS = 2000;
+
 export function extractHeuristically(userText: string, referenceDate = new Date()): ExtractedEventData {
-  const { templateId, confidence } = detectTemplate(userText);
-  const { eventDate, eventTime, spans } = extractDateTime(userText, referenceDate);
-  const { guests, budget } = extractNumbers(userText);
-  const location = extractLocation(userText, spans);
-  const theme = extractTheme(userText);
-  const eventName = extractEventName(userText, templateId);
-  const formData = generateFormData(templateId, userText, { guests, budget, theme });
+  // ReDoS containment: cap the length and collapse whitespace runs before any
+  // pattern runs. Date spans are computed on the SAME normalized string, so
+  // masking offsets stay consistent.
+  const text = userText.slice(0, HEURISTIC_INPUT_MAX_CHARS).replace(/\s{2,}/g, ' ');
+
+  const { templateId, confidence } = detectTemplate(text);
+  const { eventDate, eventTime, spans } = extractDateTime(text, referenceDate);
+  const { guests, budget } = extractNumbers(text);
+  const location = extractLocation(text, spans);
+  const theme = extractTheme(text);
+  const eventName = extractEventName(text, templateId);
+  const formData = generateFormData(templateId, text, { guests, budget, theme });
 
   return {
     templateId,
