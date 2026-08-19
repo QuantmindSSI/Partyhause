@@ -5,13 +5,12 @@
 
 import express from 'express';
 import cors from 'cors';
-import rateLimit from 'express-rate-limit';
+
 import { Resend } from 'resend';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import type { AuthenticatedRequest } from './middleware/auth';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,29 +43,9 @@ const app = express();
 const port = process.env.PORT || 3001;
 
 // Behind Azure Container Apps ingress there is exactly one trusted proxy hop;
-// required so express-rate-limit keys on the real client IP, not the ingress.
+// required so the route-level rate limiters (server/routes/auth.ts and
+// server/routes/ai.ts) key on the real client IP, not the ingress address.
 app.set('trust proxy', 1);
-
-// Rate limits. Auth endpoints do bcrypt work per request and mint/verify
-// secrets (brute-force + enumeration + email-churn surface); AI endpoints
-// call a metered LLM (cost-abuse surface). Both are useless to legitimate
-// clients at higher rates than these.
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 30, // per IP per window across all /api/auth endpoints
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  message: { error: 'Too many authentication requests. Try again later.' },
-});
-
-const aiLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  limit: 20, // per user (falls back to IP before auth middleware runs)
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  keyGenerator: (req) => (req as AuthenticatedRequest).user?.id ?? req.ip ?? 'unknown',
-  message: { error: 'AI request limit reached. Try again in a few minutes.' },
-});
 
 // Resend credentials
 const RESEND_API_KEY = process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY;
@@ -178,7 +157,7 @@ app.post('/api/send-email', async (req, res) => {
 });
 
 // ===== API Routes =====
-app.use('/api/auth', authLimiter, authRouter);
+app.use('/api/auth', authRouter);
 app.use('/api/events', eventsRouter);
 app.use('/api/guests', guestsRouter);
 app.use('/api/timeline', timelineRouter);
@@ -192,7 +171,7 @@ app.use('/api/users', usersRouter);
 app.use('/api/feed', feedRouter);
 app.use('/api/invites', invitesRouter);
 app.use('/api/cost-split', costSplitRouter);
-app.use('/api/ai', aiLimiter, aiRouter);
+app.use('/api/ai', aiRouter);
 app.use('/api/email-logs', emailLogsRouter);
 app.use('/api/storage', storageRouter);
 app.use('/api/realtime', realtimeRouter);
