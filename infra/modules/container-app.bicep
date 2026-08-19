@@ -90,7 +90,10 @@ resource acrPullRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(containerApp.id, 'AcrPull')
   properties: {
     principalId: containerApp.identity.principalId
-    roleDefinitionId: '/providers/Microsoft.Authorization/roleDefinitions/7f951ddb-4da3-4683-8d00-9c357b6b258f' // AcrPull
+    // subscriptionResourceId, not a bare /providers/ path: tenant-scope
+    // lookups of built-in role definitions fail with
+    // RoleDefinitionDoesNotExist during (re)provisioning.
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951ddb-4da3-4683-8d00-9c357b6b258f') // AcrPull
     principalType: 'ServicePrincipal'
   }
   scope: acrResource
