@@ -9,10 +9,34 @@ import type { Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import type { AuthenticatedRequest } from '../middleware/auth';
 import { extractEventDetails } from '../lib/event-extraction';
+import { runChatTurn, sanitizeMessages, MAX_MESSAGES } from '../lib/event-chat';
 
 const router = Router();
 
 const MAX_INPUT_CHARS = 8000;
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/chat — multi-turn conversational event planner.
+// Body: { messages: Array<{ role: 'user' | 'assistant'; content: string }> }
+// (full history, last message from the user). Stateless per request.
+// Returns { reply, extracted, complete, source }.
+// ---------------------------------------------------------------------------
+router.post('/chat', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const messages = sanitizeMessages((req.body as { messages?: unknown })?.messages);
+    if (!messages) {
+      return res.status(400).json({
+        error: `Provide { messages: [{role, content}...] } — 1..${MAX_MESSAGES} entries, last one from the user`,
+      });
+    }
+
+    const result = await runChatTurn(messages);
+    return res.status(200).json({ success: true, data: result });
+  } catch (error: unknown) {
+    console.error('AI chat error:', error);
+    return res.status(500).json({ error: 'Chat turn failed' });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // POST /api/ai/extract-event-details
