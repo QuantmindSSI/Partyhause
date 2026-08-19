@@ -61,6 +61,7 @@
     "@vitejs/plugin-react-swc": "^3.3.2",
     "ajv-formats": "^3.0.1",
     "bcryptjs": "^3.0.3",
+    "chrono-node": "^2.10.1",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "cors": "^2.8.5",
