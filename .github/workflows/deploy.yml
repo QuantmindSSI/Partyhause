@@ -166,7 +166,9 @@ jobs:
           imageToDeploy: ${{ env.ACR_LOGIN_SERVER }}/partyhause-web:${{ env.IMAGE_TAG }}
           targetPort: 80
           ingress: external
-          environmentVariables: "VITE_APP_NAME=PartyHause VITE_APP_URL=${{ env.WEB_PUBLIC_URL }}"
+          # No environmentVariables — VITE_* values are build-time only
+          # (inlined by Vite during `az acr build`); the nginx container
+          # reads no env vars at runtime (see AGENTS.md).
 
       - name: Update API Container App
         # Deploys the SHA-tagged image. Secrets are referenced via `secretref:`
@@ -178,7 +180,11 @@ jobs:
           imageToDeploy: ${{ env.ACR_LOGIN_SERVER }}/partyhause-api:${{ env.IMAGE_TAG }}
           targetPort: 3001
           ingress: external
-          environmentVariables: "RESEND_API_KEY=secretref:RESEND_API_KEY RESEND_FROM_EMAIL=${{ secrets.RESEND_FROM_EMAIL }} RESEND_FROM_NAME=PartyHause CORS_ALLOWED_ORIGINS=${{ env.WEB_PUBLIC_URL }} PORT=3001"
+          # No environmentVariables here — Bicep provisioning is the single
+          # source of truth for env vars and secrets. The old inline list
+          # broke the generated deploy script (unquoted "<" in
+          # RESEND_FROM_EMAIL acted as shell redirection) and referenced a
+          # secret by the wrong name (RESEND_API_KEY vs resend-api-key).
 
       - name: Health check (API)
         # Poll the API /api/health endpoint and fail the workflow if it does
