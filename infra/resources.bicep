@@ -74,7 +74,11 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
   name: 'acrpartyhause${suffix}'
   location: location
   sku: { name: 'Basic' }
-  properties: { adminUserEnabled: false }
+  // Admin user must stay enabled: azure/container-apps-deploy-action fetches
+  // registry credentials via `az acr credential show` during app updates and
+  // hard-fails without it ("Failed to retrieve credentials for container
+  // registry"). Runtime image pulls still use managed-identity AcrPull.
+  properties: { adminUserEnabled: true }
 }
 
 // ===== Azure Database for PostgreSQL Flexible Server =====
