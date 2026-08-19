@@ -103,7 +103,37 @@ export const authService = {
     return getStoredToken();
   },
 
-  verifyEmail: async (_token: string): Promise<AuthResponse> => {
-    return { success: true, message: 'Email verification coming soon' };
+  /**
+   * Complete the email-verification loop using the token + email from the
+   * link the API emailed (or logged, in dev) at signup.
+   */
+  verifyEmail: async (email: string, token: string): Promise<AuthResponse> => {
+    try {
+      const data = await apiPostAuth<{ success: boolean; message: string }>(
+        '/api/auth/verify-email', { email, token },
+      );
+      return { success: true, message: data.message };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  },
+
+  /** Re-issue the verification link for the signed-in user. */
+  resendVerification: async (): Promise<AuthResponse> => {
+    try {
+      const res = await fetch(apiUrl('/api/auth/resend-verification'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getStoredToken()}`,
+        },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return { success: true, message: data.message };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
   },
 };
