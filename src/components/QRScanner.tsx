@@ -299,7 +299,7 @@ export const QRScanner = () => {
                   transition={{ duration: 2, repeat: Infinity, repeatDelay: 1 }}
                   className="mx-auto mb-4"
                 >
-                  <QrCode className="h-16 w-16 text-primary animate-neon-flicker" />
+                  <QrCode className="h-16 w-16 text-primary" />
                 </motion.div>
                 <CardTitle className="text-3xl">Check-In Scanner</CardTitle>
                 <CardDescription className="text-lg">
@@ -323,13 +323,15 @@ export const QRScanner = () => {
                 <div className="flex gap-2">
                   <input
                     type="text"
+                    id="manual-checkin-code"
+                    name="manual-checkin-code"
                     value={manualCode}
                     onChange={(e) => setManualCode(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleManualCheckIn();
                     }}
                     placeholder="Or paste a check-in code / guest ID"
-                    className="input-shimmer flex-1 px-3 py-2 rounded-md border border-border bg-background text-sm"
+                    className="flex-1 px-3 py-2 rounded-md border border-border bg-background text-foreground text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     aria-label="Manual check-in code"
                   />
                   <Button variant="outline" onClick={handleManualCheckIn} disabled={!manualCode.trim()}>

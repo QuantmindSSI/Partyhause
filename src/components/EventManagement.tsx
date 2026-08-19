@@ -132,7 +132,7 @@ export const EventManagement = () => {
             {/* Event Info Card */}
             <div className="glass-panel-liquid">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
-                <h2 className="text-xl font-bold text-white flex items-center">
+                <h2 className="text-xl font-bold text-foreground flex items-center">
                   <Calendar className="h-5 w-5 mr-2 text-orange-400" />
                   Event Details
                 </h2>
@@ -201,7 +201,7 @@ export const EventManagement = () => {
 
             {/* Stats Panel */}
             <div className="stats-panel">
-              <h2 className="text-xl font-bold text-white flex items-center col-span-full mb-2">
+              <h2 className="text-xl font-bold text-foreground flex items-center col-span-full mb-2">
                 <Users className="h-5 w-5 mr-2 text-orange-400" />
                 Guest Stats
               </h2>
@@ -243,7 +243,7 @@ export const EventManagement = () => {
             {/* Guest List */}
             <div className="glass-panel-liquid">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-white flex items-center">
+                <h2 className="text-xl font-bold text-foreground flex items-center">
                   <Users className="h-5 w-5 mr-2 text-orange-400" />
                   Guest Management
                 </h2>
@@ -283,7 +283,7 @@ export const EventManagement = () => {
                 transition={{ duration: 0.6, delay: 0.4 }}
               >
                 <div className="glass-panel-liquid">
-                  <h2 className="text-xl font-bold text-white flex items-center mb-4">
+                  <h2 className="text-xl font-bold text-foreground flex items-center mb-4">
                     <Music className="h-5 w-5 mr-2 text-orange-400" />
                     Party Playlist
                   </h2>
@@ -441,7 +441,7 @@ export const EventManagement = () => {
                 placeholder="Where is your event taking place?"
                 value={editForm.location}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, location: e.target.value }))}
-                className="input-shimmer w-full"
+                className="input-liquid w-full"
               />
             </div>
 
@@ -453,7 +453,7 @@ export const EventManagement = () => {
                 value={editForm.description}
                 onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}
                 rows={4}
-                className="input-shimmer w-full resize-none"
+                className="input-liquid w-full resize-none"
               />
             </div>
 

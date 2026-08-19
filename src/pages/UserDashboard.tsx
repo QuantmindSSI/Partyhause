@@ -1,9 +1,9 @@
 import { usePartyStore } from '@/store/usePartyStore';
-import { Calendar, Search, Ticket, Users, Bell, Star, MapPin, ArrowRight } from 'lucide-react';
+import { Calendar, Search, Ticket, Users, Star, MapPin, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PageShell, UserMenu } from '@/components/layout/PageShell';
 
 export default function UserDashboard() {
   const user = usePartyStore((s) => s.user);
@@ -12,32 +12,12 @@ export default function UserDashboard() {
   const name = user?.name || user?.email || 'Guest';
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-card sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-foreground">PartyHause</h1>
-            <p className="text-xs text-muted-foreground">Attendee</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              className="relative p-2 rounded-full hover:bg-muted transition-colors"
-              onClick={() => setCurrentPage('settings')}
-            >
-              <Bell className="h-5 w-5 text-foreground" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-orange-500 rounded-full" />
-            </button>
-            <Avatar className="h-9 w-9 cursor-pointer" onClick={() => setCurrentPage('profile')}>
-              <AvatarFallback className="bg-orange-100 text-orange-600 font-bold text-sm">
-                {name.charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+    <PageShell
+      title="PartyHause"
+      subtitle="Attendee"
+      maxWidth="lg"
+      actions={<UserMenu showNotificationDot />}
+    >
         {/* Welcome */}
         <div>
           <h2 className="text-2xl font-bold text-foreground">Hey, {name.split(' ')[0]} 👋</h2>
@@ -81,10 +61,7 @@ export default function UserDashboard() {
               <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-40" />
               <p className="font-medium text-foreground">No upcoming events</p>
               <p className="text-sm text-muted-foreground mt-1">Find events near you and RSVP!</p>
-              <Button
-                className="mt-4 bg-orange-500 hover:bg-orange-600 text-white"
-                onClick={() => setCurrentPage('explore')}
-              >
+              <Button className="mt-4" onClick={() => setCurrentPage('explore')}>
                 Explore Events
               </Button>
             </CardContent>
@@ -123,7 +100,6 @@ export default function UserDashboard() {
             Upgrade
           </Button>
         </div>
-      </main>
-    </div>
+    </PageShell>
   );
 }

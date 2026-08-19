@@ -194,11 +194,14 @@ export const PartyCultureBlog = () => {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <input
-                  type="text"
+                  type="search"
+                  id="blog-search"
+                  name="blog-search"
+                  aria-label="Search articles"
                   placeholder="Search articles..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="input-soft pl-10 pr-4 py-3 w-80"
+                  className="input-soft pl-10 pr-4 py-3 w-full max-w-xs"
                 />
               </div>
               
@@ -447,6 +450,10 @@ export const PartyCultureBlog = () => {
             <div className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto">
               <input
                 type="email"
+                id="newsletter-email"
+                name="newsletter-email"
+                aria-label="Email address for newsletter"
+                autoComplete="email"
                 placeholder="Enter your email"
                 className="flex-1 px-4 py-3 rounded-lg text-gray-900 placeholder-gray-500"
               />

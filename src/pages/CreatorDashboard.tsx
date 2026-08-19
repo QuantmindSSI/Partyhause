@@ -1,9 +1,9 @@
 import { usePartyStore } from '@/store/usePartyStore';
-import { Plus, Calendar, Users, BarChart2, Bell, Settings, ArrowRight, Sparkles, QrCode } from 'lucide-react';
+import { Plus, Calendar, Users, BarChart2, ArrowRight, Sparkles, QrCode } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PageShell, UserMenu } from '@/components/layout/PageShell';
 import { format } from 'date-fns';
 
 export default function CreatorDashboard() {
@@ -24,47 +24,19 @@ export default function CreatorDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-card sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-foreground">PartyHause</h1>
-            <p className="text-xs text-muted-foreground">Creator Studio</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              className="relative p-2 rounded-full hover:bg-muted transition-colors"
-              onClick={() => setCurrentPage('settings')}
-            >
-              <Bell className="h-5 w-5 text-foreground" />
-            </button>
-            <button
-              className="p-2 rounded-full hover:bg-muted transition-colors"
-              onClick={() => setCurrentPage('settings')}
-            >
-              <Settings className="h-5 w-5 text-foreground" />
-            </button>
-            <Avatar className="h-9 w-9 cursor-pointer" onClick={() => setCurrentPage('profile')}>
-              <AvatarFallback className="bg-orange-100 text-orange-600 font-bold text-sm">
-                {name.charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+    <PageShell
+      title="PartyHause"
+      subtitle="Creator Studio"
+      maxWidth="xl"
+      actions={<UserMenu showSettingsButton />}
+    >
         {/* Welcome + Create CTA */}
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-2xl font-bold text-foreground">Welcome back, {name.split(' ')[0]}</h2>
             <p className="text-muted-foreground text-sm mt-1">Manage your events and grow your audience</p>
           </div>
-          <Button
-            className="bg-orange-500 hover:bg-orange-600 text-white gap-2 shadow-md"
-            onClick={() => setCurrentPage('create-event')}
-          >
+          <Button className="gap-2 shadow-md" onClick={() => setCurrentPage('create-event')}>
             <Plus className="h-4 w-4" /> New Event
           </Button>
         </div>
@@ -75,13 +47,9 @@ export default function CreatorDashboard() {
             { label: 'Total Events', value: events.length, icon: Calendar, color: 'text-blue-600 bg-blue-50' },
             { label: 'Upcoming', value: upcomingEvents.length, icon: Sparkles, color: 'text-orange-600 bg-orange-50' },
             { label: 'Total Guests', value: totalGuests, icon: Users, color: 'text-purple-600 bg-purple-50' },
-            { label: 'Analytics', value: '→', icon: BarChart2, color: 'text-green-600 bg-green-50', action: () => setCurrentPage('analytics') },
-          ].map(({ label, value, icon: Icon, color, action }) => (
-            <Card
-              key={label}
-              className={`cursor-pointer hover:shadow-md transition-all ${action ? 'hover:border-orange-300' : ''}`}
-              onClick={action}
-            >
+            { label: 'Analytics', value: 'Soon', icon: BarChart2, color: 'text-green-600 bg-green-50' },
+          ].map(({ label, value, icon: Icon, color }) => (
+            <Card key={label}>
               <CardContent className="p-4 flex items-center gap-3">
                 <div className={`p-2 rounded-xl ${color}`}>
                   <Icon className="h-5 w-5" />
@@ -129,10 +97,7 @@ export default function CreatorDashboard() {
                 <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-40" />
                 <p className="font-medium text-foreground">No events yet</p>
                 <p className="text-sm text-muted-foreground mt-1">Create your first event to get started</p>
-                <Button
-                  className="mt-4 bg-orange-500 hover:bg-orange-600 text-white"
-                  onClick={() => setCurrentPage('create-event')}
-                >
+                <Button className="mt-4" onClick={() => setCurrentPage('create-event')}>
                   <Plus className="h-4 w-4 mr-2" /> Create Event
                 </Button>
               </CardContent>
@@ -181,7 +146,6 @@ export default function CreatorDashboard() {
             </div>
           )}
         </section>
-      </main>
-    </div>
+    </PageShell>
   );
 }
