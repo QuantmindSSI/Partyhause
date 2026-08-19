@@ -224,6 +224,13 @@ module apiApp 'modules/container-app.bicep' = {
       { name: 'AZURE_OPENAI_ENDPOINT', value: openai.properties.endpoint }
       { name: 'AZURE_OPENAI_DEPLOYMENT', value: openaiDeployment.name }
       { name: 'AZURE_OPENAI_API_KEY', secretRef: 'azure-openai-api-key' }
+      // Must support the gpt-5 family + max_completion_tokens; without it the
+      // code's fallback default applies, but pinning here keeps infra explicit.
+      // Newest GA version — previews get retired on short notice.
+      { name: 'AZURE_OPENAI_API_VERSION', value: '2024-10-21' }
+      // Base URL for links embedded in verification / password-reset emails.
+      // Without it the API defaults to http://localhost:5173.
+      { name: 'VITE_APP_URL', value: 'https://${webApp.outputs.fqdn}' }
     ]
     secrets: [
       { name: 'postgres-password', value: postgresAdminPassword }
