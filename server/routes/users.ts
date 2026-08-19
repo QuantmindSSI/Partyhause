@@ -11,6 +11,121 @@ import type { AuthenticatedRequest } from '../middleware/auth';
 const router = Router();
 
 // ---------------------------------------------------------------------------
+// GET /api/users/me/profile - the caller's own profile including privacy
+// flags (which GET /:id withholds from other viewers).
+// NOTE: Must be defined before /:id to avoid route shadowing.
+// ---------------------------------------------------------------------------
+router.get('/me/profile', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const profile = await prisma.userProfile.findUnique({
+      where: { id: req.user!.id },
+      select: {
+        id: true,
+        username: true,
+        display_name: true,
+        bio: true,
+        avatar_url: true,
+        location: true,
+        website_url: true,
+        is_private: true,
+        show_attending_events: true,
+        show_partycrew_list: true,
+        show_activity_status: true,
+      },
+    });
+    if (!profile) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+    res.json({ profile });
+  } catch (err) {
+    console.error('[Users] me/profile error:', err);
+    res.status(500).json({ error: 'Failed to load profile' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PUT /api/users/me/profile - update the caller's own profile and privacy
+// settings. Only whitelisted fields are writable; unknown keys are ignored.
+// ---------------------------------------------------------------------------
+router.put('/me/profile', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    const data: Record<string, unknown> = {};
+
+    // Privacy flags: strict booleans only.
+    for (const flag of [
+      'is_private',
+      'show_attending_events',
+      'show_partycrew_list',
+      'show_activity_status',
+    ] as const) {
+      if (flag in body) {
+        if (typeof body[flag] !== 'boolean') {
+          return res.status(400).json({ error: `${flag} must be a boolean` });
+        }
+        data[flag] = body[flag];
+      }
+    }
+
+    // Basic profile text fields: bounded strings, empty string clears.
+    const textFields: Array<{ key: 'display_name' | 'bio' | 'location' | 'website_url'; max: number; required?: boolean }> = [
+      { key: 'display_name', max: 80, required: true },
+      { key: 'bio', max: 500 },
+      { key: 'location', max: 120 },
+      { key: 'website_url', max: 200 },
+    ];
+    for (const { key, max, required } of textFields) {
+      if (key in body) {
+        const value = body[key];
+        if (typeof value !== 'string' || value.length > max) {
+          return res.status(400).json({ error: `${key} must be a string of at most ${max} characters` });
+        }
+        const trimmed = value.trim();
+        if (required && trimmed.length === 0) {
+          return res.status(400).json({ error: `${key} cannot be empty` });
+        }
+        // website_url is rendered as a clickable link (window.open on the
+        // profile page): anything other than http(s) — javascript:, data:,
+        // vbscript: — is a stored-XSS payload, not a website.
+        if (key === 'website_url' && trimmed.length > 0 && !/^https?:\/\//i.test(trimmed)) {
+          return res.status(400).json({ error: 'website_url must start with http:// or https://' });
+        }
+        data[key] = trimmed.length === 0 ? null : trimmed;
+      }
+    }
+
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({ error: 'No updatable fields provided' });
+    }
+
+    const profile = await prisma.userProfile.update({
+      where: { id: userId },
+      data,
+      select: {
+        id: true,
+        username: true,
+        display_name: true,
+        bio: true,
+        avatar_url: true,
+        location: true,
+        website_url: true,
+        is_private: true,
+        show_attending_events: true,
+        show_partycrew_list: true,
+        show_activity_status: true,
+      },
+    });
+
+    res.json({ profile });
+  } catch (err) {
+    console.error('[Users] update me/profile error:', err);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/users/suggested - get suggested creators to follow
 // NOTE: Must be defined before /:id to avoid route shadowing.
 // ---------------------------------------------------------------------------

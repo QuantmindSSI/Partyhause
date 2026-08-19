@@ -16,7 +16,7 @@ export default function UserDashboard() {
       title="PartyHause"
       subtitle="Attendee"
       maxWidth="lg"
-      actions={<UserMenu showNotificationDot />}
+      actions={<UserMenu />}
     >
         {/* Welcome */}
         <div>

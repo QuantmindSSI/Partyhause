@@ -18,6 +18,7 @@ import { ArrowLeft, Bell, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { usePartyStore } from '@/store/usePartyStore';
+import { useUnreadCount } from '@/features/notifications/useNotifications';
 
 /** Complete class strings so Tailwind's scanner keeps them. */
 const MAX_WIDTH_CLASS = {
@@ -86,14 +87,14 @@ export function PageShell({
 interface UserMenuProps {
   /** Show the dedicated settings gear next to the bell. */
   showSettingsButton?: boolean;
-  /** Show the unread-notification dot on the bell. */
-  showNotificationDot?: boolean;
 }
 
-export function UserMenu({ showSettingsButton = false, showNotificationDot = false }: UserMenuProps) {
+export function UserMenu({ showSettingsButton = false }: UserMenuProps) {
   const user = usePartyStore((s) => s.user);
   const setCurrentPage = usePartyStore((s) => s.setCurrentPage);
   const name = user?.name || user?.email || 'Guest';
+  // Live unread count from /api/notifications/unread-count (60s poll).
+  const { data: unreadCount = 0 } = useUnreadCount();
 
   return (
     <>
@@ -101,12 +102,17 @@ export function UserMenu({ showSettingsButton = false, showNotificationDot = fal
         variant="ghost"
         size="icon"
         className="relative rounded-full"
-        aria-label="Notifications"
-        onClick={() => setCurrentPage('settings')}
+        aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+        onClick={() => setCurrentPage('notifications')}
       >
         <Bell className="h-5 w-5" />
-        {showNotificationDot && (
-          <span aria-hidden="true" className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full" />
+        {unreadCount > 0 && (
+          <span
+            aria-hidden="true"
+            className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center"
+          >
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
         )}
       </Button>
       {showSettingsButton && (
