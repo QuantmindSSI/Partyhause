@@ -32,6 +32,17 @@
 -- Invite tokens (from 20251103_guest_crew_features.sql)
 -- ============================================
 
+-- CREATE OR REPLACE cannot rename function parameters ("cannot change name
+-- of input parameter"), and databases provisioned from the original Supabase
+-- migrations carry these functions with p_-prefixed parameter names. Drop by
+-- exact signature first (idempotent; no dependent objects — trigger
+-- functions are separate and RPC callers bind at call time).
+DROP FUNCTION IF EXISTS is_invite_token_valid(TEXT);
+DROP FUNCTION IF EXISTS increment_token_usage(TEXT, UUID);
+DROP FUNCTION IF EXISTS is_following(UUID, UUID);
+DROP FUNCTION IF EXISTS is_mutual_crew(UUID, UUID);
+DROP FUNCTION IF EXISTS get_mutual_crew_count(UUID, UUID);
+
 CREATE OR REPLACE FUNCTION generate_invite_token()
 RETURNS TEXT AS $$
   SELECT 'inv_' || replace(gen_random_uuid()::TEXT, '-', '');
