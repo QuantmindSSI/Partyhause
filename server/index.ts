@@ -33,6 +33,7 @@ import aiRouter from './routes/ai';
 import emailLogsRouter from './routes/email-logs';
 import storageRouter from './routes/storage';
 import realtimeRouter from './routes/realtime';
+import notificationsRouter from './routes/notifications';
 
 // Load environment variables
 dotenv.config();
@@ -163,6 +164,7 @@ app.use('/api/ai', aiRouter);
 app.use('/api/email-logs', emailLogsRouter);
 app.use('/api/storage', storageRouter);
 app.use('/api/realtime', realtimeRouter);
+app.use('/api/notifications', notificationsRouter);
 
 // Serve built static files from dist/ when present (local preview / combined mode)
 const distPath = path.resolve(__dirname, '../dist');
