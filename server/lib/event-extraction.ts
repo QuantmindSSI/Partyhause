@@ -244,19 +244,22 @@ export function extractNumbers(text: string): { guests?: number; budget?: number
   const result: { guests?: number; budget?: number } = {};
 
   const guestPatterns = [
-    /(\d+)\s*(?:people|guests|attendees|friends|folks|persons|invitees|kids|children|adults|players|developers|students)/i,
-    /expecting\s+(?:about\s+|around\s+|roughly\s+)?(\d+)/i,
-    /for\s+(\d+)\s+(?:people|guests)/i,
-    /invite\s+(?:about\s+|around\s+)?(\d+)/i,
-    /(?:about|around|roughly)\s+(\d+)\s+(?:people|guests|kids|children|attendees)/i,
+    /(\d+)\s*(?:people|guests|attendees|friends|folks|persons|invitees|kids|children|adults|players|developers|students)/gi,
+    /expecting\s+(?:about\s+|around\s+|roughly\s+)?(\d+)/gi,
+    /for\s+(\d+)\s+(?:people|guests)/gi,
+    /invite\s+(?:about\s+|around\s+)?(\d+)/gi,
+    /(?:about|around|roughly)\s+(\d+)\s+(?:people|guests|kids|children|attendees)/gi,
   ];
+  // LAST valid mention wins: in a conversation, "25 kids ... actually make
+  // it 40 kids" must resolve to 40. Track the rightmost match across all
+  // patterns.
+  let lastGuestIndex = -1;
   for (const pattern of guestPatterns) {
-    const match = text.match(pattern);
-    if (match) {
+    for (const match of text.matchAll(pattern)) {
       const num = parseInt(match[1], 10);
-      if (num >= 2 && num < 100000) {
+      if (num >= 2 && num < 100000 && (match.index ?? 0) > lastGuestIndex) {
+        lastGuestIndex = match.index ?? 0;
         result.guests = num;
-        break;
       }
     }
   }
@@ -557,7 +560,62 @@ export function resolveLlmConfig(env: NodeJS.ProcessEnv = process.env): LlmConfi
   return null;
 }
 
-const LLM_TIMEOUT_MS = 8000;
+const LLM_TIMEOUT_MS = 20000;
+
+/**
+ * POST a chat-completions body. Includes `reasoning_effort: 'minimal'`
+ * (cuts gpt-5-family latency from ~15s to ~3s for structured tasks); if the
+ * target model rejects the parameter with HTTP 400, retries exactly once
+ * without it so non-reasoning models keep working. Returns the parsed
+ * message content string, or null on any failure.
+ */
+export async function callChatCompletions(
+  config: { url: string; headers: Record<string, string>; model?: string },
+  body: Record<string, unknown>,
+  timeoutMs: number,
+): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const withReasoning = { ...body, reasoning_effort: 'minimal' };
+    if (config.model) withReasoning.model = config.model;
+
+    let response = await fetch(config.url, {
+      method: 'POST',
+      headers: config.headers,
+      body: JSON.stringify(withReasoning),
+      signal: controller.signal,
+    });
+
+    if (response.status === 400) {
+      // Model may not support reasoning parameters — retry once without.
+      const plain = { ...body };
+      if (config.model) plain.model = config.model;
+      response = await fetch(config.url, {
+        method: 'POST',
+        headers: config.headers,
+        body: JSON.stringify(plain),
+        signal: controller.signal,
+      });
+    }
+
+    if (!response.ok) {
+      console.warn(`[AI] chat completions HTTP ${response.status}`);
+      return null;
+    }
+
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    return payload.choices?.[0]?.message?.content ?? null;
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn(`[AI] chat completions failed (${reason})`);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 const SYSTEM_PROMPT = `You extract structured event-planning details from a user's free-text description.
 Respond with ONLY a JSON object (no markdown fences) with these keys:
@@ -577,8 +635,6 @@ export async function extractWithLlm(
   referenceDate: Date,
   config: LlmConfig,
 ): Promise<ExtractedEventData | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
   try {
     // No temperature parameter: reasoning-class models (gpt-5 family)
     // reject any value other than their default and would turn every call
@@ -594,24 +650,8 @@ export async function extractWithLlm(
       ],
       response_format: { type: 'json_object' },
     };
-    if (config.model) body.model = config.model;
 
-    const response = await fetch(config.url, {
-      method: 'POST',
-      headers: config.headers,
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      console.warn(`[AI] LLM extraction HTTP ${response.status}; falling back to heuristics`);
-      return null;
-    }
-
-    const payload = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = payload.choices?.[0]?.message?.content;
+    const content = await callChatCompletions(config, body, LLM_TIMEOUT_MS);
     if (!content) return null;
 
     const parsed = llmResponseSchema.safeParse(JSON.parse(content));
@@ -648,8 +688,6 @@ export async function extractWithLlm(
     const reason = err instanceof Error ? err.message : String(err);
     console.warn(`[AI] LLM extraction failed (${reason}); falling back to heuristics`);
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
