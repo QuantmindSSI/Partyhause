@@ -26,6 +26,14 @@ param targetPort int
 @description('Environment variables (non-secret values use `value`; secret values use `secretRef` matching a name in `secrets`)')
 param envVars array = []
 
+@description('''Create the AcrPull role assignment for the app's managed
+identity. Default false: in the existing prod environment both app
+identities already hold AcrPull via out-of-band assignments, and a
+template-created duplicate of the same (principal, role, scope) triple
+fails with RoleAssignmentExists. Set true when provisioning a fresh
+environment.''')
+param manageAcrPullAssignment bool = false
+
 @description('Secrets exposed to the container app. Each item: { name: string, value: string }. Referenced from envVars via secretRef.')
 param secrets array = []
 
@@ -86,14 +94,17 @@ resource acrResource 'Microsoft.ContainerRegistry/registries@2023-07-01' existin
   scope: resourceGroup()
 }
 
-resource acrPullRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource acrPullRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (manageAcrPullAssignment) {
   name: guid(containerApp.id, 'AcrPull')
   properties: {
     principalId: containerApp.identity.principalId
-    // subscriptionResourceId, not a bare /providers/ path: tenant-scope
-    // lookups of built-in role definitions fail with
-    // RoleDefinitionDoesNotExist during (re)provisioning.
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951ddb-4da3-4683-8d00-9c357b6b258f') // AcrPull
+    // subscriptionResourceId, not a bare /providers/ path (tenant-scope
+    // lookups fail), and the AcrPull GUID VERIFIED against this tenant:
+    //   az role definition list --name AcrPull
+    // The widely-documented public-cloud constant (7f951ddb-4da3-...) does
+    // not exist in this environment and failed every reprovision with
+    // RoleDefinitionDoesNotExist.
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d') // AcrPull
     principalType: 'ServicePrincipal'
   }
   scope: acrResource
