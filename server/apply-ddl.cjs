@@ -30,14 +30,35 @@ const DDL = [
   'CREATE UNIQUE INDEX IF NOT EXISTS users_verification_token_key ON users(verification_token)',
 ];
 
+function buildClientConfig() {
+  // Prefer discrete POSTGRES_* parts: the Bicep-built DATABASE_URL embeds
+  // the raw admin password without URL-encoding, which pg's URL parser
+  // rejects ("Invalid URL") whenever the password contains reserved
+  // characters. Discrete fields involve no URL parsing at all.
+  if (process.env.POSTGRES_HOST) {
+    return {
+      host: process.env.POSTGRES_HOST,
+      port: Number.parseInt(process.env.POSTGRES_PORT || '5432', 10),
+      user: process.env.POSTGRES_USER || 'partyadmin',
+      password: process.env.POSTGRES_PASSWORD || '',
+      database: process.env.POSTGRES_DB || 'partyhause',
+      ssl: { rejectUnauthorized: false },
+    };
+  }
+  if (process.env.DATABASE_URL) {
+    return { connectionString: process.env.DATABASE_URL };
+  }
+  return null;
+}
+
 async function main() {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    console.error('APPLY_DDL_FAIL: DATABASE_URL is not set');
+  const config = buildClientConfig();
+  if (!config) {
+    console.error('APPLY_DDL_FAIL: neither POSTGRES_HOST nor DATABASE_URL is set');
     process.exit(1);
   }
 
-  const client = new Client({ connectionString });
+  const client = new Client(config);
   await client.connect();
   try {
     for (const sql of DDL) {
