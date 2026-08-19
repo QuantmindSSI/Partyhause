@@ -221,7 +221,7 @@ router.post('/verify-email', credentialLimiter, async (req, res) => {
 
 // POST /api/auth/resend-verification — re-issues the verification link for
 // the signed-in user. Idempotent for already-verified accounts.
-router.post('/resend-verification', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.post('/resend-verification', credentialLimiter, requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
     if (!user) {
