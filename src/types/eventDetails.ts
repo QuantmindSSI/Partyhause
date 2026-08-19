@@ -1,3 +1,5 @@
+import type { GameHistory } from './gameTypes';
+
 export interface EventDetails {
   basicInfo: {
     name: string;

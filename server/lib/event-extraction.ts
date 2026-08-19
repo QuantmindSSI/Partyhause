@@ -577,7 +577,7 @@ export async function callChatCompletions(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const withReasoning = { ...body, reasoning_effort: 'minimal' };
+    const withReasoning: Record<string, unknown> = { ...body, reasoning_effort: 'minimal' };
     if (config.model) withReasoning.model = config.model;
 
     let response = await fetch(config.url, {
