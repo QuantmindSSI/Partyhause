@@ -14,7 +14,7 @@ import sharp from 'sharp';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const SOURCE_SVG = path.join(__dirname, '../public/partyhaus-icon.svg');
+const SOURCE_SVG = path.join(__dirname, '../public/partyhause-icon.svg');
 const OUTPUT_DIR = path.join(__dirname, '../public/icons');
 
 // Icon sizes to generate
@@ -101,7 +101,7 @@ async function generateIcon(size, outputPath, maskable = false) {
 }
 
 async function generateAllIcons() {
-  console.log('🎨 Generating PWA icons from partyhaus-icon.svg...\n');
+  console.log('🎨 Generating PWA icons from partyhause-icon.svg...\n');
   
   let successCount = 0;
   let totalCount = 0;

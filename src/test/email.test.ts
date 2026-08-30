@@ -118,7 +118,7 @@ describe('Email Service', () => {
         location: '123 Party Street, Fun City'
       };
 
-      const invitationUrl = 'https://partyhaus.app/invite/abc123';
+      const invitationUrl = 'https://partyhause.app/invite/abc123';
 
       const template = emailTemplates.eventInvitation(
         'guest@example.com',
@@ -142,7 +142,7 @@ describe('Email Service', () => {
         location: '123 Party Street, Fun City'
       };
 
-      const invitationUrl = 'https://partyhaus.app/invite/abc123';
+      const invitationUrl = 'https://partyhause.app/invite/abc123';
 
       const template = emailTemplates.eventInvitation(
         'guest@example.com',
@@ -161,7 +161,7 @@ describe('Email Service', () => {
         location: '123 Party Street, Fun City'
       };
 
-      const invitationUrl = 'https://partyhaus.app/invite/abc123';
+      const invitationUrl = 'https://partyhause.app/invite/abc123';
 
       const template = emailTemplates.eventInvitation(
         'guest@example.com',
@@ -179,7 +179,7 @@ describe('Email Service', () => {
         location: '123 Main St. <Apt 4B>, Fun City'
       };
 
-      const invitationUrl = 'https://partyhaus.app/invite/abc123';
+      const invitationUrl = 'https://partyhause.app/invite/abc123';
 
       const template = emailTemplates.eventInvitation(
         'guest@example.com',

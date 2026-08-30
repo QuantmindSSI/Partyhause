@@ -150,7 +150,7 @@ describe('Email Template Performance', () => {
       emailTemplates.eventInvitation(
         `test${i}@example.com`,
         eventDetails,
-        `https://partyhaus.app/invite/${i}`
+        `https://partyhause.app/invite/${i}`
       );
     }
     
@@ -174,7 +174,7 @@ describe('Email Template Performance', () => {
     const template = emailTemplates.eventInvitation(
       'test@example.com',
       eventDetails,
-      'https://partyhaus.app/invite/test'
+      'https://partyhause.app/invite/test'
     );
     
     const endTime = performance.now();

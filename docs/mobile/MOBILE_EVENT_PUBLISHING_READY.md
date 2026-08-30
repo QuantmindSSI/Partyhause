@@ -10,7 +10,7 @@ Successfully deployed all required API endpoints to Vercel production to enable 
 
 ### 1. ✅ Fixed API URL Configuration
 **Problem:** Mobile app was pointing to wrong URL (`partyhause.vercel.app` with 'e')  
-**Solution:** Updated `apps/mobile/.env` to use `https://partyhaus.vercel.app` (no 'e')
+**Solution:** Updated `apps/mobile/.env` to use `https://partyhause.vercel.app` (no 'e')
 
 ### 2. ✅ Deployed Missing API Endpoints
 **Problem:** Only 5 functions deployed, missing critical endpoints for mobile app  
@@ -39,13 +39,13 @@ All endpoints tested and returning proper responses:
 ## Current Status
 
 ### ✅ Backend Deployment
-- **Production URL:** https://partyhaus.vercel.app
+- **Production URL:** https://partyhause.vercel.app
 - **Deployment ID:** 8kzxg21l5
 - **Status:** ✅ READY
 - **All API endpoints deployed and functional**
 
 ### ✅ Mobile App Configuration  
-- **API URL configured:** `https://partyhaus.vercel.app`
+- **API URL configured:** `https://partyhause.vercel.app`
 - **Environment variable:** `EXPO_PUBLIC_API_URL`
 - **Expo server running:** `exp://ohgitoo-anonymous-8081.exp.direct`
 
@@ -118,7 +118,7 @@ Check that events are being stored correctly:
 ```
 Mobile App (React Native/Expo)
     ↓ (HTTPS with auth token)
-Vercel Serverless Functions (partyhaus.vercel.app/api/*)
+Vercel Serverless Functions (partyhause.vercel.app/api/*)
     ↓ (Supabase Client with service role key)
 Supabase PostgreSQL Database
     ↓ (Response)
@@ -133,7 +133,7 @@ Mobile App displays success/error
 
 ### Event Creation Request
 ```typescript
-POST https://partyhaus.vercel.app/api/events
+POST https://partyhause.vercel.app/api/events
 Headers: {
   "Content-Type": "application/json",
   "Authorization": "Bearer <supabase-jwt-token>"
@@ -182,7 +182,7 @@ npx expo start --tunnel --clear
 
 ### "DEPLOYMENT_NOT_FOUND" error
 **Cause:** Using wrong URL (`partyhause.vercel.app` with 'e')  
-**Fix:** Verify `.env` has `https://partyhaus.vercel.app` (no 'e')
+**Fix:** Verify `.env` has `https://partyhause.vercel.app` (no 'e')
 
 ### "Unauthorized" error from API
 **Cause:** Auth token missing or invalid  
@@ -209,7 +209,7 @@ npx expo start --tunnel --clear
 ### Configuration Files
 1. **apps/mobile/.env**
    - Changed: `EXPO_PUBLIC_API_URL=http://10.0.2.2:3000`
-   - To: `EXPO_PUBLIC_API_URL=https://partyhaus.vercel.app`
+   - To: `EXPO_PUBLIC_API_URL=https://partyhause.vercel.app`
 
 2. **.vercelignore**
    - Added API function filters to stay under 12 function limit
@@ -276,7 +276,7 @@ npx expo start --tunnel --clear
 **Functions Deployed:** 8/12 (66% of Hobby plan limit used)  
 **Build Status:** ✅ Passed  
 **Health Check:** ✅ Passing  
-**Production URL:** https://partyhaus.vercel.app  
+**Production URL:** https://partyhause.vercel.app  
 
 **Key Achievements:**
 - Fixed 12-function limit issue by filtering non-essential endpoints

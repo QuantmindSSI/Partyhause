@@ -119,7 +119,7 @@ const regularArticles = [
     readTime: "15 min read",
     publishDate: "2025-08-28",
     author: {
-      name: "The PartyHaus Collective",
+      name: "The PartyHause Collective",
       title: "Experience Curators",
       avatar: "/avatars/collective.jpg"
     },

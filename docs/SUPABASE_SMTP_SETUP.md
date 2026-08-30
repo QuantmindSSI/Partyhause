@@ -16,9 +16,9 @@ SMTP Host: smtp.resend.com
 SMTP Port: 587
 SMTP Username: resend
 SMTP Password: [YOUR_RESEND_API_KEY]
-SMTP Admin Email: admin@yourpartyhaus.com
-SMTP Sender Name: PartyHaus
-SMTP Sender Email: noreply@yourpartyhaus.com
+SMTP Admin Email: admin@yourpartyhause.com
+SMTP Sender Name: PartyHause
+SMTP Sender Email: noreply@yourpartyhause.com
 Enable TLS: Yes
 ```
 
@@ -32,13 +32,13 @@ SMTP_HOST=smtp.resend.com
 SMTP_PORT=587
 SMTP_USER=resend
 SMTP_PASS=re_your_resend_api_key_here
-SMTP_ADMIN_EMAIL=admin@yourpartyhaus.com
-SMTP_SENDER_NAME=PartyHaus
-SMTP_SENDER_EMAIL=noreply@yourpartyhaus.com
+SMTP_ADMIN_EMAIL=admin@yourpartyhause.com
+SMTP_SENDER_NAME=PartyHause
+SMTP_SENDER_EMAIL=noreply@yourpartyhause.com
 
 # Resend API Configuration
 RESEND_API_KEY=re_your_resend_api_key_here
-RESEND_FROM_EMAIL=noreply@yourpartyhaus.com
+RESEND_FROM_EMAIL=noreply@yourpartyhause.com
 ```
 
 ### 3. Authentication Email Templates
@@ -47,30 +47,30 @@ Configure custom email templates in Supabase:
 
 #### Email Confirmation Template:
 ```html
-<h2>Welcome to PartyHaus!</h2>
+<h2>Welcome to PartyHause!</h2>
 <p>Hi there,</p>
 <p>Thanks for signing up! Please confirm your email address by clicking the link below:</p>
 <a href="{{ .ConfirmationURL }}" style="background-color: #6C63FF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">Confirm Email</a>
 <p>If you didn't create this account, you can safely ignore this email.</p>
-<p>Best regards,<br>The PartyHaus Team</p>
+<p>Best regards,<br>The PartyHause Team</p>
 ```
 
 #### Password Reset Template:
 ```html
-<h2>Reset Your PartyHaus Password</h2>
+<h2>Reset Your PartyHause Password</h2>
 <p>Hi there,</p>
 <p>You requested to reset your password. Click the link below to set a new password:</p>
 <a href="{{ .ConfirmationURL }}" style="background-color: #6C63FF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">Reset Password</a>
 <p>This link will expire in 1 hour.</p>
 <p>If you didn't request this, you can safely ignore this email.</p>
-<p>Best regards,<br>The PartyHaus Team</p>
+<p>Best regards,<br>The PartyHause Team</p>
 ```
 
 ### 4. Domain Configuration
 
 #### A. Verify Domain with Resend:
 1. Go to Resend Dashboard → Domains
-2. Add your domain: `yourpartyhaus.com`
+2. Add your domain: `yourpartyhause.com`
 3. Add required DNS records:
    - **MX Record**: `feedback-smtp.resend.com`
    - **TXT Record**: `v=spf1 include:_spf.resend.com ~all`
@@ -79,9 +79,9 @@ Configure custom email templates in Supabase:
 #### B. Update Supabase Site URL:
 ```bash
 # In Supabase Dashboard → Settings → API
-Site URL: https://yourpartyhaus.com
+Site URL: https://yourpartyhause.com
 Additional redirect URLs: 
-- https://yourpartyhaus.com/auth/callback
+- https://yourpartyhause.com/auth/callback
 - http://localhost:5173/auth/callback (for development)
 ```
 
@@ -134,7 +134,7 @@ Use this test script to verify SMTP setup:
 curl -X POST "https://your-project-id.supabase.co/auth/v1/recover" \
   -H "Content-Type: application/json" \
   -H "apikey: YOUR_SUPABASE_ANON_KEY" \
-  -d '{"email": "test@yourpartyhaus.com"}'
+  -d '{"email": "test@yourpartyhause.com"}'
 ```
 
 ### 8. Monitoring & Troubleshooting

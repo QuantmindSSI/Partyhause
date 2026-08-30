@@ -124,7 +124,7 @@ export class AIGameEngine implements AIGameMatcher {
         },
         
         metadata: {
-          createdBy: 'partyhaus-team',
+          createdBy: 'partyhause-team',
           createdAt: '2024-01-01T00:00:00Z',
           updatedAt: new Date().toISOString(),
           version: '1.0',
@@ -239,7 +239,7 @@ export class AIGameEngine implements AIGameMatcher {
         },
         
         metadata: {
-          createdBy: 'partyhaus-team',
+          createdBy: 'partyhause-team',
           createdAt: '2024-01-01T00:00:00Z',
           updatedAt: new Date().toISOString(),
           version: '1.2',

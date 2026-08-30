@@ -8,7 +8,7 @@
 
 **Current Situation**:
 - **www.partyhause.com** → Trying to load Expo mobile app files
-- **partyhaus.vercel.app** → Expo mobile app (working)
+- **partyhause.vercel.app** → Expo mobile app (working)
 - **partyhause.netlify.app** → Web PWA (working)
 
 **Error**:
@@ -90,7 +90,7 @@ VITE_API_URL=https://www.partyhause.com
 
 ```bash
 # Keep using Vercel for mobile (different app)
-EXPO_PUBLIC_API_URL=https://partyhaus.vercel.app
+EXPO_PUBLIC_API_URL=https://partyhause.vercel.app
 ```
 
 **OR** use Netlify for both:
@@ -130,7 +130,7 @@ www.partyhause.com/m    → Vercel (Expo mobile)
 | partyhause.com | ❌ Not resolving | Netlify (75.2.60.5) |
 | www.partyhause.com | ⚠️ Vercel (wrong app) | Netlify (CNAME) |
 | partyhause.netlify.app | ✅ Working | Web PWA |
-| partyhaus.vercel.app | ✅ Working | Expo mobile |
+| partyhause.vercel.app | ✅ Working | Expo mobile |
 
 ---
 
@@ -234,7 +234,7 @@ After completing steps:
 - [ ] Web PWA features work (login, events, etc.)
 - [ ] SSL certificate shows as valid (🔒)
 - [ ] Can install as PWA
-- [ ] Mobile app still works at partyhaus.vercel.app
+- [ ] Mobile app still works at partyhause.vercel.app
 
 ---
 
@@ -270,7 +270,7 @@ After completing steps:
 │         ├─ PWA installable                  │
 │         └─ Serverless Functions             │
 │                                              │
-│  📱 partyhaus.vercel.app                     │
+│  📱 partyhause.vercel.app                     │
 │     └─> Vercel (Expo Mobile Web)            │
 │         ├─ React Native Web                 │
 │         ├─ Mobile-optimized                 │

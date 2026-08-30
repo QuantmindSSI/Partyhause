@@ -3,7 +3,7 @@
 # PWA Icon Generator Script
 # Generates all required icon sizes for PWA from the source SVG
 
-echo "🎨 Generating PWA icons from partyhaus-icon.svg..."
+echo "🎨 Generating PWA icons from partyhause-icon.svg..."
 
 # Check if ImageMagick is installed
 if ! command -v convert &> /dev/null; then
@@ -15,7 +15,7 @@ if ! command -v convert &> /dev/null; then
 fi
 
 # Source SVG file
-SOURCE_SVG="public/partyhaus-icon.svg"
+SOURCE_SVG="public/partyhause-icon.svg"
 OUTPUT_DIR="public/icons"
 
 # Check if source exists

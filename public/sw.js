@@ -7,7 +7,7 @@ const PRECACHE_URLS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/partyhaus-icon.svg',
+  '/partyhause-icon.svg',
   '/placeholder.svg'
 ];
 
@@ -106,7 +106,7 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'PartyHause';
   const options = {
     body: data.body || 'New update available',
-    icon: '/partyhaus-icon.svg',
+    icon: '/partyhause-icon.svg',
     badge: '/icons/badge.png',
     tag: data.tag || 'default',
     data: data.data || {},

@@ -1,14 +1,14 @@
-# PartyHaus Vendor Marketplace
+# PartyHause Vendor Marketplace
 ## Complete B2B2C Event Vendor Platform
 
 ---
 
 ## Overview
 
-The Vendor Marketplace transforms PartyHaus into a **three-sided platform** connecting:
+The Vendor Marketplace transforms PartyHause into a **three-sided platform** connecting:
 - **Event Hosts** (consumers) - Find and book vendors
 - **Vendors** (businesses) - DJs, caterers, photographers, venues, rentals
-- **PartyHaus** (platform) - Facilitates discovery, booking, and payment
+- **PartyHause** (platform) - Facilitates discovery, booking, and payment
 
 ---
 
@@ -104,7 +104,7 @@ CREATE TABLE vendor_bookings (
   deposit_amount DECIMAL(10,2),
   deposit_paid BOOLEAN DEFAULT false,
   deposit_paid_at TIMESTAMP,
-  partyhaus_fee DECIMAL(10,2),
+  partyhause_fee DECIMAL(10,2),
   vendor_payout DECIMAL(10,2),
   stripe_payment_intent_id VARCHAR(255),
   status VARCHAR(20) DEFAULT 'inquiry',

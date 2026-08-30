@@ -26,7 +26,7 @@
 │     └─ Testing & development                                │
 │                                                              │
 │  ❌ Vercel (Deprecated)                                      │
-│     partyhaus.vercel.app → No longer used                   │
+│     partyhause.vercel.app → No longer used                   │
 │     All APIs moved to Netlify                               │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
@@ -205,9 +205,9 @@ curl -I https://www.partyhause.com
 |------|-------------|---------------|
 | Main Domain | ❌ www.partyhause.com (Vercel) | ✅ www.partyhause.com (Netlify) |
 | Apex Domain | ❌ partyhause.com (not working) | ✅ partyhause.com → www redirect |
-| Preview | ❌ partyhaus.vercel.app | ✅ partyhause.netlify.app |
-| API Endpoint | ❌ partyhaus.vercel.app/api/* | ✅ www.partyhause.com/api/* |
-| Email API | ❌ partyhaus.vercel.app/api/send-email | ✅ www.partyhause.com/api/send-email |
+| Preview | ❌ partyhause.vercel.app | ✅ partyhause.netlify.app |
+| API Endpoint | ❌ partyhause.vercel.app/api/* | ✅ www.partyhause.com/api/* |
+| Email API | ❌ partyhause.vercel.app/api/send-email | ✅ www.partyhause.com/api/send-email |
 
 ### All References Updated
 

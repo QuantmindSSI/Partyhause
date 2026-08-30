@@ -1,4 +1,4 @@
-// Image upload and optimization utilities for PartyHaus.
+// Image upload and optimization utilities for PartyHause.
 //
 // Previously these uploaded directly to Supabase Storage from the browser.
 // They now POST to the Express API (`/api/storage/*`) which uploads to Azure

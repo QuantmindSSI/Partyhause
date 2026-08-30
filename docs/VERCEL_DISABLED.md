@@ -119,7 +119,7 @@ Git Push → GitHub Actions → Vercel CLI → Vercel Deploy
          ↓
     Manual deploy step
          ↓
-    partyhaus.vercel.app
+    partyhause.vercel.app
 ```
 
 ### After (Netlify):

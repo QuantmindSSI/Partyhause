@@ -1,11 +1,11 @@
-# PartyHaus Social Media Integration
+# PartyHause Social Media Integration
 ## Share, Discover, and Promote Events Across Platforms
 
 ---
 
 ## Overview
 
-Social media integration transforms PartyHaus events from private gatherings into **shareable moments** while driving organic growth. Every touchpoint—invitations, event creation, photo sharing, post-event highlights—becomes an opportunity for social amplification.
+Social media integration transforms PartyHause events from private gatherings into **shareable moments** while driving organic growth. Every touchpoint—invitations, event creation, photo sharing, post-event highlights—becomes an opportunity for social amplification.
 
 ---
 
@@ -46,7 +46,7 @@ export interface SocialEventShare {
     title: string;
     description: string;
     image: string;
-    site: '@partyhaus';
+    site: '@partyhause';
   };
 }
 
@@ -139,7 +139,7 @@ export function ShareEventModal({ eventId, eventData, isOpen, onClose }: ShareEv
   // - Embed on website (iframe)
   // - Add to calendar (ICS)
   
-  // 5. PARTYHAUS INTERNAL
+  // 5. PARTYHAUSE INTERNAL
   // - Share to PartyBoard
   // - Share to PartyCrew feed
   // - Share to specific crew
@@ -174,7 +174,7 @@ interface InstagramIntegration {
   
   // Hashtag Strategy
   suggestedHashtags: (eventType: string, theme: string) => string[];
-  // #PartyHaus #90sParty #BirthdayBash #EventLife
+  // #PartyHause #90sParty #BirthdayBash #EventLife
   
   // Reels
   generateEventReel: (eventId: string) => Promise<string>;
@@ -216,7 +216,7 @@ interface TikTokIntegration {
   };
   
   // Deep Link
-  shareUrl: string; // partyhaus.com/e/[eventId]?source=tiktok
+  shareUrl: string; // partyhause.com/e/[eventId]?source=tiktok
 }
 ```
 
@@ -409,7 +409,7 @@ interface ThankYouGenerator {
   };
   
   // Share options
-  sendVia: ('email' | 'sms' | 'whatsapp' | 'instagram-dm' | 'partyhaus-message')[];
+  sendVia: ('email' | 'sms' | 'whatsapp' | 'instagram-dm' | 'partyhause-message')[];
 }
 ```
 

@@ -10,7 +10,7 @@
 
 ## 🌟 Vision Statement
 
-Transform PartyHaus into a **collaborative event planning workspace** where event creators can:
+Transform PartyHause into a **collaborative event planning workspace** where event creators can:
 - Build events using **visual planning blocks** (like LEGO pieces)
 - Assign tasks to **team members and vendors**
 - Track progress in **real-time** (like food delivery tracking)
@@ -790,7 +790,7 @@ CREATE INDEX idx_block_activity_block ON block_activity_log(block_id, created_at
 
 ## 📝 Notes & Discussions
 
-> This feature transforms PartyHaus from a simple event manager into a comprehensive 
+> This feature transforms PartyHause from a simple event manager into a comprehensive 
 > collaborative planning platform. The key differentiator is the visual block-based 
 > approach combined with vendor marketplace integration.
 > 

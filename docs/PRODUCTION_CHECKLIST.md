@@ -12,13 +12,13 @@
 
 **Issue:**
 ```
-Access to fetch at 'https://www.partyhaus.com/api/events?id=...' 
-from origin 'https://partyhaus.vercel.app' has been blocked by CORS policy
+Access to fetch at 'https://www.partyhause.com/api/events?id=...' 
+from origin 'https://partyhause.vercel.app' has been blocked by CORS policy
 ```
 
 **Root Cause:**
-- API URL is set to `https://www.partyhaus.com` 
-- Actual API is on `https://partyhaus.vercel.app`
+- API URL is set to `https://www.partyhause.com` 
+- Actual API is on `https://partyhause.vercel.app`
 - Missing CORS headers or wrong origin
 
 **Fix Required:**
@@ -125,7 +125,7 @@ Use expo-audio and expo-video packages instead.
 ### 🟢 PWA Features
 
 - [x] **Manifest**
-  - [x] App name: "PartyHaus"
+  - [x] App name: "PartyHause"
   - [x] Icons: 192px, 512px, maskable
   - [x] Theme color configured
   - [x] Display mode: standalone

@@ -17,9 +17,9 @@ mkdir -p "$MOBILE_PUBLIC"
 echo "📁 Copying icons from web app..."
 
 # Copy the main SVG icon if it exists
-if [ -f "$SOURCE_DIR/partyhaus-icon.svg" ]; then
-  cp "$SOURCE_DIR/partyhaus-icon.svg" "$MOBILE_PUBLIC/partyhaus-icon.svg"
-  echo "  ✓ Copied partyhaus-icon.svg"
+if [ -f "$SOURCE_DIR/partyhause-icon.svg" ]; then
+  cp "$SOURCE_DIR/partyhause-icon.svg" "$MOBILE_PUBLIC/partyhause-icon.svg"
+  echo "  ✓ Copied partyhause-icon.svg"
 fi
 
 # Copy all PNG icons

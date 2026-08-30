@@ -217,7 +217,7 @@ All required sizes generated:
 - ✅ **PWA Icons**: 192x192, 512x512
 - ✅ **Maskable**: 192x192, 512x512
 - ✅ **Apple Touch**: 120x120, 152x152, 167x167, 180x180
-- ✅ **SVG**: partyhaus-icon.svg (any size)
+- ✅ **SVG**: partyhause-icon.svg (any size)
 - ✅ **Shortcuts**: create.png, events.png
 
 **Status**: ✅ Complete

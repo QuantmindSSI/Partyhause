@@ -14,7 +14,7 @@
 import { installGlobalErrorCapture } from './monitor';
 import { registerMonitoringTools } from './tools';
 
-const INIT_FLAG = '__partyhausWebMCPInitialized';
+const INIT_FLAG = '__partyhauseWebMCPInitialized';
 
 function modelContextAvailable(): boolean {
   return typeof (navigator as { modelContext?: unknown }).modelContext !== 'undefined';

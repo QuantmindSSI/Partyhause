@@ -7,7 +7,7 @@
 
 ## 🎯 Executive Summary
 
-**PartyHaus has TWO distinct relationship types:**
+**PartyHause has TWO distinct relationship types:**
 
 1. **PartyCrew** = Your social network (followers/following on the platform)
 2. **Guests** = People invited to/attending specific events
@@ -20,7 +20,7 @@
 
 ### PartyCrew (Social Network Layer)
 
-**Definition:** PartyCrew members are people who **follow you on the PartyHaus platform** to stay updated about your events and activity. This is a **persistent, ongoing relationship** similar to Instagram followers or LinkedIn connections.
+**Definition:** PartyCrew members are people who **follow you on the PartyHause platform** to stay updated about your events and activity. This is a **persistent, ongoing relationship** similar to Instagram followers or LinkedIn connections.
 
 **Characteristics:**
 - ✅ Platform-level relationship (not event-specific)
@@ -115,7 +115,7 @@
 **Sarah's Pool Party Event Guests:**
 - 50 invited guests (her close friends and family)
 - Only 12 of the 50 guests are in her PartyCrew
-- The other 38 guests don't follow her on PartyHaus (they're personal friends)
+- The other 38 guests don't follow her on PartyHause (they're personal friends)
 - Her 2,488 other PartyCrew members can **see** the event in their feed but aren't **invited**
 
 **Key Insight:** Sarah has a large professional following (PartyCrew), but her personal pool party is intimate with mostly non-followers (regular guests).
@@ -142,14 +142,14 @@
 ### Scenario 3: First-Time Host (Alex)
 
 **Alex's PartyCrew:**
-- 0 followers (brand new to PartyHaus)
+- 0 followers (brand new to PartyHause)
 - Just signed up to plan his birthday party
 
 **Alex's Birthday Party Guests:**
 - 30 invited friends (from his phone contacts)
-- 0 of them are on PartyHaus yet
+- 0 of them are on PartyHause yet
 - Alex sends SMS/email invites to bring them to the platform
-- **Conversion Opportunity:** These 30 guests might join PartyHaus and become his first PartyCrew members!
+- **Conversion Opportunity:** These 30 guests might join PartyHause and become his first PartyCrew members!
 
 **Key Insight:** You don't need PartyCrew to host events. Guests are the starting point, PartyCrew grows over time.
 
@@ -353,7 +353,7 @@ WHERE ea.user_id = current_user_id
 
 ```
 1. Alex gets invited to Sarah's pool party (becomes GUEST)
-2. Alex RSVPs "Going" on PartyHaus
+2. Alex RSVPs "Going" on PartyHause
 3. Alex sees "Join Sarah's PartyCrew to see future events" prompt
 4. Alex clicks "Join PartyCrew" (becomes CREW MEMBER + GUEST)
 5. Alex now sees all Sarah's future events in feed automatically
@@ -387,7 +387,7 @@ Result: PartyCrew membership drove event discovery and attendance
 2. John RSVPs via email link (becomes GUEST, not on platform yet)
 3. John receives email updates about event
 4. John attends event (still just a guest)
-5. After event, John never joins PartyHaus
+5. After event, John never joins PartyHause
 6. Relationship ends when event ends
 
 Result: Traditional event invitation, no social network involved
@@ -581,7 +581,7 @@ Guest notifications:
 | **Notifications** | New events, updates | Event reminders, changes |
 | **Privacy Control** | Public/private profile | Per-event guest list privacy |
 | **Limit** | Unlimited followers | Event capacity limit |
-| **Platform Requirement** | Must have PartyHaus account | Can be off-platform (email) |
+| **Platform Requirement** | Must have PartyHause account | Can be off-platform (email) |
 | **Purpose** | Discovery & distribution | Logistics & coordination |
 | **Example Count** | "2.5K PartyCrew" | "50 Guests" |
 | **Growth Strategy** | Content & engagement | Invitations & sharing |

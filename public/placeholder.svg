@@ -29,8 +29,8 @@
   <line x1="790" y1="650" x2="790" y2="770" stroke="#000" stroke-width="4"/>
   <line x1="730" y1="710" x2="850" y2="710" stroke="#000" stroke-width="4"/>
   
-  <!-- PartyHaus Text -->
-  <text x="600" y="1050" font-family="Arial, sans-serif" font-size="72" font-weight="bold" text-anchor="middle" fill="#FFF">PartyHaus</text>
+  <!-- PartyHause Text -->
+  <text x="600" y="1050" font-family="Arial, sans-serif" font-size="72" font-weight="bold" text-anchor="middle" fill="#FFF">PartyHause</text>
   
   <!-- Confetti -->
   <circle cx="200" cy="200" r="8" fill="#FF6B6B"/>

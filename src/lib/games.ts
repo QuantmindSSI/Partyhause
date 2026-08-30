@@ -1,4 +1,4 @@
-// Game types and interfaces for PartyHaus
+// Game types and interfaces for PartyHause
 import { z } from 'zod';
 
 // Game categories

@@ -1,4 +1,4 @@
-# PartyHaus Master Roadmap Index
+# PartyHause Master Roadmap Index
 ## Complete Feature Documentation & Implementation Guide
 
 ---
@@ -19,7 +19,7 @@ All planning documents have been created. Here's the complete index:
 | Document | Purpose | Status |
 |----------|---------|--------|
 | `AI_EVENT_PLANNING_ASSISTANT.md` | Conversational AI with UI rendering, event expounding | Complete |
-| `VENDOR_MARKETPLACE.md` | B2B2C vendor platform (hosts, vendors, PartyHaus) | Complete |
+| `VENDOR_MARKETPLACE.md` | B2B2C vendor platform (hosts, vendors, PartyHause) | Complete |
 | `SOCIAL_MEDIA_INTEGRATION.md` | Cross-platform sharing, discovery, viral growth | Complete |
 | `UTILITY_FEATURES.md` | Convenience tools, safety, automation, hidden gems | Complete |
 
@@ -27,7 +27,7 @@ All planning documents have been created. Here's the complete index:
 
 ## What's Already Built
 
-### Current PartyHaus Features
+### Current PartyHause Features
 - Event creation with multi-step wizard
 - Guest management (RSVP, check-in, QR codes)
 - Timeline scheduling

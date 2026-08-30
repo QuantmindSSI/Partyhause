@@ -1,8 +1,8 @@
-# PartyHaus Current Features Extension Guide
+# PartyHause Current Features Extension Guide
 
 ## Technical Roadmap for Extending Existing Features
 
-This document provides specific technical recommendations for extending PartyHaus's current features into a comprehensive event management platform.
+This document provides specific technical recommendations for extending PartyHause's current features into a comprehensive event management platform.
 
 ---
 

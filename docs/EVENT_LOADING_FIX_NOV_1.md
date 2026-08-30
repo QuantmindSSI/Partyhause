@@ -5,13 +5,13 @@
 ### 1. ❌ CORS Error - Wrong API Domain
 **Error:**
 ```
-Access to fetch at 'https://www.partyhaus.com/api/events?id=...' 
-from origin 'https://partyhaus.vercel.app' has been blocked by CORS policy
+Access to fetch at 'https://www.partyhause.com/api/events?id=...' 
+from origin 'https://partyhause.vercel.app' has been blocked by CORS policy
 ```
 
 **Root Cause:** 
-- The API URL is being redirected to `www.partyhaus.com` 
-- But the app is running on `partyhaus.vercel.app`
+- The API URL is being redirected to `www.partyhause.com` 
+- But the app is running on `partyhause.vercel.app`
 - CORS doesn't allow cross-origin requests between these
 
 **Fix Applied:**
@@ -21,7 +21,7 @@ Updated `/apps/mobile/.env`:
 EXPO_PUBLIC_API_URL=https://partyhause.vercel.app
 
 # NEW (correct spelling, matches deployment)
-EXPO_PUBLIC_API_URL=https://partyhaus.vercel.app
+EXPO_PUBLIC_API_URL=https://partyhause.vercel.app
 ```
 
 ---
@@ -48,7 +48,7 @@ This is an Expo Router web limitation. Options:
 
 ### ✅ Fix 1: Corrected API URL
 File: `/apps/mobile/.env`
-- Changed from `partyhause` to `partyhaus` (removed 'e')
+- Changed from `partyhause` to `partyhause` (removed 'e')
 - Now matches actual deployment URL
 
 ### ✅ Fix 2: Improved Error Logging
@@ -88,7 +88,7 @@ Scan QR code with Expo Go
 Look for these logs when navigating to an event:
 ```
 [Event Details] Fetching event: <event-id>
-[Event Details] Making API request to: https://partyhaus.vercel.app/api/events?id=...
+[Event Details] Making API request to: https://partyhause.vercel.app/api/events?id=...
 [Event Details] Response status: 200
 [Event Details] Event loaded successfully: <event-name>
 ```
@@ -99,14 +99,14 @@ Look for these logs when navigating to an event:
 
 ### Issue Chain:
 1. ❌ User clicks event from dashboard
-2. ❌ App tries to fetch from wrong API URL (`www.partyhaus.com`)
+2. ❌ App tries to fetch from wrong API URL (`www.partyhause.com`)
 3. ❌ CORS blocks the request (cross-origin)
 4. ❌ Fetch fails with network error
 5. ❌ Event details screen shows error
 
 ### After Fix:
 1. ✅ User clicks event from dashboard
-2. ✅ App fetches from correct URL (`partyhaus.vercel.app`)
+2. ✅ App fetches from correct URL (`partyhause.vercel.app`)
 3. ✅ Same origin - CORS allows request
 4. ✅ API returns event data
 5. ✅ Event details screen displays
@@ -150,12 +150,12 @@ Look for these logs when navigating to an event:
 ## API URL Reference
 
 ### Correct URLs:
-- ✅ `https://partyhaus.vercel.app` - Main deployment
-- ✅ `https://partyhaus-[hash].vercel.app` - Preview deployments
+- ✅ `https://partyhause.vercel.app` - Main deployment
+- ✅ `https://partyhause-[hash].vercel.app` - Preview deployments
 - ✅ `http://localhost:8081` - Local Expo dev server
 
 ### Wrong URLs (cause CORS):
-- ❌ `https://www.partyhaus.com` - Different origin
+- ❌ `https://www.partyhause.com` - Different origin
 - ❌ `https://partyhause.vercel.app` - Wrong spelling
 - ❌ `https://www.partyhause.com` - Wrong spelling + subdomain
 
@@ -164,11 +164,11 @@ Look for these logs when navigating to an event:
 ## Domain Configuration Note
 
 The deployment has multiple domains aliased:
-- `partyhaus.vercel.app` (main)
+- `partyhause.vercel.app` (main)
 - `www.partyhause.com` (alias)
 - `partyhause.com` (not resolving - DNS issue)
 
-For the mobile app to work correctly, always use the **main Vercel domain** without www: `https://partyhaus.vercel.app`
+For the mobile app to work correctly, always use the **main Vercel domain** without www: `https://partyhause.vercel.app`
 
 ---
 
@@ -195,7 +195,7 @@ For the mobile app to work correctly, always use the **main Vercel domain** with
 
 **Root Cause:** Wrong API URL in environment variables + Expo Router web limitations
 **Impact:** CORS errors blocking all API calls + web routing not working for `[id]` routes
-**Fix:** Corrected domain from `partyhause` to `partyhaus`
+**Fix:** Corrected domain from `partyhause` to `partyhause`
 **Result:** Events load correctly on **NATIVE PLATFORMS ONLY**
 
 ### ⚠️ IMPORTANT: Web vs Native

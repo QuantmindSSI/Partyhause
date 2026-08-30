@@ -1,4 +1,4 @@
-# 🔥 PartyHaus Real-Time Collaboration Engine
+# 🔥 PartyHause Real-Time Collaboration Engine
 
 **Version:** 1.0  
 **Date:** October 25, 2025  
@@ -11,7 +11,7 @@
 
 **Problem:** Traditional event planning tools are just task lists with comments. They don't capture the **energy** of planning with friends - the debates, the excitement, the quick decisions, the creative sparks.
 
-**PartyHaus Solution:** Transform event planning into a **live, interactive experience** where teams can:
+**PartyHause Solution:** Transform event planning into a **live, interactive experience** where teams can:
 - Vote on decisions in real-time
 - React instantly to ideas
 - Brainstorm visually together
@@ -817,7 +817,7 @@ CREATE INDEX idx_reactions_target ON reactions(target_type, target_id);
 
 ## 🎯 Key Differentiators
 
-### **Why PartyHaus Collaboration is Unique:**
+### **Why PartyHause Collaboration is Unique:**
 
 1. **Democratic Planning** - Everyone's voice matters equally
 2. **Visual Decision-Making** - See consensus forming in real-time
@@ -901,4 +901,4 @@ Skip                     Vote now
 
 ---
 
-**This is how PartyHaus becomes the BEST collaborative event planning platform!** 🎉
+**This is how PartyHause becomes the BEST collaborative event planning platform!** 🎉

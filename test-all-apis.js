@@ -3,10 +3,10 @@ async function testAllAPIs() {
   console.log('🔧 Testing All API Endpoints...\n');
   
   const endpoints = [
-    { name: 'Health Check (JS)', url: 'https://partyhaus.vercel.app/api/health' },
-    { name: 'Test Endpoint (TS)', url: 'https://partyhaus.vercel.app/api/test' },
-    { name: 'Send Email (TS)', url: 'https://partyhaus.vercel.app/api/send-email' },
-    { name: 'Email Webhook (TS)', url: 'https://partyhaus.vercel.app/api/email-webhook' }
+    { name: 'Health Check (JS)', url: 'https://partyhause.vercel.app/api/health' },
+    { name: 'Test Endpoint (TS)', url: 'https://partyhause.vercel.app/api/test' },
+    { name: 'Send Email (TS)', url: 'https://partyhause.vercel.app/api/send-email' },
+    { name: 'Email Webhook (TS)', url: 'https://partyhause.vercel.app/api/email-webhook' }
   ];
   
   for (const endpoint of endpoints) {

@@ -1,4 +1,4 @@
-// Shared data models and interfaces for PartyHaus
+// Shared data models and interfaces for PartyHause
 // Use these types across both React Web and Flutter Mobile platforms
 
 export interface User {

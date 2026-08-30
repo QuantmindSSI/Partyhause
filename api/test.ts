@@ -11,7 +11,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   return res.status(200).json({
     success: true,
-    message: 'PartyHaus API is working!',
+    message: 'PartyHause API is working!',
     timestamp: new Date().toISOString(),
     method: req.method,
     environment: process.env.NODE_ENV || 'development',

@@ -26,11 +26,11 @@
 
 ### **Step 1: Create Event**
 
-Sarah opens the PartyHaus app and creates a new event:
+Sarah opens the PartyHause app and creates a new event:
 
 ```
 ┌─────────────────────────────────────────┐
-│ 🎉 PartyHaus                            │
+│ 🎉 PartyHause                            │
 │ [Profile] [Notifications] [Menu]        │
 ├─────────────────────────────────────────┤
 │                                         │
@@ -389,7 +389,7 @@ Mike's phone:
 
 📱 Notification:
 ┌─────────────────────────────────────────┐
-│ 🎉 PartyHaus                            │
+│ 🎉 PartyHause                            │
 │                                         │
 │ Sarah invited you to help plan          │
 │ "Sarah's Birthday Party"                │
@@ -633,7 +633,7 @@ Joe's phone (vendor account):
 
 📱 Notification:
 ┌─────────────────────────────────────────┐
-│ 🎉 PartyHaus - New Quote Request        │
+│ 🎉 PartyHause - New Quote Request        │
 │                                         │
 │ Sarah Johnson needs beverage supply     │
 │ for birthday party                      │

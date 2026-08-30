@@ -1,11 +1,11 @@
 # AI Event Planning Assistant
-## Conversational AI with UI Rendering for PartyHaus
+## Conversational AI with UI Rendering for PartyHause
 
 ---
 
 ## Overview
 
-The AI Event Planning Assistant transforms PartyHaus from a tool into a **collaborative planning partner**. Users chat naturally with the AI, which understands context, suggests ideas, and **dynamically renders UI components** directly in the chat interface for immediate action.
+The AI Event Planning Assistant transforms PartyHause from a tool into a **collaborative planning partner**. Users chat naturally with the AI, which understands context, suggests ideas, and **dynamically renders UI components** directly in the chat interface for immediate action.
 
 ---
 
@@ -110,7 +110,7 @@ export class PlanningContextManager {
   // Build rich context for AI prompts
   buildSystemPrompt(): string {
     return `
-You are PartyHaus AI, an expert event planning assistant.
+You are PartyHause AI, an expert event planning assistant.
 
 CURRENT EVENT CONTEXT:
 ${this.formatEventContext()}
@@ -492,7 +492,7 @@ export function EventConceptCard({ concept, onUseConcept, onCustomize }: {
 // System prompt for event concept generation
 
 const EXPound_SYSTEM_PROMPT = `
-You are PartyHaus's Creative Director - an expert at transforming simple ideas into unforgettable event experiences.
+You are PartyHause's Creative Director - an expert at transforming simple ideas into unforgettable event experiences.
 
 When a user gives you a basic concept (like "90s arcade birthday"), you MUST:
 
@@ -632,7 +632,7 @@ interface QuickPlanMode {
 
 ---
 
-## Integration with Existing PartyHaus Features
+## Integration with Existing PartyHause Features
 
 ### PartyCrew Integration
 
@@ -728,7 +728,7 @@ interface TimelineIntegration {
 ### Phase 4: Deep Integration (2 weeks)
 
 ```typescript
-// Connect to PartyHaus features
+// Connect to PartyHause features
 - PartyCrew context awareness
 - Timeline integration
 - Vendor marketplace connection

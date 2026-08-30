@@ -1,11 +1,11 @@
-# PartyHaus Competitive Moat Analysis
+# PartyHause Competitive Moat Analysis
 ## Differentiation vs Eventbrite, Luma, and Partiful
 
 ---
 
 ## Executive Summary
 
-PartyHaus occupies a unique position between **transactional ticketing platforms** (Eventbrite) and **lightweight invitation tools** (Partiful, Luma). The moat is built on **social connectivity**, **lifecycle completeness**, and **experiential engagement**—areas where competitors are weak.
+PartyHause occupies a unique position between **transactional ticketing platforms** (Eventbrite) and **lightweight invitation tools** (Partiful, Luma). The moat is built on **social connectivity**, **lifecycle completeness**, and **experiential engagement**—areas where competitors are weak.
 
 ---
 
@@ -16,13 +16,13 @@ PartyHaus occupies a unique position between **transactional ticketing platforms
 | **Eventbrite** | Ticket sales & discovery | Event organizers | 3.5% + $0.99 per ticket | Impersonal, transactional, overwhelming for small events |
 | **Luma** | Community calendars | Tech/startup communities | Free (funded by a16z) | Limited features, no monetization, shallow engagement |
 | **Partiful** | Fun invitations | Gen Z party throwers | Free (growing, no clear model) | Ephemeral, no lifecycle management, purely casual |
-| **PartyHaus** | **Social event lifecycle** | **Recurring hosts & crews** | **Freemium + SaaS + Payments** | Early stage, smaller user base |
+| **PartyHause** | **Social event lifecycle** | **Recurring hosts & crews** | **Freemium + SaaS + Payments** | Early stage, smaller user base |
 
 ---
 
 ## 1. The Social Graph Moat
 
-### PartyHaus: PartyCrew Network
+### PartyHause: PartyCrew Network
 
 ```
 Traditional Model (Eventbrite/Luma):
@@ -32,7 +32,7 @@ Event → Attendees (one-time, transactional)
    No persistent relationships
    Host loses contacts after event
 
-PartyHaus Model:
+PartyHause Model:
 PartyCrew (persistent friend network)
         ↓
    ┌────┴────┬────────┐
@@ -59,7 +59,7 @@ Events   History   Trust
 
 ### Feature Comparison Matrix
 
-| Feature | Eventbrite | Luma | Partiful | PartyHaus |
+| Feature | Eventbrite | Luma | Partiful | PartyHause |
 |---------|-----------|------|----------|-----------|
 | **Pre-Event Planning** | | | | |
 | Template library | ❌ | ❌ | ⚠️ Basic | ✅ Advanced |
@@ -95,7 +95,7 @@ Events   History   Trust
 | Host reputation/rating | ❌ | ❌ | ❌ | 🔄 Planned |
 | Crew groups | ❌ | ❌ | ❌ | 🔄 Planned |
 
-**Key Insight:** PartyHaus is the **only platform** covering the full lifecycle from planning → invitation → execution → follow-up with social connectivity throughout.
+**Key Insight:** PartyHause is the **only platform** covering the full lifecycle from planning → invitation → execution → follow-up with social connectivity throughout.
 
 **Moat Depth: MEDIUM-HIGH** - Competitors could add features, but architectural decisions (like PartyCrew) make it hard to retrofit.
 
@@ -103,7 +103,7 @@ Events   History   Trust
 
 ## 3. The Experience Layer Moat
 
-### Games & Activities (Unique to PartyHaus)
+### Games & Activities (Unique to PartyHause)
 
 ```typescript
 // Current: @/Users/startferanmi/partyhause/Partyhause/src/components/GamesPage.tsx
@@ -121,7 +121,7 @@ Events   History   Trust
 - **Luma**: Calendar view only, no activities
 - **Partiful**: Static invitation, no during-event features
 
-**Value Proposition:** PartyHaus makes hosts look like **event planning heroes** by providing entertainment, not just logistics.
+**Value Proposition:** PartyHause makes hosts look like **event planning heroes** by providing entertainment, not just logistics.
 
 ### Real-Time Engagement Stack
 
@@ -132,7 +132,7 @@ Events   History   Trust
 | **Timeline** | Guests see schedule, get reminders | None have this |
 | **Playlist** | Collaborative Spotify integration | None have this |
 
-**Moat Depth: HIGH** - These are not features competitors can add quickly. They require real-time infrastructure and UI/UX design that's core to PartyHaus's architecture.
+**Moat Depth: HIGH** - These are not features competitors can add quickly. They require real-time infrastructure and UI/UX design that's core to PartyHause's architecture.
 
 ---
 
@@ -144,17 +144,17 @@ Events   History   Trust
 Eventbrite: "Professional organizers selling tickets"
 Luma: "Tech community managers sharing events"
 Partiful: "Gen Z throwing casual parties"
-PartyHaus: "Recurring hosts building a party legacy"
+PartyHause: "Recurring hosts building a party legacy"
 ```
 
-**PartyHaus Sweet Spot:**
+**PartyHause Sweet Spot:**
 - **Recurring hosts** (birthday traditions, annual parties, regular game nights)
 - **Crew-based gatherings** (friend groups, sports teams, hobby communities)
 - **Experience-focused events** (not just transactions)
 
 ### Brand Personality Matrix
 
-| Attribute | Eventbrite | Luma | Partiful | PartyHaus |
+| Attribute | Eventbrite | Luma | Partiful | PartyHause |
 |-----------|-----------|------|----------|-----------|
 | Tone | Corporate | Minimalist | Meme-y | **Bold, energetic, crew-focused** |
 | Visual | Generic blue | Clean white | Chaotic fun | **Burnt orange, vibrant, modern** |
@@ -174,13 +174,13 @@ PartyHaus: "Recurring hosts building a party legacy"
 | **Eventbrite** | Per-ticket fees | 3.5% + $0.99 | High - hosts hate fees |
 | **Luma** | VC funding | Free | Extreme - no revenue model yet |
 | **Partiful** | Unknown/growth | Free | High - unclear path to profit |
-| **PartyHaus** | **Freemium + SaaS + Tips** | **Free base, paid tiers** | **Low - diversified** |
+| **PartyHause** | **Freemium + SaaS + Tips** | **Free base, paid tiers** | **Low - diversified** |
 
-### PartyHaus Multi-Stream Model
+### PartyHause Multi-Stream Model
 
 ```
 ┌─────────────────────────────────────────┐
-│         PartyHaus Revenue Streams       │
+│         PartyHause Revenue Streams       │
 ├─────────────────────────────────────────┤
 │                                         │
 │  1. FREEMIUM SaaS (70% of revenue)      │
@@ -204,9 +204,9 @@ PartyHaus: "Recurring hosts building a party legacy"
 **Competitive Advantage:**
 - **Eventbrite**: Only makes money on ticket sales. No SaaS recurring revenue.
 - **Luma/Partiful**: No clear monetization. May disappear or pivot.
-- **PartyHaus**: Sustainable from small events, scales with large events.
+- **PartyHause**: Sustainable from small events, scales with large events.
 
-**Moat Depth: HIGH** - Diversified revenue makes PartyHaus more resilient than competitors dependent on single streams.
+**Moat Depth: HIGH** - Diversified revenue makes PartyHause more resilient than competitors dependent on single streams.
 
 ---
 
@@ -214,7 +214,7 @@ PartyHaus: "Recurring hosts building a party legacy"
 
 ### Platform Architecture Comparison
 
-| Aspect | Eventbrite | Luma | Partiful | PartyHaus |
+| Aspect | Eventbrite | Luma | Partiful | PartyHause |
 |--------|-----------|------|----------|-----------|
 | **Tech Stack** | Legacy monolith | Modern | Modern | **Modern + edge** |
 | **Real-time** | Polling | Polling | None | **Supabase realtime** |
@@ -222,7 +222,7 @@ PartyHaus: "Recurring hosts building a party legacy"
 | **Offline** | No | No | No | **Service workers** |
 | **Extensibility** | API (paid) | Limited | None | **Public API planned** |
 
-### PartyHaus Technical Differentiators
+### PartyHause Technical Differentiators
 
 ```typescript
 // 1. Real-time everything via Supabase
@@ -259,12 +259,12 @@ PartyHaus: "Recurring hosts building a party legacy"
 
 | Area | Risk Level | Mitigation Strategy |
 |------|-----------|---------------------|
-| **User Base** | HIGH | Eventbrite has millions. PartyHaus needs viral loops. |
-| **Brand Recognition** | HIGH | Eventbrite is verb. PartyHaus needs influencer marketing. |
-| **Enterprise Trust** | MEDIUM | Eventbrite has SOC2. PartyHaus needs compliance. |
-| **Discovery SEO** | MEDIUM | Eventbrite ranks #1. PartyHaus needs content strategy. |
-| **Capital** | MEDIUM | Luma has a16z. PartyHaus needs revenue or funding. |
-| **Mobile App** | LOW | Partiful has app. PartyHaus PWA is competitive. |
+| **User Base** | HIGH | Eventbrite has millions. PartyHause needs viral loops. |
+| **Brand Recognition** | HIGH | Eventbrite is verb. PartyHause needs influencer marketing. |
+| **Enterprise Trust** | MEDIUM | Eventbrite has SOC2. PartyHause needs compliance. |
+| **Discovery SEO** | MEDIUM | Eventbrite ranks #1. PartyHause needs content strategy. |
+| **Capital** | MEDIUM | Luma has a16z. PartyHause needs revenue or funding. |
+| **Mobile App** | LOW | Partiful has app. PartyHause PWA is competitive. |
 
 ### Critical Vulnerabilities
 
@@ -312,7 +312,7 @@ Priority 3: Template Ecosystem
 ```
 Phase 1: Vertical Integration
 • Vendor marketplace (caterers, DJs, venues)
-• PartyHaus-verified vendors
+• PartyHause-verified vendors
 • Commission on bookings
 
 Phase 2: Hardware Integration
@@ -334,7 +334,7 @@ Vision: "The OS for Social Events"
 • Public API for integrations
 • Zapier/Make automation
 • Third-party games/activities
-• PartyHaus-branded hardware
+• PartyHause-branded hardware
 • Global event graph (discovery)
 ```
 
@@ -361,7 +361,7 @@ Vision: "The OS for Social Events"
 | **Eventbrite** | 6.5/10 | Scale, brand, SEO |
 | **Luma** | 4.0/10 | Community (weak) |
 | **Partiful** | 4.5/10 | Gen Z appeal (fickle) |
-| **PartyHaus** | **7.4/10** | **Social + lifecycle** |
+| **PartyHause** | **7.4/10** | **Social + lifecycle** |
 
 ---
 
@@ -391,7 +391,7 @@ Vision: "The OS for Social Events"
 
 ### Attack Competitor Weaknesses
 
-| Competitor | Weakness | PartyHaus Attack |
+| Competitor | Weakness | PartyHause Attack |
 |------------|----------|----------------|
 | Eventbrite | Transactional, impersonal | Emphasize relationships, crew, memories |
 | Luma | No monetization, shallow | Offer deep features they can't afford to build |
@@ -403,14 +403,14 @@ Vision: "The OS for Social Events"
 
 ### The Moat in One Sentence
 
-> **PartyHaus's moat is the combination of a persistent social network (PartyCrew) with full-lifecycle event management—creating switching costs through relationship graphs and data accumulation that transactional competitors can't easily replicate.**
+> **PartyHause's moat is the combination of a persistent social network (PartyCrew) with full-lifecycle event management—creating switching costs through relationship graphs and data accumulation that transactional competitors can't easily replicate.**
 
 ### Competitive Position
 
 ```
                     HIGH INVOLVEMENT
                            │
-         PartyHaus ────────┼─────────── Eventbrite
+         PartyHause ────────┼─────────── Eventbrite
       (Social + Tools)     │        (Tickets + Scale)
                            │
                            │
@@ -423,7 +423,7 @@ Vision: "The OS for Social Events"
                     LOW INVOLVEMENT
 ```
 
-**PartyHaus wins on:**
+**PartyHause wins on:**
 1. **Relationships over transactions**
 2. **Lifecycle over invitation**
 3. **Experience over logistics**

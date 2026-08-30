@@ -1,11 +1,11 @@
-# PartyHaus Utility Features
+# PartyHause Utility Features
 ## Convenience, Compulsory & Hidden Gems for Hosts, Guests & Vendors
 
 ---
 
 ## Overview
 
-These are the features users don't know they need until they use them. They make PartyHaus indispensable by solving real friction points in event management that competitors overlook.
+These are the features users don't know they need until they use them. They make PartyHause indispensable by solving real friction points in event management that competitors overlook.
 
 ---
 

@@ -1,8 +1,8 @@
-# PartyHaus Comprehensive Feature Roadmap
+# PartyHause Comprehensive Feature Roadmap
 
 ## Executive Summary
 
-This document outlines the current feature gaps in PartyHaus and presents a strategic roadmap to evolve the platform into a **full-lifecycle event management solution** spanning event planning, execution, monetization, and post-event engagement.
+This document outlines the current feature gaps in PartyHause and presents a strategic roadmap to evolve the platform into a **full-lifecycle event management solution** spanning event planning, execution, monetization, and post-event engagement.
 
 ---
 
@@ -353,7 +353,7 @@ Month 12: White Label & Enterprise
 
 ## Part 3: Feature Integration Matrix
 
-### How New Features Connect to Existing PartyHaus Features
+### How New Features Connect to Existing PartyHause Features
 
 | New Feature | Integrates With | Enhances |
 |-------------|-----------------|----------|
@@ -428,7 +428,7 @@ GET    /api/surveys/:eventId/responses
 
 ### What Makes This Roadmap Unique vs Eventbrite/Luma
 
-| Feature | PartyHaus Approach | Market Standard |
+| Feature | PartyHause Approach | Market Standard |
 |---------|-------------------|-----------------|
 | **Games Integration** | Built-in party games (current) | None or third-party |
 | **PartyCrew Social** | Friend network for recurring events | One-off transactions |
@@ -504,7 +504,7 @@ GET    /api/surveys/:eventId/responses
 
 ## Conclusion
 
-This roadmap transforms PartyHaus from a **party planning tool** into a **comprehensive event management platform** capable of handling:
+This roadmap transforms PartyHause from a **party planning tool** into a **comprehensive event management platform** capable of handling:
 
 - **Consumer events**: Birthdays, weddings, casual gatherings
 - **Professional events**: Conferences, workshops, networking

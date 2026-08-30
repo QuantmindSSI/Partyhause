@@ -182,7 +182,7 @@
 
 ### Current Status
 - ✅ **www.partyhause.com** - Working (200 OK)
-- ✅ **partyhaus.vercel.app** - Working (200 OK)
+- ✅ **partyhause.vercel.app** - Working (200 OK)
 - ❌ **partyhause.com** (apex) - DNS resolution failure
 
 ### Issue

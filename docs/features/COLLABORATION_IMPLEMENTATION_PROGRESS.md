@@ -1,7 +1,7 @@
 # Real-Time Collaboration Implementation - Progress Report
 
 ## Overview
-Implementation of the Real-Time Collaboration Engine for PartyHaus mobile app (Expo) with polling, voting, debates, brainstorming, and live presence features.
+Implementation of the Real-Time Collaboration Engine for PartyHause mobile app (Expo) with polling, voting, debates, brainstorming, and live presence features.
 
 ## ✅ Completed Work
 

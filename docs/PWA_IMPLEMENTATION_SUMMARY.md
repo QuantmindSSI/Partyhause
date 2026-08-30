@@ -178,7 +178,7 @@ import { InstallPrompt } from "@/components/InstallPrompt";
 ## 🎨 Icon Assets
 
 ### Required Icons
-The following icons need to be generated from `public/partyhaus-icon.svg`:
+The following icons need to be generated from `public/partyhause-icon.svg`:
 
 **Standard Icons**:
 - `icon-192.png` (192x192) - Android standard
@@ -213,7 +213,7 @@ The following icons need to be generated from `public/partyhaus-icon.svg`:
 ./scripts/generate-pwa-icons.sh
 
 # Or manually using ImageMagick
-convert public/partyhaus-icon.svg -resize 192x192 public/icons/icon-192.png
+convert public/partyhause-icon.svg -resize 192x192 public/icons/icon-192.png
 ```
 
 ---

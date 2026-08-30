@@ -458,7 +458,7 @@ export const emailTemplates = {
   
   resetPassword: (email: string, resetUrl: string) => ({
     to: email,
-    subject: 'Reset Your PartyHaus Password',
+    subject: 'Reset Your PartyHause Password',
     html: `
       <div style="font-family: system-ui, sans-serif; color: #1a1b41;">
         <h1 style="color: #8a2be2;">Reset Your Password</h1>

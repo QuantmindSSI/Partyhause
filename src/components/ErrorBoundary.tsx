@@ -30,7 +30,7 @@ export class ErrorBoundary extends React.Component<Props, { error: Error | null 
             </h2>
             <p className="text-muted-foreground mb-4">
               {isSupabaseError 
-                ? 'PartyHaus requires Supabase configuration to function properly.'
+                ? 'PartyHause requires Supabase configuration to function properly.'
                 : 'An unexpected error occurred. Please try again or report this issue.'
               }
             </p>

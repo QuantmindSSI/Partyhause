@@ -50,7 +50,7 @@ npx expo start --android
 
 **Error you see:**
 ```
-GET https://partyhaus.vercel.app/events/738eeb42... 404 (Not Found)
+GET https://partyhause.vercel.app/events/738eeb42... 404 (Not Found)
 [Layout children]: No route named "[id]" exists
 ```
 
@@ -97,7 +97,7 @@ Currently running at: `exp://xqrogo8-anonymous-8081.exp.direct`
 3. Check console logs for:
 ```
 ✅ [Event Details] Fetching event: 738eeb42-80bb-4810-9ade-5968324329be
-✅ [Event Details] Making API request to: https://partyhaus.vercel.app/api/events?id=...
+✅ [Event Details] Making API request to: https://partyhause.vercel.app/api/events?id=...
 ✅ [Event Details] Response status: 200
 ✅ [Event Details] Event loaded successfully: [Event Name]
 ```
@@ -139,7 +139,7 @@ Focus on native apps (iOS/Android) and treat web as a landing page only.
 
 ### "CORS errors"
 - Make sure you restarted Expo server after fixing `.env`
-- Check console shows: `https://partyhaus.vercel.app` (no 'e')
+- Check console shows: `https://partyhause.vercel.app` (no 'e')
 
 ### "No QR code showing"
 ```bash
@@ -161,7 +161,7 @@ npx expo start --tunnel --clear
 ✅ Server: Running
 ✅ Tunnel: Connected  
 ✅ QR Code: Ready to scan
-✅ API URL: https://partyhaus.vercel.app (corrected)
+✅ API URL: https://partyhause.vercel.app (corrected)
 ✅ Auth: Working
 ✅ Events: 4 events loaded for user
 ```

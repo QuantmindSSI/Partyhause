@@ -6,7 +6,7 @@ The main domain `partyhause.com` does not resolve, but `www.partyhause.com` work
 ## Current Status
 - ✅ **www.partyhause.com** - Working (200 OK)
 - ❌ **partyhause.com** - DNS resolution failure
-- ✅ **partyhaus.vercel.app** - Working (200 OK)
+- ✅ **partyhause.vercel.app** - Working (200 OK)
 
 ## Root Cause
 The apex domain (`partyhause.com`) is not configured with proper DNS records pointing to Vercel's servers.
@@ -63,7 +63,7 @@ npx vercel inspect partyhause.com
 Both URLs should return 200 OK:
 - ✅ https://partyhause.com
 - ✅ https://www.partyhause.com
-- ✅ https://partyhaus.vercel.app
+- ✅ https://partyhause.vercel.app
 
 ## Related Files
 - `/vercel.json` - Vercel configuration (already correct)

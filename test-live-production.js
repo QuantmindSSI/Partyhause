@@ -2,7 +2,7 @@
 // Run with: node test-live-production.js
 
 async function testLiveProduction() {
-  console.log('🚀 Testing Live Production at partyhaus.vercel.app...');
+  console.log('🚀 Testing Live Production at partyhause.vercel.app...');
   
   // Test 1: Check if the main site is loading
   try {
@@ -23,10 +23,10 @@ async function testLiveProduction() {
     console.log('\n📧 Testing send-email API...');
     const emailData = {
         to: 'test@partyhause.app',
-      subject: '🎉 Production Test - PartyHaus Live!',
+      subject: '🎉 Production Test - PartyHause Live!',
       html: `
         <div style="font-family: system-ui, sans-serif; padding: 20px; max-width: 600px;">
-          <h1 style="color: #6C63FF;">🎉 PartyHaus Production Test</h1>
+          <h1 style="color: #6C63FF;">🎉 PartyHause Production Test</h1>
           <p>This email was sent from the LIVE production deployment!</p>
           <div style="background: linear-gradient(135deg, #6C63FF 0%, #FF6B6B 100%); color: white; padding: 20px; border-radius: 12px; margin: 20px 0;">
             <h2 style="margin: 0;">✅ Email System Status: LIVE</h2>

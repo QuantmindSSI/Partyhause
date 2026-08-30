@@ -23,7 +23,7 @@
 // Add global type for cleanup
 declare global {
   interface Window {
-    __partyhausCleanupRealtime?: () => void;
+    __partyhauseCleanupRealtime?: () => void;
   }
 }
 
@@ -243,12 +243,12 @@ export const useRealtimeSubscriptions = (eventId?: string) => {
     };
 
     // Expose a global cleanup for logout.
-    window.__partyhausCleanupRealtime = cleanup;
+    window.__partyhauseCleanupRealtime = cleanup;
 
     return () => {
       cleanup();
-      if (window.__partyhausCleanupRealtime === cleanup) {
-        window.__partyhausCleanupRealtime = undefined;
+      if (window.__partyhauseCleanupRealtime === cleanup) {
+        window.__partyhauseCleanupRealtime = undefined;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

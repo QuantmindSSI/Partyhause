@@ -1,11 +1,11 @@
-# PartyHaus Social Network Feature Plan
+# PartyHause Social Network Feature Plan
 **Created:** November 1, 2025  
 **Status:** Planning Phase  
 **Priority:** High - Core Feature
 
 ## 🎯 Vision
 
-Transform PartyHaus from an event management tool into a **social event discovery platform** where users can:
+Transform PartyHause from an event management tool into a **social event discovery platform** where users can:
 - Build their event creator network ("Crew")
 - Discover events through social connections
 - Follow favorite hosts and venues
@@ -18,7 +18,7 @@ Transform PartyHaus from an event management tool into a **social event discover
 
 ### ✅ SELECTED: **"PartyCrew"** 🎉
 
-**The official brand name for PartyHaus's social network feature.**
+**The official brand name for PartyHause's social network feature.**
 
 #### PartyCrew Terminology
 
@@ -31,7 +31,7 @@ Transform PartyHaus from an event management tool into a **social event discover
 
 #### Why "PartyCrew" Works:
 - ✅ Distinct from "Guests" (attendees) - clear differentiation
-- ✅ Brand-aligned with "PartyHaus" name
+- ✅ Brand-aligned with "PartyHause" name
 - ✅ Energetic and action-oriented
 - ✅ Works for all event types (parties, weddings, corporate)
 - ✅ Memorable and unique to the platform

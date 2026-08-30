@@ -3,7 +3,7 @@ async function testAPIOnly() {
   console.log('🔧 Testing API Test Endpoint...');
   
   try {
-    const response = await fetch('https://partyhaus.vercel.app/api/test', {
+    const response = await fetch('https://partyhause.vercel.app/api/test', {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json'

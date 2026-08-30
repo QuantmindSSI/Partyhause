@@ -37,24 +37,24 @@ EXPO_PUBLIC_API_URL=http://YOUR_COMPUTER_IP:3000
 
 #### For Production
 ```bash
-EXPO_PUBLIC_API_URL=https://partyhaus.vercel.app
+EXPO_PUBLIC_API_URL=https://partyhause.vercel.app
 ```
-- **NOTE:** Production URL is `partyhaus.vercel.app` (no 'e' in partyhaus)
+- **NOTE:** Production URL is `partyhause.vercel.app` (no 'e' in partyhause)
 - Use after deploying to Vercel production
 - Make sure `/api/events`, `/api/guests`, `/api/timeline` endpoints are deployed
 
 ## CURRENT STATUS (Updated: Oct 23, 2025)
 
 ### ✅ Mobile App Configuration
-- **API URL Updated:** `https://partyhaus.vercel.app`
+- **API URL Updated:** `https://partyhause.vercel.app`
 - **Environment variable configured:** `EXPO_PUBLIC_API_URL`
 - **All fetch calls updated** to use dynamic URL
 
 ### ⚠️ Deployment Status
-- **Health endpoint WORKS:** ✅ https://partyhaus.vercel.app/api/health
-- **Events endpoint MISSING:** ❌ https://partyhaus.vercel.app/api/events (404 NOT_FOUND)
-- **Guests endpoint MISSING:** ❌ https://partyhaus.vercel.app/api/guests (404 NOT_FOUND)
-- **Timeline endpoint MISSING:** ❌ https://partyhaus.vercel.app/api/timeline (404 NOT_FOUND)
+- **Health endpoint WORKS:** ✅ https://partyhause.vercel.app/api/health
+- **Events endpoint MISSING:** ❌ https://partyhause.vercel.app/api/events (404 NOT_FOUND)
+- **Guests endpoint MISSING:** ❌ https://partyhause.vercel.app/api/guests (404 NOT_FOUND)
+- **Timeline endpoint MISSING:** ❌ https://partyhause.vercel.app/api/timeline (404 NOT_FOUND)
 
 ### 🚀 Next Action Required
 **Deploy missing API endpoints to production:**
@@ -64,7 +64,7 @@ vercel --prod
 ```
 
 After deployment completes:
-1. Verify endpoints work: `curl https://partyhaus.vercel.app/api/events`
+1. Verify endpoints work: `curl https://partyhause.vercel.app/api/events`
 2. Restart Expo server: `npx expo start --tunnel --clear`
 3. Test event publishing from mobile app
 4. Verify events appear in Supabase database
