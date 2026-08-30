@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <title>PartyHause</title>
+  <defs><linearGradient id="phg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF5233"/><stop offset="1" stop-color="#EC4699"/></linearGradient></defs>
+  <rect width="512" height="512" fill="url(#phg)"/>
+  <g transform="translate(51.2 51.2) scale(8.53333)"><path d="M 23.016 3.947 L 39.423 17.839 L 9.561 20.714 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="M 14.5 22.0 H 33.5 A 2.0 2.0 0 0 1 35.5 24.0 V 40.0 A 2.0 2.0 0 0 1 33.5 42.0 H 14.5 A 2.0 2.0 0 0 1 12.5 40.0 V 24.0 A 2.0 2.0 0 0 1 14.5 22.0 Z M 20.5 42.0 V 34.9 A 3.5 3.5 0 0 1 27.5 34.9 V 42.0 Z" fill="#FFFFFF" fill-rule="evenodd"/>
+  <circle cx="41.0" cy="10.2" r="1.9" fill="#FFFFFF"/>
+  <circle cx="36.8" cy="4.4" r="1.25" fill="#FFFFFF"/>
+  <circle cx="7.4" cy="12.4" r="1.55" fill="#FFFFFF"/></g>
+</svg>

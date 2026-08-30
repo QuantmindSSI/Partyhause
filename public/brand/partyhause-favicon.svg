@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <title>PartyHause</title>
+  <rect width="32" height="32" rx="7" fill="#FF5233"/>
+  <g transform="translate(2.24 2.24) scale(0.57333)"><path d="M 23.016 3.947 L 39.423 17.839 L 9.561 20.714 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="M 14.5 22.0 H 33.5 A 2.0 2.0 0 0 1 35.5 24.0 V 40.0 A 2.0 2.0 0 0 1 33.5 42.0 H 14.5 A 2.0 2.0 0 0 1 12.5 40.0 V 24.0 A 2.0 2.0 0 0 1 14.5 22.0 Z M 20.5 42.0 V 34.9 A 3.5 3.5 0 0 1 27.5 34.9 V 42.0 Z" fill="#FFFFFF" fill-rule="evenodd"/></g>
+</svg>
