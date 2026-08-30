@@ -39,9 +39,11 @@ export const msalConfig: Configuration | null = isMsalConfigured
         postLogoutRedirectUri:
           typeof window !== 'undefined' ? window.location.origin : '/',
       },
-      cache: {
-        cacheLocation: 'localStorage',
-        storeAuthStateInCookie: false,
-      },
+        cache: {
+          // msal-browser v5 removed `storeAuthStateInCookie` from CacheOptions.
+          // It was set to `false` here, which is the only behaviour v5 supports,
+          // so dropping it changes nothing at runtime.
+          cacheLocation: 'localStorage',
+        },
     }
   : null;

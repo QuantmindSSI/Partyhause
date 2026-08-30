@@ -2,13 +2,14 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react-swc'
 import { VitePWA } from 'vite-plugin-pwa'
 import { resolve } from 'path'
+import { ServerResponse } from 'node:http'
 
 export default defineConfig({
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['partyhaus-icon.svg', 'placeholder.svg', 'robots.txt'],
+      includeAssets: ['partyhause-icon.svg', 'placeholder.svg', 'robots.txt'],
       manifest: {
         name: 'PartyHause',
         short_name: 'PartyHause',
@@ -21,7 +22,7 @@ export default defineConfig({
         orientation: 'portrait-primary',
         icons: [
           {
-            src: '/partyhaus-icon.svg',
+            src: '/partyhause-icon.svg',
             sizes: 'any',
             type: 'image/svg+xml',
             purpose: 'any maskable'
@@ -57,6 +58,13 @@ export default defineConfig({
           // Return JSON (not HTML) when the local API server is unreachable.
           proxy.on('error', (err, _req, res) => {
             console.log('Proxy error:', err.message);
+            // `res` is a ServerResponse for normal HTTP requests but a raw Socket
+            // for upgrade/websocket traffic. Only the former can carry a status
+            // line, so writing a JSON error to a Socket would corrupt the stream.
+            if (!(res instanceof ServerResponse)) {
+              res.destroy();
+              return;
+            }
             if (!res.headersSent) {
               res.writeHead(502, { 'Content-Type': 'application/json' });
             }

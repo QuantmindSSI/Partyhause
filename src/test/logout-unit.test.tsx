@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { usePartyStore } from '@/store/usePartyStore';
+import { usePartyStore, type Event } from '@/store/usePartyStore';
 import { clearAuth } from '@/lib/supabase';
 
 // Mock Supabase
@@ -37,13 +37,22 @@ describe('Logout Functionality Tests', () => {
     name: 'Test User'
   };
 
-  const mockEvent = {
+  // Typed as Event so the fixture cannot drift from the model again. The
+  // previous literal was untyped and omitted six required fields
+  // (start_date, end_date, event_type, is_public, created_at, updated_at)
+  // while setting a non-existent `event_date`.
+  const mockEvent: Event = {
     id: 'test-event-id',
     host_id: 'test-user-id',
     name: 'Test Event',
-    event_date: '2025-01-01T12:00:00Z',
+    start_date: '2025-01-01T12:00:00Z',
+    end_date: '2025-01-01T18:00:00Z',
+    event_type: 'single_day',
+    is_public: false,
     location: 'Test Location',
-    spotify_playlist_url: 'https://spotify.com/test'
+    spotify_playlist_url: 'https://spotify.com/test',
+    created_at: '2025-01-01T00:00:00Z',
+    updated_at: '2025-01-01T00:00:00Z',
   };
 
   beforeEach(() => {

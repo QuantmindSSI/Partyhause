@@ -1,0 +1,30 @@
+{
+  // The Express API had no tsconfig at all, so ~7.6k lines including every auth
+  // route were never type checked. `npm run server` runs it through tsx, which
+  // strips types without checking them, so nothing surfaced these errors.
+  // Settings mirror the tsx runtime: ESM, bundler resolution (server code
+  // imports siblings without file extensions), Node globals.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "esModuleInterop": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+
+    /* Matches tsconfig.app.json. Tightening these is worthwhile but is a
+       separate change: it surfaces a large backlog across existing routes. */
+    "strict": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitAny": false,
+    "noFallthroughCasesInSwitch": false
+  },
+  "include": ["server/**/*.ts"]
+}

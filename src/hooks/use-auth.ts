@@ -1,19 +1,18 @@
 import { useEffect } from 'react';
 import type { AccountInfo } from '@azure/msal-browser';
-import { usePartyStore } from '@/store/usePartyStore';
+import { usePartyStore, type User } from '@/store/usePartyStore';
 import { authService } from '@/lib/auth';
 import { getStoredToken, getStoredUser, setStoredUser, clearAuth, isSupabaseConfigured } from '@/lib/supabase';
 import { isMsalConfigured, msalGetAccount, msalLogin, msalLogout } from '@/lib/msal';
 
-interface NormalizedUser {
-  id: string;
-  email: string;
-  name?: string;
-  role?: string;
-  user_metadata?: Record<string, unknown>;
-}
+// Previously a local `NormalizedUser` interface duplicated the store's `User`
+// but typed `role` as a bare `string`. That widened the union and made every
+// `setUser` call a type error, which went unnoticed because the type checker
+// was never actually run over this project in CI. Use the store's type
+// directly so the two cannot drift again.
+type NormalizedUser = User;
 
-function accountToUser(account: AccountInfo | null) {
+function accountToUser(account: AccountInfo | null): NormalizedUser | null {
   if (!account) return null;
   const idClaims = (account.idTokenClaims ?? {}) as Record<string, unknown>;
   const name =
@@ -31,16 +30,15 @@ function accountToUser(account: AccountInfo | null) {
       : undefined) ||
     account.username ||
     '';
+  // `user_metadata` carries only `name` and `role`. The previous literal also
+  // set `email`, `provider` and `sub`; `email` is already a top-level field and
+  // nothing in the codebase reads the other two, so they are dropped rather
+  // than widening the store's contract for unused data.
   return {
     id: account.homeAccountId,
     email,
     name,
-    user_metadata: {
-      name,
-      email,
-      provider: 'msal',
-      sub: account.localAccountId,
-    },
+    user_metadata: { name },
   };
 }
 
