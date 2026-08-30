@@ -95,6 +95,26 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Fail fast if JWT_SECRET is missing
+        # jwtSecret has no default in main.bicep, but an empty GitHub secret would
+        # still expand to "" here and provision an empty signing key. The API then
+        # falls back to a default string committed to the repository, which makes
+        # every account forgeable. Refuse to deploy rather than do that silently.
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ -z "${JWT_SECRET}" ]; then
+            echo "ERROR: JWT_SECRET repository secret is empty or unset."
+            echo "Set it under Settings > Secrets and variables > Actions."
+            echo "Generate one with: openssl rand -base64 48"
+            exit 1
+          fi
+          if [ "${#JWT_SECRET}" -lt 32 ]; then
+            echo "ERROR: JWT_SECRET is ${#JWT_SECRET} characters; require at least 32."
+            exit 1
+          fi
+          echo "JWT_SECRET present (${#JWT_SECRET} characters)."
+
       - name: Deploy Bicep template (subscription scope)
         # Idempotent: creates/updates the RG + all resources defined in main.bicep.
         # main.bicep is subscription-scoped (it creates the RG itself), so we use
@@ -106,6 +126,7 @@ jobs:
             --parameters infra/main.parameters.json \
             --parameters postgresAdminPassword="${{ secrets.POSTGRES_ADMIN_PASSWORD }}" \
             --parameters RESEND_API_KEY="${{ secrets.RESEND_API_KEY }}" \
+            --parameters jwtSecret="${{ secrets.JWT_SECRET }}" \
             --parameters entraApiClientSecret="${{ secrets.ENTRA_API_CLIENT_SECRET }}" \
             --parameters deployerObjectId="${{ secrets.AZURE_DEPLOYER_OBJECT_ID }}" \
             --parameters entraTenantId="${{ secrets.ENTRA_TENANT_ID }}" \

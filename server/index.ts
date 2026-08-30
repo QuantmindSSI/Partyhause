@@ -16,6 +16,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Route imports
+import { assertJwtSecretConfigured } from './lib/jwt-secret';
 import authRouter from './routes/auth';
 import eventsRouter from './routes/events';
 import guestsRouter from './routes/guests';
@@ -40,7 +41,31 @@ import notificationsRouter from './routes/notifications';
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3001;
+
+const DEFAULT_PORT = 3001;
+
+/**
+ * Resolve the listening port from the environment.
+ *
+ * PORT arrives as an untyped string (Container Apps sets it), so
+ * `process.env.PORT || 3001` produced a `string | 3001` union that
+ * `app.listen` does not accept. Parse and range-check instead, so a malformed
+ * value falls back loudly rather than binding somewhere unexpected.
+ *
+ * @returns A valid TCP port in 1..65535, defaulting to {@link DEFAULT_PORT}.
+ */
+function resolvePort(): number {
+  const raw = process.env.PORT?.trim();
+  if (!raw) return DEFAULT_PORT;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    console.warn(`[server] PORT="${raw}" is not a valid port; using ${DEFAULT_PORT}.`);
+    return DEFAULT_PORT;
+  }
+  return parsed;
+}
+
+const port = resolvePort();
 
 // Behind Azure Container Apps ingress there is exactly one trusted proxy hop;
 // required so the rate limiters key on the real client IP, not the ingress.
@@ -216,6 +241,18 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error', message: err?.message });
 });
+
+// Fail closed before binding the listener. A missing or default JWT_SECRET in
+// production means every token is forgeable by anyone who can read this
+// repository, so refusing to start is the only safe outcome. Crashing here is
+// visible in Container Apps revision health; serving traffic would not be.
+try {
+  assertJwtSecretConfigured();
+} catch (err) {
+  console.error('FATAL: refusing to start with an unsafe JWT signing key.');
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`PartyHause API server running at http://localhost:${port}`);

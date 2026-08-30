@@ -48,6 +48,14 @@ param RESEND_API_KEY string
 @description('Resend from email (verified sending address)')
 param RESEND_FROM_EMAIL string
 
+// ===== Auth (application-issued JWT) =====
+// Deliberately has no default. The API's own fallback is a string committed to
+// the repository, so a silently-empty value here would hand out forgeable
+// tokens. A failed deployment is the correct outcome when this is not supplied.
+@description('HS256 signing key for application-issued JWTs (secret, required)')
+@secure()
+param jwtSecret string
+
 // ===== Auth (Microsoft Entra External ID / Azure AD B2C) =====
 @description('Entra External ID (B2C) tenant id')
 param entraTenantId string = ''
@@ -92,6 +100,7 @@ module resources 'resources.bicep' = {
     postgresDbName: postgresDbName
     RESEND_API_KEY: RESEND_API_KEY
     RESEND_FROM_EMAIL: RESEND_FROM_EMAIL
+    jwtSecret: jwtSecret
     entraTenantId: entraTenantId
     entraApiClientId: entraApiClientId
     entraApiClientSecret: entraApiClientSecret

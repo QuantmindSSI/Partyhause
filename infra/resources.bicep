@@ -29,6 +29,17 @@ param RESEND_API_KEY string
 @description('Resend from email (verified sending address)')
 param RESEND_FROM_EMAIL string
 
+// ===== Auth (application-issued JWT) =====
+// The API signs and verifies its own HS256 tokens (server/routes/auth.ts).
+// This is the signing key for every authenticated route. It MUST be declared
+// here: Container Apps deployment is declarative, so a secret that exists only
+// from an out-of-band `az containerapp` patch is deleted on the next
+// provisioning run. If that happens the code falls back to a default string
+// that is committed to the repository, and every account becomes forgeable.
+@description('HS256 signing key for application-issued JWTs (secret)')
+@secure()
+param jwtSecret string
+
 // ===== Auth (Microsoft Entra External ID / Azure AD B2C) =====
 @description('Entra External ID (B2C) tenant id')
 param entraTenantId string
@@ -218,6 +229,7 @@ module apiApp 'modules/container-app.bicep' = {
       { name: 'AZURE_STORAGE_CONNECTION_STRING', secretRef: 'storage-conn-str' }
       { name: 'WEBPUBSUB_ENDPOINT', value: webPubSub.outputs.endpoint }
       { name: 'WEBPUBSUB_CONNECTION_STRING', secretRef: 'webpubsub-connection-string' }
+      { name: 'JWT_SECRET', secretRef: 'jwt-secret' }
       { name: 'ENTRA_TENANT_ID', value: entraTenantId }
       { name: 'ENTRA_API_CLIENT_ID', value: entraApiClientId }
       { name: 'ENTRA_API_CLIENT_SECRET', secretRef: 'entra-api-client-secret' }
@@ -244,6 +256,7 @@ module apiApp 'modules/container-app.bicep' = {
       { name: 'database-url', value: 'postgresql://${postgresAdminLogin}:${uriComponent(postgresAdminPassword)}@${postgres.outputs.serverFqdn}:5432/${postgresDbName}?sslmode=require' }
       { name: 'storage-conn-str', value: 'DefaultEndpointsProtocol=https;AccountName=${storage.outputs.storageAccountName};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=core.windows.net' }
       { name: 'webpubsub-connection-string', value: webPubSub.outputs.primaryConnectionString }
+      { name: 'jwt-secret', value: jwtSecret }
       { name: 'entra-api-client-secret', value: entraApiClientSecret }
       { name: 'resend-api-key', value: RESEND_API_KEY }
       { name: 'azure-openai-api-key', value: openai.listKeys().key1 }

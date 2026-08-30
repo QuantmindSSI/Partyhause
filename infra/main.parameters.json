@@ -35,6 +35,12 @@
         "keyVault": { "id": "/subscriptions/59346494-43d4-4ef7-b364-6a688d9eb445/resourceGroups/rg-partyhause-prod/providers/Microsoft.KeyVault/vaults/kvphgipkzrenusqpy" },
         "secretName": "EntraApiClientSecret"
       }
+    },
+    "jwtSecret": {
+      "reference": {
+        "keyVault": { "id": "/subscriptions/59346494-43d4-4ef7-b364-6a688d9eb445/resourceGroups/rg-partyhause-prod/providers/Microsoft.KeyVault/vaults/kvphgipkzrenusqpy" },
+        "secretName": "JwtSecret"
+      }
     }
   }
 }

@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { type SignOptions } from 'jsonwebtoken';
 import crypto from 'crypto';
 import { Resend } from 'resend';
 import { rateLimit } from 'express-rate-limit';
 import { prisma } from '../lib/prisma';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
+import { getJwtSecret } from '../lib/jwt-secret';
 
 const router = Router();
 
@@ -19,13 +20,36 @@ const credentialLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many attempts. Try again in 15 minutes.' },
 });
-// Read lazily (not at module load): imports are hoisted above
-// dotenv.config() in server/index.ts, so a module-load constant ignores
-// .env-provided secrets. MUST match middleware/auth.ts getJwtSecret().
-function getJwtSecret(): string {
-  return process.env.JWT_SECRET || 'partyhause-dev-jwt-secret-change-in-production';
+// getJwtSecret is imported from ../lib/jwt-secret, which is the single source
+// of truth shared with middleware/auth.ts. It reads lazily (imports are hoisted
+// above dotenv.config() in server/index.ts) and refuses the committed
+// development key in production.
+const DEFAULT_EXPIRES_IN = '7d';
+
+/**
+ * Resolve the token lifetime from the environment.
+ *
+ * jsonwebtoken accepts either a number of seconds or an ms-style duration
+ * string such as "7d" or "12h". Environment variables are untyped strings, so
+ * validate the shape here rather than casting: an unparseable value otherwise
+ * passes the type checker and throws inside jwt.sign on the first login.
+ *
+ * @returns A validated lifetime, falling back to {@link DEFAULT_EXPIRES_IN}.
+ */
+function resolveExpiresIn(): SignOptions['expiresIn'] {
+  const raw = process.env.JWT_EXPIRES_IN?.trim();
+  if (!raw) return DEFAULT_EXPIRES_IN;
+  if (/^\d+$/.test(raw)) return Number(raw);
+  if (/^\d+(\.\d+)?(ms|s|m|h|d|w|y)$/i.test(raw)) {
+    return raw as SignOptions['expiresIn'];
+  }
+  console.warn(
+    `[auth] JWT_EXPIRES_IN="${raw}" is not a valid duration; using ${DEFAULT_EXPIRES_IN}.`,
+  );
+  return DEFAULT_EXPIRES_IN;
 }
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+
+const JWT_EXPIRES_IN = resolveExpiresIn();
 const APP_URL = process.env.VITE_APP_URL || 'http://localhost:5173';
 
 function signToken(user: { id: string; email: string; name?: string | null }): string {

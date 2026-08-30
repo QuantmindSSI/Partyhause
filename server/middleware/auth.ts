@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
+import { getJwtSecret } from '../lib/jwt-secret';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -11,15 +12,11 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-// Read lazily at verification time: this module is imported (and hoisted)
-// BEFORE server/index.ts runs dotenv.config(), so a module-load-time constant
-// silently ignored any JWT_SECRET provided via .env and fell back to the dev
-// default.
-function getJwtSecret(): string {
-  return process.env.JWT_SECRET || 'partyhause-dev-jwt-secret-change-in-production';
-}
+// getJwtSecret is imported from ../lib/jwt-secret. It reads lazily (this module
+// is hoisted above dotenv.config() in server/index.ts) and throws in production
+// rather than falling back to the committed development key.
 
-// AUTH_BYPASS is a local-development escape hatch only — never honored in
+// AUTH_BYPASS is a local-development escape hatch only, never honored in
 // production builds.
 function authBypassEnabled(): boolean {
   return process.env.AUTH_BYPASS === 'true' && process.env.NODE_ENV !== 'production';
