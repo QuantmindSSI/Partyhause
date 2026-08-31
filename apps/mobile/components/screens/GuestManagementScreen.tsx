@@ -70,8 +70,7 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
       // as a legacy column alongside `checked_in`, and the API reads and writes
       // only the latter, so anything stored there was invisible to this API and
       // to the web app. The server defaults check-in state, so it is omitted.
-      const { data: guestData, error } = await api.guests.create({
-        event_id: eventId,
+      const { data: guestData, error } = await api.guests.create(eventId, {
         name: newGuest.name.trim(),
         email: newGuest.email.trim(),
       });

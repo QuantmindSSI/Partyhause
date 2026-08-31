@@ -100,8 +100,8 @@ export interface GuestUpdateInput {
   email_log_id?: string | null;
 }
 
+/** One guest in a bulk create. The route takes an array, never a single row. */
 export interface GuestCreateInput {
-  event_id: string;
   name: string;
   email?: string;
   phone?: string;
@@ -110,7 +110,17 @@ export interface GuestCreateInput {
 
 export interface GuestsResource {
   listForEvent(eventId: string): Promise<ApiResponse<Guest[]>>;
-  create(input: GuestCreateInput): Promise<ApiResponse<Guest>>;
+  /**
+   * Add one guest.
+   *
+   * POST /api/guests is a bulk endpoint: it requires `{ eventId, guests: [] }`
+   * and answers `{ guests, success, count }`. Sending a single flat guest, as
+   * this client originally did, fails validation with "eventId is required".
+   * This wraps the single case and lifts the first row back out.
+   */
+  create(eventId: string, guest: GuestCreateInput): Promise<ApiResponse<Guest>>;
+  /** Add several guests in one request. */
+  createMany(eventId: string, guests: GuestCreateInput[]): Promise<ApiResponse<Guest[]>>;
   update(id: string, input: GuestUpdateInput): Promise<ApiResponse<Guest>>;
   remove(id: string): Promise<ApiResponse<{ success: boolean }>>;
 }
@@ -118,7 +128,19 @@ export interface GuestsResource {
 export function createGuestsResource(t: Transport): GuestsResource {
   return {
     listForEvent: (eventId) => unwrapList<Guest>(t.request('/api/guests', { method: 'GET', query: { eventId } }), 'guests'),
-    create: (input) => unwrapOne<Guest>(t.request('/api/guests', { method: 'POST', body: input }), 'guest'),
+    create: async (eventId, guest) => {
+      const res = await unwrapList<Guest>(
+        t.request('/api/guests', { method: 'POST', body: { eventId, guests: [guest] } }),
+        'guests',
+      );
+      if (res.error) return { data: null, error: res.error };
+      const first = (res.data ?? [])[0];
+      return first
+        ? { data: first, error: null }
+        : { data: null, error: { message: 'Guest was created but the server returned no row' } };
+    },
+    createMany: (eventId, guests) =>
+      unwrapList<Guest>(t.request('/api/guests', { method: 'POST', body: { eventId, guests } }), 'guests'),
     // PUT /:id, not PATCH with a query string. The mobile app had this wrong.
     update: (id, input) =>
       unwrapOne<Guest>(t.request(`/api/guests/${encodeURIComponent(id)}`, { method: 'PUT', body: input }), 'guest'),
@@ -150,21 +172,22 @@ export interface PollsResource {
   list(eventId: string): Promise<ApiResponse<Poll[]>>;
   get(id: string): Promise<ApiResponse<Poll>>;
   create(input: Partial<Poll>): Promise<ApiResponse<Poll>>;
-  vote(pollId: string, optionId: string): Promise<ApiResponse<{ success: boolean }>>;
-  close(pollId: string): Promise<ApiResponse<{ success: boolean }>>;
+  /** Both return the updated poll under { poll }, not a success flag. */
+  vote(pollId: string, optionId: string): Promise<ApiResponse<Poll>>;
+  close(pollId: string): Promise<ApiResponse<Poll>>;
 }
 
 export function createPollsResource(t: Transport): PollsResource {
   return {
     list: (eventId) => unwrapList<Poll>(t.request('/api/polls', { method: 'GET', query: { eventId } }), 'polls'),
-    get: (id) => t.request<Poll>(`/api/polls/${encodeURIComponent(id)}`, { method: 'GET' }),
-    create: (input) => t.request<Poll>('/api/polls', { method: 'POST', body: input }),
+    get: (id) => unwrapOne<Poll>(t.request(`/api/polls/${encodeURIComponent(id)}`, { method: 'GET' }), 'poll'),
+    create: (input) => unwrapOne<Poll>(t.request('/api/polls', { method: 'POST', body: input }), 'poll'),
     vote: (pollId, optionId) =>
-      t.request<{ success: boolean }>(`/api/polls/${encodeURIComponent(pollId)}/vote`, {
+      unwrapOne<Poll>(t.request(`/api/polls/${encodeURIComponent(pollId)}/vote`, {
         method: 'POST', body: { optionId },
-      }),
+      }), 'poll'),
     close: (pollId) =>
-      t.request<{ success: boolean }>(`/api/polls/${encodeURIComponent(pollId)}/close`, { method: 'POST' }),
+      unwrapOne<Poll>(t.request(`/api/polls/${encodeURIComponent(pollId)}/close`, { method: 'POST' }), 'poll'),
   };
 }
 
@@ -214,8 +237,12 @@ export interface NotificationsResource {
 export function createNotificationsResource(t: Transport): NotificationsResource {
   return {
     list: () => unwrapList<Notification>(t.request('/api/notifications', { method: 'GET' }), 'notifications'),
+    // POST /api/notifications does not exist; the route is /mark-read and it
+    // takes an array of ids.
     markRead: (id) =>
-      t.request<{ success: boolean }>('/api/notifications', { method: 'POST', body: { id, read: true } }),
+      t.request<{ success: boolean; updated: number }>('/api/notifications/mark-read', {
+        method: 'POST', body: { ids: [id] },
+      }),
   };
 }
 
@@ -264,10 +291,10 @@ export interface EmailLogsResource {
 export function createEmailLogsResource(t: Transport): EmailLogsResource {
   return {
     listForEvent: (eventId) =>
-      t.request<EmailLog[]>('/api/email-logs', { method: 'GET', query: { eventId } }),
-    create: (input) => t.request<EmailLog>('/api/email-logs', { method: 'POST', body: input }),
+      unwrapList<EmailLog>(t.request('/api/email-logs', { method: 'GET', query: { eventId } }), 'email_logs'),
+    create: (input) => unwrapOne<EmailLog>(t.request('/api/email-logs', { method: 'POST', body: input }), 'email_log'),
     update: (id, input) =>
-      t.request<EmailLog>(`/api/email-logs/${encodeURIComponent(id)}`, { method: 'PUT', body: input }),
+      unwrapOne<EmailLog>(t.request(`/api/email-logs/${encodeURIComponent(id)}`, { method: 'PUT', body: input }), 'email_log'),
   };
 }
 
