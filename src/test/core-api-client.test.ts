@@ -288,10 +288,26 @@ describe('guests resource path correction', () => {
     const client = createApiClient({ baseUrl: BASE, storage: createMemoryStorage() });
     fetchMock.mockResolvedValue(jsonResponse(200, { id: 'g1' }));
 
-    await client.guests.update('g1', { rsvp_status: 'accepted' });
+    await client.guests.update('g1', { rsvpStatus: 'accepted' });
 
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe(`${BASE}/api/guests/g1`);
     expect(init.method).toBe('PUT');
+  });
+
+  it('sends checkedIn, the name the route destructures, not the column name', async () => {
+    const client = createApiClient({ baseUrl: BASE, storage: createMemoryStorage() });
+    fetchMock.mockResolvedValue(jsonResponse(200, { id: 'g1' }));
+
+    await client.guests.update('g1', { checkedIn: true });
+
+    // PUT /api/guests/:id destructures `checkedIn` and maps it to the
+    // checked_in column. The Guest model also carries a legacy `is_checked_in`
+    // column that the API never reads; mobile wrote to it for months, so every
+    // check-in was invisible to the API and the web app.
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body).toEqual({ checkedIn: true });
+    expect(body).not.toHaveProperty('is_checked_in');
+    expect(body).not.toHaveProperty('checked_in');
   });
 });
