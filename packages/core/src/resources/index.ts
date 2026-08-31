@@ -27,7 +27,11 @@ export interface EventsResource {
 export function createEventsResource(t: Transport): EventsResource {
   return {
     list: () => t.request<PartyEvent[]>('/api/events', { method: 'GET' }),
-    get: (id) => t.request<PartyEvent>('/api/events', { method: 'GET', query: { id } }),
+    // Path parameter, not a query string. server/routes/events.ts declares
+    // `router.get('/:id?')` and reads `req.params.id`, so `/api/events?id=x`
+    // silently returns the full list instead of one event. Mobile did exactly
+    // that in two screens.
+    get: (id) => t.request<PartyEvent>(`/api/events/${encodeURIComponent(id)}`, { method: 'GET' }),
     create: (input) => t.request<PartyEvent>('/api/events', { method: 'POST', body: input }),
     update: (id, input) =>
       t.request<PartyEvent>(`/api/events/${encodeURIComponent(id)}`, { method: 'PUT', body: input }),

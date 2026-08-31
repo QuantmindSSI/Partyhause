@@ -260,6 +260,29 @@ describe('storage adapters', () => {
   });
 });
 
+describe('events resource path correction', () => {
+  it('fetches one event by path param, not a query string', async () => {
+    const client = createApiClient({ baseUrl: BASE, storage: createMemoryStorage() });
+    fetchMock.mockResolvedValue(jsonResponse(200, { id: 'e1' }));
+
+    await client.events.get('e1');
+
+    // server/routes/events.ts declares router.get('/:id?') and reads
+    // req.params.id. A query string is ignored and the full list comes back.
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toBe(`${BASE}/api/events/e1`);
+  });
+
+  it('encodes ids so a slash cannot escape the path', async () => {
+    const client = createApiClient({ baseUrl: BASE, storage: createMemoryStorage() });
+    fetchMock.mockResolvedValue(jsonResponse(200, {}));
+
+    await client.events.get('a/b');
+
+    expect(fetchMock.mock.calls[0][0]).toBe(`${BASE}/api/events/a%2Fb`);
+  });
+});
+
 describe('guests resource path correction', () => {
   it('updates via PUT /api/guests/:id, not PATCH with a query string', async () => {
     const client = createApiClient({ baseUrl: BASE, storage: createMemoryStorage() });

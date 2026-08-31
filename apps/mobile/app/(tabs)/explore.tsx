@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, ScrollView, StyleSheet, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { router } from 'expo-router';
-import { supabase } from '@/lib/supabase';
+import { api } from '@/lib/client';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts } from '@/constants/theme';
@@ -43,64 +43,41 @@ export default function ExploreScreen() {
   }, [isAuthenticated, userId]);
 
   const checkAuthStatus = async () => {
-    if (!supabase) {
-      setIsAuthenticated(false);
-      return;
-    }
-
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      setIsAuthenticated(!!session?.user);
-      setUserId(session?.user?.id || null);
+      if (!(await api.auth.isAuthenticated())) {
+        setIsAuthenticated(false);
+        setUserId(null);
+        return;
+      }
+      const cached = await api.auth.getCachedUser();
+      setIsAuthenticated(Boolean(cached));
+      setUserId(cached?.id ?? null);
     } catch (error) {
       console.error('Error checking auth:', error);
       setIsAuthenticated(false);
     }
   };
 
+  /**
+   * Event discovery has no server-side support.
+   *
+   * This previously queried Supabase directly for events with visibility in
+   * (public, network), excluding the caller's own, dated in the future. The
+   * Express API exposes no equivalent: `is_public` exists as a settable column,
+   * but GET /api/events returns only events where the caller is host, co-host
+   * or an invited guest (server/routes/events.ts). There is no public listing
+   * route to call.
+   *
+   * Returning an empty list is deliberate. Pointing this at /api/events would
+   * show users their own events under a "discover" heading, which is worse than
+   * showing nothing. Restoring the feature needs a discovery endpoint first.
+   * The original code also carried a TODO noting the crew filtering it wanted
+   * was never implemented either, so this was aspirational from the start.
+   */
   const fetchNetworkEvents = async () => {
     setEventsLoading(true);
-    try {
-      if (!supabase || !userId) return;
-
-      // For now, fetch public and network events
-      // TODO: When user_connections table is implemented, filter by crew connections instead of all public/network events
-      const { data, error } = await supabase
-        .from('events')
-        .select(`
-          id,
-          name,
-          title,
-          description,
-          venue,
-          location,
-          event_date,
-          start_date,
-          end_date,
-          template_type,
-          visibility,
-          host_id,
-          users (
-            name,
-            email
-          )
-        `)
-        .in('visibility', ['public', 'network'])
-        .neq('host_id', userId) // Don't show user's own events
-        .gte('start_date', new Date().toISOString())
-        .order('start_date', { ascending: true })
-        .limit(20);
-
-      if (error) {
-        console.error('Error fetching network events:', error);
-      } else {
-        setNetworkEvents(data || []);
-      }
-    } catch (error) {
-      console.error('Error:', error);
-    } finally {
-      setEventsLoading(false);
-    }
+    setNetworkEvents([]);
+    setEventsLoading(false);
   };
 
   const handleCreateFromScratch = () => {

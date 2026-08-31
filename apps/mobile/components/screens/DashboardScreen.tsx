@@ -5,7 +5,8 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { supabase, requireSupabase } from '@/lib/supabase';
+import { api } from '@/lib/client';
+import { toLocalEvents } from '@/lib/mappers';
 import { EventCardCarousel } from '@/components/cards/EventCardCarousel';
 import { getTemplateBackground } from '@/utils/templateBackgrounds';
 import { Event } from '@/types/event';
@@ -24,32 +25,30 @@ export const DashboardScreen = ({ userId, userEmail, onSignOut }: DashboardScree
   const { data: events = [], isLoading, refetch } = useQuery<Event[]>({
     queryKey: ['user-events', userId],
     queryFn: async () => {
-      console.log('[Dashboard] Fetching events for user:', userId);
-      if (!userId || !supabase) {
-        console.log('[Dashboard] No userId or supabase client');
-        return [];
-      }
-      
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .eq('host_id', userId)
-        .order('start_date', { ascending: true });
-      
+      if (!userId) return [];
+
+      // The old query was .from('events').eq('host_id', userId)
+      // .order('start_date'). GET /api/events already scopes to the caller and
+      // orders by start_date ascending (server/routes/events.ts), so both
+      // clauses are redundant here.
+      //
+      // Behaviour change worth knowing: the server scopes with
+      // OR[host_id, co-host, invited guest], where the Supabase query matched
+      // host_id alone. The dashboard now also shows events the user was
+      // invited to, which matches the web app.
+      const { data, error } = await api.events.list();
+
       if (error) {
-        console.error('[Dashboard] Error fetching events:', error);
-        throw error;
+        console.error('[Dashboard] Error fetching events:', error.message);
+        throw new Error(error.message);
       }
-      
-      console.log('[Dashboard] Fetched', data?.length || 0, 'events');
-      // Ensure backward compatibility for events with event_date instead of start_date
-      return (data || []).map((event: any) => ({
-        ...event,
-        start_date: event.start_date || event.event_date,
-        end_date: event.end_date || event.event_date,
-      })) as Event[];
+
+      // toLocalEvents maps the API shape onto the local Event type, which
+      // requires `title` (the API returns `name`), `template_type` and
+      // `status`. See lib/mappers.ts for why that divergence exists.
+      return toLocalEvents(data);
     },
-    enabled: !!userId && !!supabase,
+    enabled: !!userId,
   });
 
   const onRefresh = async () => {
