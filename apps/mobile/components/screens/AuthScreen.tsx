@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
-import { supabase, requireSupabase } from '@/lib/supabase';
+import { api } from '@/lib/client';
 
 interface AuthScreenProps {
   onBackToLanding: () => void;
@@ -26,58 +26,45 @@ export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) 
       return;
     }
 
-    if (!supabase) {
-      setMessage({ type: 'error', text: 'Supabase not configured' });
-      return;
-    }
-
     setLoading(true);
     setMessage(null);
 
     try {
-      const client = requireSupabase();
+      // This previously called client.auth.signInWithPassword and
+      // client.auth.signUp on a Supabase stub that implemented neither,
+      // reached through requireSupabase(), which threw unconditionally because
+      // the credentials it demanded were removed from the project. Mobile had
+      // no working sign-in path at all.
+      const result = isLogin
+        ? await api.auth.signIn(email.trim(), password.trim())
+        : await api.auth.signUp(
+            email.trim(),
+            password.trim(),
+            name.trim() || email.split('@')[0],
+          );
 
-      if (isLogin) {
-        // Sign In
-        const { data, error } = await client.auth.signInWithPassword({
-          email: email.trim(),
-          password: password.trim(),
-        });
-
-        if (error) throw error;
-
-        setMessage({
-          type: 'success',
-          text: '🎉 Welcome back!',
-        });
-
-        // Auth state listener will handle navigation
-      } else {
-        // Sign Up
-        const { data, error } = await client.auth.signUp({
-          email: email.trim(),
-          password: password.trim(),
-          options: {
-            data: {
-              name: name.trim() || email.split('@')[0],
-              full_name: name.trim() || email.split('@')[0],
-            },
-          },
-        });
-
-        if (error) throw error;
-
-        setMessage({
-          type: 'success',
-          text: '🎉 Account created! Signing you in...',
-        });
-
-        // Auth state listener will handle navigation
+      if (result.error) {
+        setMessage({ type: 'error', text: result.error.message });
+        return;
       }
-    } catch (error: any) {
+
+      setMessage({
+        type: 'success',
+        text: isLogin ? 'Welcome back!' : 'Account created. Signing you in...',
+      });
+
+      // The old code relied on a Supabase auth-state listener to navigate.
+      // No listener exists now, and onAuthSuccess was never invoked, so a
+      // successful login left the user sitting on this screen. The client has
+      // already persisted the token to AsyncStorage by this point, so the
+      // session is durable before we hand control back.
+      onAuthSuccess();
+    } catch (error: unknown) {
       setMessage({
         type: 'error',
-        text: error.message || `Failed to ${isLogin ? 'sign in' : 'sign up'}`,
+        text: error instanceof Error
+          ? error.message
+          : `Failed to ${isLogin ? 'sign in' : 'sign up'}`,
       });
     } finally {
       setLoading(false);

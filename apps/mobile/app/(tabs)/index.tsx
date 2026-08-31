@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
-import { supabase, requireSupabase } from "@/lib/supabase";
+import { api } from "@/lib/client";
 import { LandingScreen } from "@/components/screens/LandingScreenEnhanced";
 import { AuthScreen } from "@/components/screens/AuthScreen";
 import { DashboardScreen } from "@/components/screens/DashboardScreen";
@@ -12,68 +12,47 @@ export default function HomeScreen() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
+  // The previous implementation subscribed to Supabase's onAuthStateChange.
+  // There is no event stream now: the JWT lives in AsyncStorage and changes
+  // only when this app signs in or out, both of which are local actions we
+  // already observe. Checking once on mount is sufficient and removes a
+  // subscription that returned a no-op unsubscribe anyway.
   useEffect(() => {
-    checkAuth();
-
-    const authListener = supabase?.auth.onAuthStateChange((event, session) => {
-      console.log('[Auth] State changed:', event, session?.user?.email || 'no user');
-      
-      if (session?.user) {
-        setUserId(session.user.id);
-        setUserEmail(session.user.email ?? null);
-        setAppMode("dashboard");
-      } else {
-        setUserId(null);
-        setUserEmail(null);
-        setAppMode("landing");
-      }
-    });
-
-    return () => {
-      authListener?.data?.subscription?.unsubscribe();
-    };
+    void checkAuth();
   }, []);
 
+  /**
+   * Establish whether a usable session exists.
+   *
+   * A stored token is necessary but not sufficient: it can be expired or
+   * revoked server-side. Trusting local state alone would land the user on a
+   * dashboard whose every query then fails with 401. So the token is validated
+   * against /api/auth/me, and a rejection is treated as signed out. The
+   * transport clears the stored credentials on 401, so no stale token lingers.
+   */
   const checkAuth = async () => {
-    if (!supabase) {
-      console.log('[Auth] No Supabase client available');
+    if (!(await api.auth.isAuthenticated())) {
       setAppMode("landing");
       return;
     }
 
-    try {
-      console.log('[Auth] Checking for existing session...');
-      const client = requireSupabase();
-      const { data, error } = await client.auth.getSession();
-
-      if (error) {
-        // AuthApiError is expected when no session exists, just log quietly
-        console.log('[Auth] No existing session');
-        setAppMode("landing");
-        return;
-      }
-
-      if (data.session?.user) {
-        console.log('[Auth] Session found for user:', data.session.user.email);
-        setUserId(data.session.user.id);
-        setUserEmail(data.session.user.email ?? null);
-        setAppMode("dashboard");
-      } else {
-        console.log('[Auth] No active session found');
-        setAppMode("landing");
-      }
-    } catch (error) {
-      // Catch any other unexpected errors
-      console.log("[Auth] Session check completed, no active session");
+    const { data, error } = await api.auth.me();
+    if (error || !data) {
+      setUserId(null);
+      setUserEmail(null);
       setAppMode("landing");
+      return;
     }
+
+    setUserId(data.id);
+    setUserEmail(data.email);
+    setAppMode("dashboard");
   };
 
   const handleSignOut = async () => {
-    if (!supabase) return;
-
-    const client = requireSupabase();
-    await client.auth.signOut();
+    // Clears the local session even if the network call fails, so a user can
+    // always sign out while offline.
+    await api.auth.signOut();
     setUserId(null);
     setUserEmail(null);
     setAppMode("landing");
@@ -99,7 +78,11 @@ export default function HomeScreen() {
     return (
       <AuthScreen
         onBackToLanding={() => setAppMode("landing")}
-        onAuthSuccess={() => setAppMode("dashboard")}
+        // Re-running checkAuth rather than setting the mode directly: the
+        // dashboard renders `userId!`, and the previous handler switched mode
+        // without ever populating userId or userEmail, so it would have passed
+        // null into a non-null assertion.
+        onAuthSuccess={() => { void checkAuth(); }}
       />
     );
   }
