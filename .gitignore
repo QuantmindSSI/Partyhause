@@ -23,11 +23,15 @@ dev-dist
 *.njsproj
 *.sln
 *.sw?
+# Environment files. The previous list named only `.env` and `.env.local`, so
+# `.env.vercel` was committed in Oct 2025 carrying a live Supabase
+# service_role key (valid to 2035), a MailerSend token and a Resend key. All
+# three are now dead and that Supabase project is deleted, but the blob is
+# still reachable in git history. Match the whole family, and keep the
+# checked-in example explicitly allowed.
 .env
-.env.local
-node_modules/
-.env
-.env.local
+.env.*
+!.env.example
 node_modules/
 
 # Ignore markdown files across the repo while keeping the top-level README.md and docs folder tracked
