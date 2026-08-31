@@ -60,7 +60,7 @@ describe('shared API client transport', () => {
     const storage = createMemoryStorage();
     await storage.setItem(STORAGE_KEYS.token, 'tok-123');
     const client = createApiClient({ baseUrl: BASE, storage });
-    fetchMock.mockResolvedValue(jsonResponse(200, [{ id: 'e1' }]));
+    fetchMock.mockResolvedValue(jsonResponse(200, { events: [{ id: 'e1' }] }));
 
     await client.events.list();
 
@@ -84,7 +84,7 @@ describe('shared API client transport', () => {
     const client = createApiClient({ baseUrl: BASE, storage: createMemoryStorage() });
     fetchMock
       .mockResolvedValueOnce(jsonResponse(503, { error: 'unavailable' }))
-      .mockResolvedValueOnce(jsonResponse(200, [{ id: 'e1' }]));
+      .mockResolvedValueOnce(jsonResponse(200, { events: [{ id: 'e1' }] }));
 
     const res = await client.events.list();
 
@@ -257,6 +257,72 @@ describe('storage adapters', () => {
     expect(await s.getItem('k')).toBe('v');
     await s.removeItem('k');
     expect(await s.getItem('k')).toBeNull();
+  });
+});
+
+describe('response envelope unwrapping', () => {
+  // Every list/single route wraps its payload under a named key. Returning the
+  // envelope makes `data` an object where callers expect an array, so
+  // data.map(...) throws at runtime while the types still look correct.
+  it('lifts {events} from the list route', async () => {
+    const client = createApiClient({ baseUrl: BASE, storage: createMemoryStorage() });
+    fetchMock.mockResolvedValue(jsonResponse(200, { events: [{ id: 'e1' }, { id: 'e2' }] }));
+
+    const res = await client.events.list();
+
+    expect(Array.isArray(res.data)).toBe(true);
+    expect(res.data).toHaveLength(2);
+  });
+
+  it('lifts {event, stats} from the single route, discarding stats', async () => {
+    const client = createApiClient({ baseUrl: BASE, storage: createMemoryStorage() });
+    fetchMock.mockResolvedValue(jsonResponse(200, { event: { id: 'e1' }, stats: { total_guests: 3 } }));
+
+    const res = await client.events.get('e1');
+
+    expect(res.data).toEqual({ id: 'e1' });
+  });
+
+  it('lifts {guests, stats} from the guest list route', async () => {
+    const client = createApiClient({ baseUrl: BASE, storage: createMemoryStorage() });
+    fetchMock.mockResolvedValue(jsonResponse(200, { guests: [{ id: 'g1' }], stats: {} }));
+
+    const res = await client.guests.listForEvent('e1');
+
+    expect(res.data).toEqual([{ id: 'g1' }]);
+  });
+
+  it('lifts {blocks} and {polls} and {notifications}', async () => {
+    const client = createApiClient({ baseUrl: BASE, storage: createMemoryStorage() });
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { blocks: [{ id: 't1' }] }));
+    expect((await client.timeline.listForEvent('e1')).data).toEqual([{ id: 't1' }]);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { polls: [{ id: 'p1' }] }));
+    expect((await client.polls.list('e1')).data).toEqual([{ id: 'p1' }]);
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { notifications: [{ id: 'n1' }] }));
+    expect((await client.notifications.list()).data).toEqual([{ id: 'n1' }]);
+  });
+
+  it('yields [] when a list route omits the key entirely', async () => {
+    const client = createApiClient({ baseUrl: BASE, storage: createMemoryStorage() });
+    fetchMock.mockResolvedValue(jsonResponse(200, {}));
+
+    const res = await client.events.list();
+
+    // Callers do data.map(...); null would throw.
+    expect(res.data).toEqual([]);
+  });
+
+  it('propagates errors without attempting to unwrap', async () => {
+    const client = createApiClient({ baseUrl: BASE, storage: createMemoryStorage() });
+    fetchMock.mockResolvedValue(jsonResponse(500, { error: 'boom' }));
+
+    const res = await client.events.list();
+
+    expect(res.data).toBeNull();
+    expect(res.error?.message).toBe('boom');
   });
 });
 

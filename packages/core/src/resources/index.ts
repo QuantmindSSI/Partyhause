@@ -16,6 +16,40 @@ import type {
   PartyEvent, Guest, TimelineBlock, Poll, CrewMember, Notification, UploadedBlob, UserProfile,
 } from '../types';
 
+/**
+ * Unwrap an envelope response into the value callers actually want.
+ *
+ * Every list and single-item route wraps its payload under a named key:
+ * `{ events }`, `{ event, stats }`, `{ guests, stats }`, `{ blocks }`,
+ * `{ polls }`, `{ notifications }`, `{ profile }`. Returning the envelope
+ * would make `data` an object where callers expect an array, so
+ * `data.map(...)` throws at runtime while the types look fine.
+ *
+ * @param res Raw transport result.
+ * @param key Envelope property to lift.
+ * @param fallback Value when the key is absent, so a list route that omits an
+ *        empty array yields [] rather than null.
+ */
+function unwrap<T>(res: ApiResponse<unknown>, key: string, fallback: T | null = null): ApiResponse<T> {
+  if (res.error) return { data: null, error: res.error };
+  const payload = res.data as Record<string, unknown> | null;
+  if (!payload || typeof payload !== 'object') {
+    return { data: fallback, error: null };
+  }
+  const value = payload[key];
+  return { data: (value === undefined ? fallback : value) as T, error: null };
+}
+
+/** Lift an envelope containing a list, defaulting to an empty array. */
+async function unwrapList<T>(p: Promise<ApiResponse<unknown>>, key: string): Promise<ApiResponse<T[]>> {
+  return unwrap<T[]>(await p, key, []);
+}
+
+/** Lift an envelope containing a single item. */
+async function unwrapOne<T>(p: Promise<ApiResponse<unknown>>, key: string): Promise<ApiResponse<T>> {
+  return unwrap<T>(await p, key);
+}
+
 export interface EventsResource {
   list(): Promise<ApiResponse<PartyEvent[]>>;
   get(id: string): Promise<ApiResponse<PartyEvent>>;
@@ -26,15 +60,15 @@ export interface EventsResource {
 
 export function createEventsResource(t: Transport): EventsResource {
   return {
-    list: () => t.request<PartyEvent[]>('/api/events', { method: 'GET' }),
+    list: () => unwrapList<PartyEvent>(t.request('/api/events', { method: 'GET' }), 'events'),
     // Path parameter, not a query string. server/routes/events.ts declares
     // `router.get('/:id?')` and reads `req.params.id`, so `/api/events?id=x`
     // silently returns the full list instead of one event. Mobile did exactly
     // that in two screens.
-    get: (id) => t.request<PartyEvent>(`/api/events/${encodeURIComponent(id)}`, { method: 'GET' }),
-    create: (input) => t.request<PartyEvent>('/api/events', { method: 'POST', body: input }),
+    get: (id) => unwrapOne<PartyEvent>(t.request(`/api/events/${encodeURIComponent(id)}`, { method: 'GET' }), 'event'),
+    create: (input) => unwrapOne<PartyEvent>(t.request('/api/events', { method: 'POST', body: input }), 'event'),
     update: (id, input) =>
-      t.request<PartyEvent>(`/api/events/${encodeURIComponent(id)}`, { method: 'PUT', body: input }),
+      unwrapOne<PartyEvent>(t.request(`/api/events/${encodeURIComponent(id)}`, { method: 'PUT', body: input }), 'event'),
     remove: (id) =>
       t.request<{ success: boolean }>(`/api/events/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   };
@@ -83,11 +117,11 @@ export interface GuestsResource {
 
 export function createGuestsResource(t: Transport): GuestsResource {
   return {
-    listForEvent: (eventId) => t.request<Guest[]>('/api/guests', { method: 'GET', query: { eventId } }),
-    create: (input) => t.request<Guest>('/api/guests', { method: 'POST', body: input }),
+    listForEvent: (eventId) => unwrapList<Guest>(t.request('/api/guests', { method: 'GET', query: { eventId } }), 'guests'),
+    create: (input) => unwrapOne<Guest>(t.request('/api/guests', { method: 'POST', body: input }), 'guest'),
     // PUT /:id, not PATCH with a query string. The mobile app had this wrong.
     update: (id, input) =>
-      t.request<Guest>(`/api/guests/${encodeURIComponent(id)}`, { method: 'PUT', body: input }),
+      unwrapOne<Guest>(t.request(`/api/guests/${encodeURIComponent(id)}`, { method: 'PUT', body: input }), 'guest'),
     remove: (id) =>
       t.request<{ success: boolean }>(`/api/guests/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   };
@@ -103,7 +137,7 @@ export interface TimelineResource {
 export function createTimelineResource(t: Transport): TimelineResource {
   return {
     listForEvent: (eventId) =>
-      t.request<TimelineBlock[]>(`/api/timeline/${encodeURIComponent(eventId)}`, { method: 'GET' }),
+      unwrapList<TimelineBlock>(t.request(`/api/timeline/${encodeURIComponent(eventId)}`, { method: 'GET' }), 'blocks'),
     create: (input) => t.request<TimelineBlock>('/api/timeline', { method: 'POST', body: input }),
     update: (id, input) =>
       t.request<TimelineBlock>(`/api/timeline/${encodeURIComponent(id)}`, { method: 'PUT', body: input }),
@@ -122,7 +156,7 @@ export interface PollsResource {
 
 export function createPollsResource(t: Transport): PollsResource {
   return {
-    list: (eventId) => t.request<Poll[]>('/api/polls', { method: 'GET', query: { eventId } }),
+    list: (eventId) => unwrapList<Poll>(t.request('/api/polls', { method: 'GET', query: { eventId } }), 'polls'),
     get: (id) => t.request<Poll>(`/api/polls/${encodeURIComponent(id)}`, { method: 'GET' }),
     create: (input) => t.request<Poll>('/api/polls', { method: 'POST', body: input }),
     vote: (pollId, optionId) =>
@@ -168,7 +202,7 @@ export interface UsersResource {
 export function createUsersResource(t: Transport): UsersResource {
   return {
     suggested: () => t.request<CrewMember[]>('/api/users/suggested', { method: 'GET' }),
-    get: (id) => t.request<UserProfile>(`/api/users/${encodeURIComponent(id)}`, { method: 'GET' }),
+    get: (id) => unwrapOne<UserProfile>(t.request(`/api/users/${encodeURIComponent(id)}`, { method: 'GET' }), 'profile'),
   };
 }
 
@@ -179,7 +213,7 @@ export interface NotificationsResource {
 
 export function createNotificationsResource(t: Transport): NotificationsResource {
   return {
-    list: () => t.request<Notification[]>('/api/notifications', { method: 'GET' }),
+    list: () => unwrapList<Notification>(t.request('/api/notifications', { method: 'GET' }), 'notifications'),
     markRead: (id) =>
       t.request<{ success: boolean }>('/api/notifications', { method: 'POST', body: { id, read: true } }),
   };
