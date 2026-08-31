@@ -27,7 +27,8 @@ export type { AuthResource } from './resources/auth';
 export type {
   EventsResource, GuestsResource, TimelineResource, PollsResource,
   PartyCrewResource, UsersResource, NotificationsResource,
-  StorageResource, EmailResource,
+  StorageResource, EmailResource, EmailLogsResource,
+  GuestCreateInput, GuestUpdateInput, EmailLog, EmailLogInput,
 } from './resources';
 
 export * from './types';

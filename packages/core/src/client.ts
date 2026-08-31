@@ -19,10 +19,12 @@ import {
   createEventsResource, createGuestsResource, createTimelineResource,
   createPollsResource, createPartyCrewResource, createUsersResource,
   createNotificationsResource, createStorageResource, createEmailResource,
+  createEmailLogsResource,
 } from './resources';
 import type {
   EventsResource, GuestsResource, TimelineResource, PollsResource,
   PartyCrewResource, UsersResource, NotificationsResource, StorageResource, EmailResource,
+  EmailLogsResource,
 } from './resources';
 
 export interface ApiClient {
@@ -36,6 +38,7 @@ export interface ApiClient {
   notifications: NotificationsResource;
   storage: StorageResource;
   email: EmailResource;
+  emailLogs: EmailLogsResource;
   /**
    * Escape hatch for endpoints with no typed resource yet.
    * Prefer adding a resource module over reaching for this.
@@ -64,6 +67,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     notifications: createNotificationsResource(transport),
     storage: createStorageResource(transport),
     email: createEmailResource(transport),
+    emailLogs: createEmailLogsResource(transport),
     request: transport.request,
     baseUrl: transport.baseUrl,
   };

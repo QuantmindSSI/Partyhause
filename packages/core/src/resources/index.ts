@@ -40,10 +40,44 @@ export function createEventsResource(t: Transport): EventsResource {
   };
 }
 
+/**
+ * Body accepted by PUT /api/guests/:id.
+ *
+ * Deliberately not `Partial<Guest>`. The route destructures a mixed-case set
+ * of names and ignores anything else, so passing the row shape silently
+ * discards the update. `checkedIn` maps to the `checked_in` column and also
+ * sets `checked_in_at`.
+ *
+ * Note the Guest model carries a legacy `is_checked_in` column alongside
+ * `checked_in`. The API reads and writes only `checked_in`; anything written
+ * to the legacy column is invisible to both this API and the web app.
+ */
+export interface GuestUpdateInput {
+  name?: string;
+  email?: string;
+  phone?: string;
+  rsvpStatus?: 'pending' | 'accepted' | 'declined' | 'maybe' | 'confirmed';
+  plusOnes?: number;
+  dietaryRestrictions?: string;
+  customFields?: Record<string, unknown>;
+  checkedIn?: boolean;
+  email_status?: string;
+  last_email_sent_at?: string;
+  email_log_id?: string | null;
+}
+
+export interface GuestCreateInput {
+  event_id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  plus_ones?: number;
+}
+
 export interface GuestsResource {
   listForEvent(eventId: string): Promise<ApiResponse<Guest[]>>;
-  create(input: Partial<Guest>): Promise<ApiResponse<Guest>>;
-  update(id: string, input: Partial<Guest>): Promise<ApiResponse<Guest>>;
+  create(input: GuestCreateInput): Promise<ApiResponse<Guest>>;
+  update(id: string, input: GuestUpdateInput): Promise<ApiResponse<Guest>>;
   remove(id: string): Promise<ApiResponse<{ success: boolean }>>;
 }
 
@@ -163,6 +197,43 @@ export function createStorageResource(t: Transport): StorageResource {
       t.request<{ url: string }>(`/api/storage/url/${encodeURIComponent(blobName)}`, { method: 'GET' }),
     remove: (blobName) =>
       t.request<{ success: boolean }>(`/api/storage/${encodeURIComponent(blobName)}`, { method: 'DELETE' }),
+  };
+}
+
+export interface EmailLogInput {
+  event_id: string;
+  guest_id?: string;
+  email_type: string;
+  recipient_email: string;
+  subject: string;
+  status?: 'pending' | 'sent' | 'failed' | 'delivered' | 'bounced';
+}
+
+export interface EmailLog {
+  id: string;
+  event_id: string;
+  guest_id?: string | null;
+  email_type: string;
+  recipient_email: string;
+  subject: string;
+  status: string;
+  sent_at?: string | null;
+  error_message?: string | null;
+}
+
+export interface EmailLogsResource {
+  listForEvent(eventId: string): Promise<ApiResponse<EmailLog[]>>;
+  create(input: EmailLogInput): Promise<ApiResponse<EmailLog>>;
+  update(id: string, input: Partial<EmailLog>): Promise<ApiResponse<EmailLog>>;
+}
+
+export function createEmailLogsResource(t: Transport): EmailLogsResource {
+  return {
+    listForEvent: (eventId) =>
+      t.request<EmailLog[]>('/api/email-logs', { method: 'GET', query: { eventId } }),
+    create: (input) => t.request<EmailLog>('/api/email-logs', { method: 'POST', body: input }),
+    update: (id, input) =>
+      t.request<EmailLog>(`/api/email-logs/${encodeURIComponent(id)}`, { method: 'PUT', body: input }),
   };
 }
 

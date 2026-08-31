@@ -12,7 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { requireSupabase } from '@/lib/supabase';
+import { api } from '@/lib/client';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface EventCreationScreenProps {
@@ -46,28 +46,28 @@ export const EventCreationScreen = ({ userId, onBack, onEventCreated }: EventCre
       is_public: boolean;
       spotify_playlist_url?: string;
     }) => {
-      console.log('[EventCreation] Creating event:', eventData);
-      const client = requireSupabase();
-      
-      const { data, error } = await client
-        .from('events')
-        .insert({
-          host_id: userId,
-          name: eventData.name,
-          description: eventData.description,
-          location: eventData.location,
-          venue: eventData.venue,
-          event_date: eventData.event_date,
-          event_type: 'single_day',
-          start_date: eventData.event_date,
-          end_date: eventData.event_date,
-          is_public: eventData.is_public,
-          spotify_playlist_url: eventData.spotify_playlist_url,
-        })
-        .select()
-        .single();
+      // host_id is not sent: POST /api/events derives the host from the
+      // authenticated caller, and accepting it from the client would let a
+      // caller create events owned by someone else.
+      //
+      // `venue` and `event_date` are dropped. Neither exists on the Event
+      // model; the schema has `location`, `start_date` and `end_date`. They
+      // were silently discarded by the old insert too.
+      const { data, error } = await api.events.create({
+        name: eventData.name,
+        description: eventData.description,
+        location: eventData.location,
+        event_type: 'single_day',
+        start_date: eventData.event_date,
+        end_date: eventData.event_date,
+        is_public: eventData.is_public,
+        spotify_playlist_url: eventData.spotify_playlist_url,
+      });
 
-      if (error) throw error;
+      if (error) throw new Error(error.message);
+      // A 2xx with no body would otherwise reach onSuccess as null and render
+      // `Event "undefined" has been created`.
+      if (!data) throw new Error('Event was created but the server returned no data');
       return data;
     },
     onSuccess: (data) => {
