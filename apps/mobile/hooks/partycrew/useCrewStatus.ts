@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getApiBaseUrl } from '../../lib/api';
 
 interface CrewStatus {
   isFollowing: boolean;
@@ -53,7 +54,7 @@ export function useCrewStatus(creatorId: string | undefined): UseCrewStatusResul
     setError(null);
 
     try {
-      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://www.partyhause.com';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(
         `${apiUrl}/api/partycrew/toggle?creatorId=${creatorId}`,
         {

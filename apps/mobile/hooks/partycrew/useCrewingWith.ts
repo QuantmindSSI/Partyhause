@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getApiBaseUrl } from '../../lib/api';
 
 interface Creator {
   id: string;
@@ -55,7 +56,7 @@ export function useCrewingWith(
       const targetUserId = userId || session.user.id;
       const currentOffset = reset ? 0 : offset;
 
-      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://www.partyhause.com';
+      const apiUrl = getApiBaseUrl();
       const response = await fetch(
         `${apiUrl}/api/partycrew/crewing-with?userId=${targetUserId}&limit=${limit}&offset=${currentOffset}`,
         {

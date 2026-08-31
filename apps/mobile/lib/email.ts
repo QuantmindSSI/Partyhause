@@ -4,27 +4,14 @@
  */
 
 import { Platform } from 'react-native';
-import Constants from 'expo-constants';
+import { apiUrl, invitationUrl, getWebBaseUrl } from './api';
 
-// Email API configuration
-// IMPORTANT: Expo Go always uses PRODUCTION endpoint because it can't access localhost
-// Only use localhost when running in:
-// - iOS Simulator (via Xcode)
-// - Android Emulator (via Android Studio)
-// - Development build on physical device (same WiFi network)
-
-// Detect if running in Expo Go
-const isExpoGo = Constants.appOwnership === 'expo';
-
-// For Expo Go or production, use production URL
-// For development with simulators/emulators, use localhost
-const EMAIL_API_URL = isExpoGo || !__DEV__
-  ? 'https://partyhause.netlify.app/api/send-email' // Production Netlify (Expo Go always uses this)
-  : Platform.select({
-      ios: 'http://192.168.56.1:3001/api/send-email', // iOS simulator
-      android: 'http://10.0.2.2:3001/api/send-email', // Android emulator
-      default: 'http://192.168.56.1:3001/api/send-email', // Physical device (same WiFi)
-    }) as string;
+// Endpoint resolution lives in lib/api.ts. This file previously hardcoded
+// https://partyhause.netlify.app, a deployment target that has been
+// discontinued, so every send failed in any production build. It also used
+// 192.168.56.1 as the iOS simulator host, which is a VirtualBox NAT address
+// rather than the simulator loopback.
+const EMAIL_API_URL = apiUrl('/api/send-email');
 
 export interface EmailTemplate {
   to: string;
@@ -56,20 +43,11 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
   const startTime = Date.now();
   
   try {
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('[EmailService] 📧 SENDING EMAIL');
-    console.log('[EmailService] To:', options.to);
-    console.log('[EmailService] Subject:', options.subject);
-    console.log('[EmailService] API URL:', EMAIL_API_URL);
-    console.log('[EmailService] __DEV__ flag:', __DEV__);
-    console.log('[EmailService] Is Expo Go:', isExpoGo);
-    console.log('[EmailService] App Ownership:', Constants.appOwnership);
-    console.log('[EmailService] Environment:', isExpoGo ? 'Expo Go (Production API)' : (__DEV__ ? 'Development' : 'Production'));
-    console.log('[EmailService] Platform:', Platform.OS);
-    if (options.metadata) {
-      console.log('[EmailService] Metadata:', JSON.stringify(options.metadata));
-    }
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      // Recipient addresses and metadata are deliberately not logged: this runs
+      // in release builds too, and device logs are readable by other tooling.
+      if (__DEV__) {
+        console.log('[EmailService] sending via', EMAIL_API_URL, 'platform', Platform.OS);
+      }
 
     const response = await fetch(EMAIL_API_URL, {
       method: 'POST',
@@ -142,12 +120,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
  * Generate invitation URL
  */
 export function generateInvitationUrl(eventId: string, guestId: string): string {
-  // Use Netlify domain for production invitations
-  const baseUrl = isExpoGo || !__DEV__
-    ? 'https://partyhause.netlify.app'
-    : 'http://localhost:5173';
-
-  return `${baseUrl}/event/${eventId}/guest/${guestId}`;
+  return invitationUrl(eventId, guestId);
 }
 
 /**
@@ -410,7 +383,7 @@ export async function sendInviteEmails(options: {
             <h2>You're Invited!</h2>
             <p>Hi ${recipient.name},</p>
             <p>You've been invited to an event. More details coming soon!</p>
-            <p><a href="https://partyhause.netlify.app/events/${options.eventId}" style="display: inline-block; padding: 12px 24px; background-color: #6366F1; color: white; text-decoration: none; border-radius: 6px;">View Invitation</a></p>
+            <p><a href="${getWebBaseUrl()}/events/${options.eventId}" style="display: inline-block; padding: 12px 24px; background-color: #6366F1; color: white; text-decoration: none; border-radius: 6px;">View Invitation</a></p>
           </div>
         `;
 

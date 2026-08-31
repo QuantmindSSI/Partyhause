@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import * as Haptics from 'expo-haptics';
+import { getApiBaseUrl } from '../../lib/api';
 
 interface UsePartyCrewResult {
   isJoining: boolean;
@@ -41,7 +42,7 @@ export function usePartyCrew(): UsePartyCrewResult {
       throw new Error('Not authenticated');
     }
 
-    const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://www.partyhause.com';
+    const apiUrl = getApiBaseUrl();
     const response = await fetch(`${apiUrl}/api/partycrew/toggle`, {
       method: 'POST',
       headers: {
