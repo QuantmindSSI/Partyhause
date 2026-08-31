@@ -191,29 +191,98 @@ export function createPollsResource(t: Transport): PollsResource {
   };
 }
 
+/**
+ * GET /api/partycrew/toggle?creatorId=...
+ *
+ * Note the parameter is `creatorId`, not `userId`: the caller is identified by
+ * the bearer token, and this names the crew being inspected. An earlier version
+ * of this client sent `userId`, which the route ignores, so it always answered
+ * for an undefined creator.
+ */
+export interface CrewStatus {
+  isFollowing: boolean;
+  isPending: boolean;
+  isMutual: boolean;
+  connection: unknown | null;
+  request: unknown | null;
+}
+
+/** POST /api/partycrew/toggle answers with the action taken, not a flag. */
+export interface CrewToggleResult {
+  success: boolean;
+  action: 'joined' | 'left';
+  partycrew_count?: number;
+  message?: string;
+}
+
+/** GET /api/partycrew/members is paginated. */
+export interface CrewMembersPage {
+  members: CrewMember[];
+  total: number;
+  has_more: boolean;
+  limit: number;
+  offset: number;
+}
+
+/**
+ * GET /api/partycrew/crewing-with is paginated and keys its rows under
+ * `creators`, not `members`. It also requires an explicit `userId` query
+ * parameter naming whose crew list to read; the bearer token identifies the
+ * caller but does not select the subject.
+ */
+export interface CrewingWithPage {
+  creators: CrewMember[];
+  total: number;
+  has_more: boolean;
+  limit: number;
+  offset: number;
+}
+
+/** GET /api/partycrew/requests is paginated under `requests`. */
+export interface CrewRequestsPage {
+  requests: CrewMember[];
+  total: number;
+  has_more: boolean;
+}
+
 export interface PartyCrewResource {
-  members(): Promise<ApiResponse<CrewMember[]>>;
-  crewingWith(): Promise<ApiResponse<CrewMember[]>>;
-  status(userId: string): Promise<ApiResponse<{ is_crewing: boolean }>>;
-  toggle(userId: string): Promise<ApiResponse<{ is_crewing: boolean }>>;
-  requests(): Promise<ApiResponse<CrewMember[]>>;
-  sendRequest(userId: string): Promise<ApiResponse<{ success: boolean }>>;
-  cancelRequest(userId: string): Promise<ApiResponse<{ success: boolean }>>;
+  /** Paginated; returns the whole page so callers can drive infinite scroll. */
+  members(options?: { limit?: number; offset?: number }): Promise<ApiResponse<CrewMembersPage>>;
+  /** `userId` names whose crew to read; the token identifies the caller. */
+  crewingWith(userId: string, options?: { limit?: number; offset?: number }): Promise<ApiResponse<CrewingWithPage>>;
+  status(creatorId: string): Promise<ApiResponse<CrewStatus>>;
+  /** `action` is required by the route; omitting it yields a 400. */
+  toggle(creatorId: string, action: 'join' | 'leave'): Promise<ApiResponse<CrewToggleResult>>;
+  requests(type?: 'received' | 'sent'): Promise<ApiResponse<CrewRequestsPage>>;
+  sendRequest(creatorId: string): Promise<ApiResponse<{ success: boolean }>>;
+  cancelRequest(creatorId: string): Promise<ApiResponse<{ success: boolean }>>;
 }
 
 export function createPartyCrewResource(t: Transport): PartyCrewResource {
   return {
-    members: () => t.request<CrewMember[]>('/api/partycrew/members', { method: 'GET' }),
-    crewingWith: () => t.request<CrewMember[]>('/api/partycrew/crewing-with', { method: 'GET' }),
-    status: (userId) =>
-      t.request<{ is_crewing: boolean }>('/api/partycrew/toggle', { method: 'GET', query: { userId } }),
-    toggle: (userId) =>
-      t.request<{ is_crewing: boolean }>('/api/partycrew/toggle', { method: 'POST', body: { userId } }),
-    requests: () => t.request<CrewMember[]>('/api/partycrew/requests', { method: 'GET' }),
-    sendRequest: (userId) =>
-      t.request<{ success: boolean }>('/api/partycrew/requests', { method: 'POST', body: { userId } }),
-    cancelRequest: (userId) =>
-      t.request<{ success: boolean }>('/api/partycrew/requests', { method: 'DELETE', body: { userId } }),
+    members: (options) =>
+      t.request<CrewMembersPage>('/api/partycrew/members', {
+        method: 'GET',
+        query: { limit: options?.limit, offset: options?.offset },
+      }),
+    crewingWith: (userId, options) =>
+      t.request<CrewingWithPage>('/api/partycrew/crewing-with', {
+        method: 'GET',
+        query: { userId, limit: options?.limit, offset: options?.offset },
+      }),
+    status: (creatorId) =>
+      t.request<CrewStatus>('/api/partycrew/toggle', { method: 'GET', query: { creatorId } }),
+    toggle: (creatorId, action) =>
+      t.request<CrewToggleResult>('/api/partycrew/toggle', {
+        method: 'POST',
+        body: { creatorId, action },
+      }),
+    requests: (type = 'received') =>
+      t.request<CrewRequestsPage>('/api/partycrew/requests', { method: 'GET', query: { type } }),
+    sendRequest: (creatorId) =>
+      t.request<{ success: boolean }>('/api/partycrew/requests', { method: 'POST', body: { creatorId } }),
+    cancelRequest: (creatorId) =>
+      t.request<{ success: boolean }>('/api/partycrew/requests', { method: 'DELETE', body: { creatorId } }),
   };
 }
 
