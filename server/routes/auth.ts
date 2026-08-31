@@ -2,11 +2,11 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt, { type SignOptions } from 'jsonwebtoken';
 import crypto from 'crypto';
-import { Resend } from 'resend';
 import { rateLimit } from 'express-rate-limit';
 import { prisma } from '../lib/prisma';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { getJwtSecret } from '../lib/jwt-secret';
+import { sendEmail } from '../lib/email';
 
 const router = Router();
 
@@ -61,36 +61,24 @@ function signToken(user: { id: string; email: string; name?: string | null }): s
 }
 
 /**
- * Send a transactional auth email via Resend. Returns true when the email
- * was handed to Resend, false when Resend is unconfigured or the send
- * failed. Callers must treat false as non-fatal: auth flows always print
- * the actionable link to the server log so local development works with no
- * email provider at all.
+ * Send a transactional auth email through the shared transport
+ * (Azure Communication Services, with Resend as fallback).
+ *
+ * @returns true when a provider accepted the message.
+ *
+ * A false result is non-fatal for signup: auth flows also print the actionable
+ * link to the server log outside production. It is NOT silent, though. Every
+ * failure is logged at error level with the provider's own message, because
+ * the previous behaviour hid a completely dead email pipeline behind a warning
+ * nobody read, which left password reset unreachable.
  */
 async function sendAuthEmail(to: string, subject: string, html: string): Promise<boolean> {
-  const RESEND_API_KEY = process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY;
-  if (
-    !RESEND_API_KEY ||
-    RESEND_API_KEY.includes('placeholder') ||
-    RESEND_API_KEY.includes('your_resend')
-  ) {
-    return false;
-  }
-  try {
-    // Top-level ESM import: `require()` does not exist under tsx/ESM and
-    // previously threw here on every call, silently disabling all email.
-    const resend = new Resend(RESEND_API_KEY);
-    await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || 'PartyHause <noreply@partyhause.com>',
-      to,
-      subject,
-      html,
-    });
-    return true;
-  } catch (emailErr) {
-    console.warn(`Failed to send "${subject}" email:`, emailErr);
-    return false;
-  }
+  const result = await sendEmail({ to, subject, html });
+  if (result.ok) return true;
+  console.error(
+    `[auth] email "${subject}" to ${to} FAILED via ${result.provider}: ${result.error}`,
+  );
+  return false;
 }
 
 /**

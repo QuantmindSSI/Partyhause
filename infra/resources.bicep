@@ -29,6 +29,17 @@ param RESEND_API_KEY string
 @description('Resend from email (verified sending address)')
 param RESEND_FROM_EMAIL string
 
+// ===== Email (Azure Communication Services) =====
+@description('Where Communication Services stores message content at rest')
+@allowed([ 'United States', 'Europe', 'Australia', 'United Kingdom', 'Asia Pacific' ])
+param emailDataLocation string = 'United States'
+
+@description('Custom sending domain to provision (requires DNS verification before use)')
+param emailCustomDomain string = 'partyhause.com'
+
+@description('Link the custom domain to the Communication Service. Only set true AFTER the domain shows Verified, otherwise the deployment fails.')
+param linkCustomEmailDomain bool = false
+
 // ===== Auth (application-issued JWT) =====
 // The API signs and verifies its own HS256 tokens (server/routes/auth.ts).
 // This is the signing key for every authenticated route. It MUST be declared
@@ -151,6 +162,78 @@ resource cae 'Microsoft.App/managedEnvironments@2024-03-01' = {
 // deployment when the AZURE_OPENAI_* env vars are present and falls back to
 // deterministic heuristics otherwise. gpt-5-mini/GlobalStandard was chosen
 // for structured JSON extraction: low latency, low cost, GA in eastus2.
+// ===== Email (Azure Communication Services) =====
+// Replaces Resend. Transactional mail (verification, password reset, invites)
+// is the product's core loop, so it runs on first-party Azure infrastructure
+// rather than a third-party key pasted into env vars.
+//
+// Two domains are provisioned:
+//   AzureManagedDomain  works the moment it is created, sends from
+//                       DoNotReply@<guid>.azurecomm.net, needs no DNS. This is
+//                       what makes email work immediately.
+//   partyhause.com      CustomerManaged. Creating it generates the SPF/DKIM
+//                       records that must be published on the domain before it
+//                       can send. Until then it stays unlinked, because
+//                       linking an unverified domain fails the deployment.
+//
+// Both resources are global; dataLocation pins where message content rests.
+resource emailService 'Microsoft.Communication/emailServices@2023-04-01' = {
+  name: 'acsmail-partyhause-${suffix}'
+  location: 'global'
+  properties: {
+    dataLocation: emailDataLocation
+  }
+  tags: {
+    environment: environmentTag
+  }
+}
+
+resource azureManagedDomain 'Microsoft.Communication/emailServices/domains@2023-04-01' = {
+  parent: emailService
+  name: 'AzureManagedDomain'
+  location: 'global'
+  properties: {
+    domainManagement: 'AzureManaged'
+    userEngagementTracking: 'Disabled'
+  }
+}
+
+resource customEmailDomain 'Microsoft.Communication/emailServices/domains@2023-04-01' = {
+  parent: emailService
+  name: emailCustomDomain
+  location: 'global'
+  properties: {
+    domainManagement: 'CustomerManaged'
+    userEngagementTracking: 'Disabled'
+  }
+}
+
+// noreply@<custom domain>. Only usable once the domain is DNS-verified.
+resource customDomainSender 'Microsoft.Communication/emailServices/domains/senderUsernames@2023-04-01' = {
+  parent: customEmailDomain
+  name: 'noreply'
+  properties: {
+    username: 'noreply'
+    displayName: 'PartyHause'
+  }
+}
+
+resource communicationService 'Microsoft.Communication/communicationServices@2023-04-01' = {
+  name: 'acs-partyhause-${suffix}'
+  location: 'global'
+  properties: {
+    dataLocation: emailDataLocation
+    // The custom domain joins this list only after DNS verification; linking an
+    // unverified domain is rejected by the resource provider.
+    linkedDomains: linkCustomEmailDomain
+      ? [ azureManagedDomain.id, customEmailDomain.id ]
+      : [ azureManagedDomain.id ]
+  }
+  tags: {
+    environment: environmentTag
+  }
+}
+
 resource openai 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
   name: 'oai-partyhause-${suffix}'
   location: location
@@ -234,6 +317,16 @@ module apiApp 'modules/container-app.bicep' = {
       { name: 'ENTRA_API_CLIENT_ID', value: entraApiClientId }
       { name: 'ENTRA_API_CLIENT_SECRET', secretRef: 'entra-api-client-secret' }
       { name: 'ENTRA_POLICY', value: entraSignUpSignInPolicy }
+      // Azure Communication Services is the active email transport.
+      { name: 'ACS_CONNECTION_STRING', secretRef: 'acs-connection-string' }
+      // Sender address. Until partyhause.com is DNS-verified this resolves to
+      // the Azure-managed domain, which sends immediately with no DNS setup.
+      { name: 'ACS_SENDER_ADDRESS', value: linkCustomEmailDomain
+          ? 'noreply@${emailCustomDomain}'
+          : 'DoNotReply@${azureManagedDomain.properties.mailFromSenderDomain}' }
+      { name: 'ACS_SENDER_DISPLAY_NAME', value: 'PartyHause' }
+      // Resend retained as an explicit fallback while the ACS custom domain is
+      // pending verification. The code prefers ACS when both are present.
       { name: 'RESEND_API_KEY', secretRef: 'resend-api-key' }
       { name: 'RESEND_FROM_EMAIL', value: RESEND_FROM_EMAIL }
       { name: 'RESEND_FROM_NAME', value: 'PartyHause' }
@@ -256,6 +349,7 @@ module apiApp 'modules/container-app.bicep' = {
       { name: 'database-url', value: 'postgresql://${postgresAdminLogin}:${uriComponent(postgresAdminPassword)}@${postgres.outputs.serverFqdn}:5432/${postgresDbName}?sslmode=require' }
       { name: 'storage-conn-str', value: 'DefaultEndpointsProtocol=https;AccountName=${storage.outputs.storageAccountName};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=core.windows.net' }
       { name: 'webpubsub-connection-string', value: webPubSub.outputs.primaryConnectionString }
+      { name: 'acs-connection-string', value: communicationService.listKeys().primaryConnectionString }
       { name: 'jwt-secret', value: jwtSecret }
       { name: 'entra-api-client-secret', value: entraApiClientSecret }
       { name: 'resend-api-key', value: RESEND_API_KEY }
@@ -278,3 +372,14 @@ output webPubSubName string = webPubSub.outputs.pubsubName
 output keyVaultName string = keyVault.outputs.keyVaultName
 output keyVaultUri string = keyVault.outputs.keyVaultUri
 output containerAppsEnvName string = cae.name
+
+// ===== Email outputs =====
+// The DNS records below must be published on the custom domain before it can
+// send. Re-run provisioning with linkCustomEmailDomain=true once verified.
+output emailServiceName string = emailService.name
+output communicationServiceName string = communicationService.name
+output azureManagedSenderDomain string = azureManagedDomain.properties.mailFromSenderDomain
+output azureManagedSenderAddress string = 'DoNotReply@${azureManagedDomain.properties.mailFromSenderDomain}'
+output customEmailDomainName string = customEmailDomain.name
+output customEmailDomainVerificationStates object = customEmailDomain.properties.verificationStates
+output customEmailDomainVerificationRecords object = customEmailDomain.properties.verificationRecords

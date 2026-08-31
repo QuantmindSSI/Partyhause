@@ -6,7 +6,6 @@
 import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
-import { Resend } from 'resend';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
@@ -17,6 +16,7 @@ const __dirname = path.dirname(__filename);
 
 // Route imports
 import { assertJwtSecretConfigured } from './lib/jwt-secret';
+import { sendEmail, emailTransportStatus } from './lib/email';
 import authRouter from './routes/auth';
 import eventsRouter from './routes/events';
 import guestsRouter from './routes/guests';
@@ -84,18 +84,9 @@ const apiLimiter = rateLimit({
   message: { error: 'Too many requests. Slow down.' },
 });
 
-// Resend credentials
-const RESEND_API_KEY = process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY;
-const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL || process.env.VITE_RESEND_FROM_EMAIL;
-const RESEND_FROM_NAME = process.env.RESEND_FROM_NAME || 'PartyHause';
-
-let resendClient: Resend | null = null;
-function getResend(): Resend | null {
-  if (!resendClient && RESEND_API_KEY) {
-    resendClient = new Resend(RESEND_API_KEY);
-  }
-  return resendClient;
-}
+// Email transport lives in ./lib/email. Provider selection, credential
+// resolution and client caching all happen there, so this file no longer
+// constructs a provider client of its own.
 
 // CORS
 const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
@@ -139,58 +130,43 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     message: 'PartyHause API server is running',
-    email: RESEND_API_KEY ? 'configured' : 'missing-credentials',
+    email: emailTransportStatus(),
     database: process.env.DATABASE_URL || process.env.POSTGRES_HOST ? 'configured' : 'missing',
   });
 });
 
-// Email sending (kept from original server/index.js)
+// Transactional email. Routed through server/lib/email.ts, which prefers Azure
+// Communication Services and falls back to Resend. The sender address is fixed
+// by the verified domain, so the previous ALLOW_FROM_OVERRIDE path is gone:
+// an arbitrary caller-supplied From is spoofing, and ACS rejects unverified
+// senders regardless.
 app.post('/api/send-email', async (req, res) => {
-  try {
-    const { to, subject, html, metadata } = req.body;
+  const { to, subject, html } = req.body ?? {};
 
-    if (!RESEND_API_KEY) {
-      return res.status(500).json({ success: false, error: 'Server configuration error: RESEND_API_KEY not set' });
-    }
-    if (!RESEND_FROM_EMAIL) {
-      return res.status(500).json({ success: false, error: 'Server configuration error: RESEND_FROM_EMAIL not set' });
-    }
-
-    let fromEmail = RESEND_FROM_EMAIL;
-    let fromName = RESEND_FROM_NAME;
-
-    if (req.body?.from && process.env.ALLOW_FROM_OVERRIDE === 'true') {
-      fromEmail = req.body.from;
-    }
-
-    const resend = getResend();
-    if (!resend) {
-      return res.status(500).json({ success: false, error: 'Email client not initialized' });
-    }
-
-    const toList = Array.isArray(to) ? to : [to];
-    const payload: Record<string, unknown> = {
-      from: `${fromName} <${fromEmail}>`,
-      to: toList,
-      subject,
-      html,
-    };
-    if (metadata && typeof metadata === 'object') {
-      payload.metadata = Object.fromEntries(
-        Object.entries(metadata)
-          .filter(([, v]) => v != null)
-          .map(([k, v]) => [k, String(v)]),
-      );
-    }
-
-    const { data, error } = await resend.emails.send(payload as any);
-    if (error) throw error;
-
-    res.json({ success: true, data: { id: data?.id || null } });
-  } catch (error: any) {
-    console.error('Email sending failed:', error?.stack || error);
-    res.status(500).json({ success: false, error: error?.message || String(error) });
+  if (!to || (Array.isArray(to) && to.length === 0)) {
+    return res.status(400).json({ success: false, error: 'Recipient "to" is required' });
   }
+  if (typeof subject !== 'string' || subject.trim() === '') {
+    return res.status(400).json({ success: false, error: 'Subject is required' });
+  }
+  if (typeof html !== 'string' || html.trim() === '') {
+    return res.status(400).json({ success: false, error: 'HTML body is required' });
+  }
+
+  const result = await sendEmail({ to, subject, html });
+
+  if (!result.ok) {
+    // 502: the request was well formed, an upstream provider refused it.
+    console.error(`[email] /api/send-email failed via ${result.provider}: ${result.error}`);
+    return res.status(502).json({ success: false, provider: result.provider, error: result.error });
+  }
+
+  res.json({
+    success: true,
+    provider: result.provider,
+    status: result.status,
+    data: { id: result.id },
+  });
 });
 
 // ===== API Routes =====
