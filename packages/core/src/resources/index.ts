@@ -199,12 +199,25 @@ export function createPollsResource(t: Transport): PollsResource {
  * of this client sent `userId`, which the route ignores, so it always answered
  * for an undefined creator.
  */
+export interface CrewConnection {
+  id: string;
+  created_at: string;
+  notify_on_events: boolean;
+  notify_on_posts: boolean;
+}
+
+export interface CrewRequest {
+  id: string;
+  status: string;
+  created_at: string;
+}
+
 export interface CrewStatus {
   isFollowing: boolean;
   isPending: boolean;
   isMutual: boolean;
-  connection: unknown | null;
-  request: unknown | null;
+  connection: CrewConnection | null;
+  request: CrewRequest | null;
 }
 
 /** POST /api/partycrew/toggle answers with the action taken, not a flag. */

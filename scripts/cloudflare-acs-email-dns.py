@@ -38,6 +38,17 @@ API_ROOT = "https://api.cloudflare.com/client/v4"
 TIMEOUT_SECONDS = 30
 DEFAULT_TTL = 3600
 
+# Azure Container Apps custom-domain binding for the web app.
+# Two records are required before `az containerapp hostname bind` will issue a
+# managed certificate:
+#   asuid.www  TXT    the container app's customDomainVerificationId
+#   www        CNAME  the container app's default FQDN
+# www.partyhause.com currently points at ca-web-partyhause-l2apcqjqxo6qu, a
+# container app in an environment that no longer exists, so the domain has been
+# serving nothing.
+AZURE_WEB_FQDN = "ca-web-partyhause-gipkzrenusqpy.calmtree-5b646dc8.eastus2.azurecontainerapps.io"
+AZURE_DOMAIN_VERIFICATION_ID = "A1649ACA37F3077A3425C0DD96A3D8E44AFFBAF436A1C392628176A375203CB8"
+
 DKIM_RECORDS = [
     ("selector1-azurecomm-prod-net._domainkey",
      "selector1-azurecomm-prod-net._domainkey.azurecomm.net"),
@@ -175,6 +186,8 @@ def main() -> int:
                         help="Value of the Azure ms-domain-verification TXT record")
     parser.add_argument("--dmarc-policy", default="none", choices=["none", "quarantine", "reject"])
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--azure-web", action="store_true",
+                        help="Also publish the Azure Container Apps custom-domain records for www")
     args = parser.parse_args()
 
     token = (os.environ.get("CLOUDFLARE_API_TOKEN") or "").strip()
@@ -197,6 +210,19 @@ def main() -> int:
                f"ms-domain-verification={args.verification_token}", args.dry_run)
 
         apply_spf(token, zid, zone, args.dry_run)
+
+        if args.azure_web:
+            print("==> Azure Container Apps custom domain for www")
+            # Replace, not add: the existing CNAME points at a deleted app.
+            for rec in find_records(token, zid, "CNAME", f"www.{zone}"):
+                if rec.get("content") != AZURE_WEB_FQDN:
+                    print(f"    [-] stale CNAME www -> {rec.get('content')}")
+                    if not args.dry_run:
+                        request(token, "DELETE", f"zones/{zid}/dns_records/{rec['id']}")
+                        print("    [-] removed")
+            upsert(token, zid, zone, "TXT", "asuid.www",
+                   AZURE_DOMAIN_VERIFICATION_ID, args.dry_run)
+            upsert(token, zid, zone, "CNAME", "www", AZURE_WEB_FQDN, args.dry_run)
 
         print(f"==> DMARC (p={args.dmarc_policy})")
         upsert(token, zid, zone, "TXT", "_dmarc",

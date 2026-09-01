@@ -248,7 +248,10 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
     );
   };
 
-  const checkedInCount = guests.filter(g => g.is_checked_in).length;
+  // `checked_in` is what the API returns. `is_checked_in` is a legacy column
+  // the API never reads, mirrored by toLocalGuests only so older call sites did
+  // not break during the migration. Reading it here worked by accident.
+  const checkedInCount = guests.filter((g) => g.checked_in).length;
 
   return (
     <View style={styles.container}>
@@ -316,18 +319,18 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
                 <View style={styles.guestActions}>
                   <View style={styles.checkInToggle}>
                     <Text style={styles.checkInLabel}>
-                      {guest.is_checked_in ? '✓ In' : 'Out'}
+                      {guest.checked_in ? '✓ In' : 'Out'}
                     </Text>
                     <Switch
-                      value={guest.is_checked_in}
+                      value={Boolean(guest.checked_in)}
                       onValueChange={() =>
                         toggleCheckInMutation.mutate({
                           guestId: guest.id,
-                          isCheckedIn: guest.is_checked_in,
+                          isCheckedIn: Boolean(guest.checked_in),
                         })
                       }
                       trackColor={{ false: '#2a2a3a', true: '#6C63FF40' }}
-                      thumbColor={guest.is_checked_in ? '#6C63FF' : '#a8a8b3'}
+                      thumbColor={guest.checked_in ? '#6C63FF' : '#a8a8b3'}
                     />
                   </View>
 
