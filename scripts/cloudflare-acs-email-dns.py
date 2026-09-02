@@ -238,6 +238,21 @@ def main() -> int:
             # so the A record is the only option that leaves TLS issuable.
             #
             # The apex verification TXT is `asuid`, with no `www` label.
+            #
+            # The apex previously held a CNAME to the same deleted app. A CNAME
+            # and an A record cannot coexist on one name, so Cloudflare rejects
+            # the A record with error 81054 until the CNAME is gone. It is
+            # removed here rather than by hand so a re-run cannot half-apply.
+            # MX, TXT and NS records on the apex are a different type and are
+            # left untouched: deleting the Zoho MX records would silently stop
+            # inbound mail.
+            for rec in find_records(token, zid, "CNAME", zone):
+                print(f"    [-] apex CNAME {zone} -> {rec.get('content')}")
+                print("        (blocks the A record; a CNAME cannot sit at the zone root)")
+                if not args.dry_run:
+                    request(token, "DELETE", f"zones/{zid}/dns_records/{rec['id']}")
+                    print("    [-] removed")
+
             for rec in find_records(token, zid, "A", zone):
                 if rec.get("content") != AZURE_ENV_STATIC_IP:
                     print(f"    [-] stale A {zone} -> {rec.get('content')}")

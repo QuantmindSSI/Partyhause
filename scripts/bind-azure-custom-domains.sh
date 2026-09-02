@@ -97,9 +97,20 @@ fi
 # Bind. `hostname add` registers the domain; `hostname bind` without a
 # --certificate argument makes Azure create and attach a managed certificate.
 #
-# Validation method differs by record type: www proves ownership through its
-# CNAME to the app, the apex cannot (a CNAME may not coexist with SOA/NS at the
-# zone root) and proves ownership through the asuid TXT record instead.
+# Validation method differs by record type:
+#
+#   www  - CNAME validation. The CNAME already points at the app, which is
+#          proof enough, and issuance completes without further records.
+#
+#   apex - HTTP validation, NOT TXT. This is the non-obvious one. TXT
+#          validation does not use the asuid record: Azure mints a fresh ACME
+#          challenge token, prints it, and then waits for it to appear at
+#          _acme-challenge.partyhause.com. The CLI blocks while waiting and
+#          fails with CertificateProvisioningError before there is any chance
+#          to publish it, so TXT is unusable in a single non-interactive pass.
+#          HTTP validation needs no DNS record at all, because the apex A
+#          record already resolves to the environment ingress, and it succeeds
+#          on the first attempt.
 # ---------------------------------------------------------------------------
 bind_hostname() {
   local hostname="$1" method="$2"
@@ -124,7 +135,7 @@ bind_hostname() {
 
 echo "==> Binding hostnames"
 bind_hostname "$WWW"  CNAME
-bind_hostname "$APEX" TXT
+bind_hostname "$APEX" HTTP
 
 # ---------------------------------------------------------------------------
 # Verify. A managed certificate can take several minutes to issue, so a
