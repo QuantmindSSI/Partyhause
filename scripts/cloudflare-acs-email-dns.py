@@ -48,6 +48,10 @@ DEFAULT_TTL = 3600
 # serving nothing.
 AZURE_WEB_FQDN = "ca-web-partyhause-gipkzrenusqpy.calmtree-5b646dc8.eastus2.azurecontainerapps.io"
 AZURE_DOMAIN_VERIFICATION_ID = "A1649ACA37F3077A3425C0DD96A3D8E44AFFBAF436A1C392628176A375203CB8"
+# Static ingress IP of the Container Apps environment, used for the apex A
+# record. Stable for the life of the environment; it changes if the environment
+# is recreated, which is exactly what stranded the previous www CNAME.
+AZURE_ENV_STATIC_IP = "20.22.165.141"
 
 DKIM_RECORDS = [
     ("selector1-azurecomm-prod-net._domainkey",
@@ -212,8 +216,11 @@ def main() -> int:
         apply_spf(token, zid, zone, args.dry_run)
 
         if args.azure_web:
-            print("==> Azure Container Apps custom domain for www")
-            # Replace, not add: the existing CNAME points at a deleted app.
+            print("==> Azure Container Apps custom domains")
+
+            # www: CNAME to the app FQDN.
+            # Replace, not add: the existing CNAME points at a deleted app in a
+            # deleted environment, which is why www currently answers nothing.
             for rec in find_records(token, zid, "CNAME", f"www.{zone}"):
                 if rec.get("content") != AZURE_WEB_FQDN:
                     print(f"    [-] stale CNAME www -> {rec.get('content')}")
@@ -223,6 +230,23 @@ def main() -> int:
             upsert(token, zid, zone, "TXT", "asuid.www",
                    AZURE_DOMAIN_VERIFICATION_ID, args.dry_run)
             upsert(token, zid, zone, "CNAME", "www", AZURE_WEB_FQDN, args.dry_run)
+
+            # Apex: an A record to the environment's static IP. A CNAME cannot
+            # live at the apex alongside SOA/NS. Cloudflare would offer CNAME
+            # flattening, but that requires the record to be proxied, and a
+            # proxied record breaks Azure's managed-certificate validation,
+            # so the A record is the only option that leaves TLS issuable.
+            #
+            # The apex verification TXT is `asuid`, with no `www` label.
+            for rec in find_records(token, zid, "A", zone):
+                if rec.get("content") != AZURE_ENV_STATIC_IP:
+                    print(f"    [-] stale A {zone} -> {rec.get('content')}")
+                    if not args.dry_run:
+                        request(token, "DELETE", f"zones/{zid}/dns_records/{rec['id']}")
+                        print("    [-] removed")
+            upsert(token, zid, zone, "TXT", "asuid",
+                   AZURE_DOMAIN_VERIFICATION_ID, args.dry_run)
+            upsert(token, zid, zone, "A", "@", AZURE_ENV_STATIC_IP, args.dry_run)
 
         print(f"==> DMARC (p={args.dmarc_policy})")
         upsert(token, zid, zone, "TXT", "_dmarc",
