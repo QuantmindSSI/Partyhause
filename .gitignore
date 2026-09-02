@@ -52,3 +52,7 @@ branch_structure.json
 temp_auto_push.bat
 temp_interactive_push.bat
 *.tsbuildinfo
+
+# Vercel project linkage. Deployment is Azure Container Apps only; a
+# committed .vercel/project.json re-links the repo to a Vercel project.
+.vercel
