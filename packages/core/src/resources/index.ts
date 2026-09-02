@@ -110,8 +110,33 @@ export interface GuestCreateInput {
   plus_ones?: number;
 }
 
+/**
+ * Server-computed guest counts returned alongside the list.
+ *
+ * Worth taking rather than re-deriving: `accepted` counts both 'accepted' and
+ * the legacy 'confirmed' status, so a client that filters on 'accepted' alone
+ * silently undercounts every guest created before the invite-join unification.
+ *
+ * Note `checkedIn` is camelCase here while the Guest row uses `checked_in`.
+ */
+export interface GuestStats {
+  total: number;
+  accepted: number;
+  declined: number;
+  maybe: number;
+  pending: number;
+  checkedIn: number;
+}
+
+export interface GuestsPage {
+  guests: Guest[];
+  stats: GuestStats;
+}
+
 export interface GuestsResource {
   listForEvent(eventId: string): Promise<ApiResponse<Guest[]>>;
+  /** The same call as `listForEvent`, keeping the server-computed stats. */
+  listForEventWithStats(eventId: string): Promise<ApiResponse<GuestsPage>>;
   /**
    * Add one guest.
    *
@@ -130,6 +155,8 @@ export interface GuestsResource {
 export function createGuestsResource(t: Transport): GuestsResource {
   return {
     listForEvent: (eventId) => unwrapList<Guest>(t.request('/api/guests', { method: 'GET', query: { eventId } }), 'guests'),
+    listForEventWithStats: (eventId) =>
+      t.request<GuestsPage>('/api/guests', { method: 'GET', query: { eventId } }),
     create: async (eventId, guest) => {
       const res = await unwrapList<Guest>(
         t.request('/api/guests', { method: 'POST', body: { eventId, guests: [guest] } }),
@@ -151,6 +178,21 @@ export function createGuestsResource(t: Transport): GuestsResource {
   };
 }
 
+/**
+ * The /api/timeline TABLE endpoints.
+ *
+ * READ THIS BEFORE USING listForEvent: these operate on the `timeline_blocks`
+ * table, which nothing in the app populates. The live schedule lives in the
+ * `events.timeline_blocks` JSON column and is returned by
+ * `events.get(id).timeline_blocks`.
+ *
+ * `listForEvent` therefore returns [] for events that visibly have a schedule.
+ * Reading from here and writing the result back to the event erases it, which
+ * the web app hit and documented in `timelineService`.
+ *
+ * Use `events.get()` to read a schedule. These endpoints remain for the table,
+ * should anything start populating it.
+ */
 export interface TimelineResource {
   listForEvent(eventId: string): Promise<ApiResponse<TimelineBlock[]>>;
   create(input: Partial<TimelineBlock>): Promise<ApiResponse<TimelineBlock>>;

@@ -10,19 +10,8 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '@/lib/supabase';
-import { getApiBaseUrl } from '../../../lib/api';
-
-interface TimelineBlock {
-  id: string;
-  label: string;
-  description: string;
-  start_time: string; // HH:MM format
-  duration: number; // in minutes
-  type: 'activity' | 'meal' | 'speech' | 'performance' | 'break' | 'custom';
-  guest_visible: boolean;
-  notify_before?: number;
-}
+import type { TimelineBlock } from '@partyhause/core';
+import { api } from '@/lib/client';
 
 const BLOCK_TYPE_CONFIG = {
   activity: { icon: 'sparkles', color: '#6366F1', label: 'Activity' },
@@ -60,26 +49,9 @@ export default function ActivitiesScreen() {
 
       console.log('[Activities] Fetching activities for event:', id);
 
-      // Get auth token from Supabase session
-      if (!supabase) {
-        console.error('[Activities] Supabase client not initialized');
-        Alert.alert('Configuration Error', 'Supabase client not initialized');
-        setLoading(false);
-        return;
-      }
-      
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.error('[Activities] Session error:', sessionError);
-      }
-      
-      const token = session?.access_token;
-      
-      if (!token) {
-        console.error('[Activities] No auth token found');
+      if (!(await api.auth.isAuthenticated())) {
         Alert.alert(
-          'Authentication Required', 
+          'Authentication Required',
           'Please sign in to view activities',
           [
             { text: 'Cancel', style: 'cancel', onPress: () => router.back() },
@@ -90,68 +62,33 @@ export default function ActivitiesScreen() {
         return;
       }
 
-      const API_BASE_URL = getApiBaseUrl();
-      console.log('[Activities] Making API request to:', `${API_BASE_URL}/api/events?id=${id}`);
-      
-      const response = await fetch(`${API_BASE_URL}/api/events?id=${id}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      // The previous request went to `/api/events?id=<id>`, but the route reads
+      // the id from the path (`/:id?`) and ignores that query parameter, so it
+      // answered with the caller's event LIST. `data.event` was therefore always
+      // undefined and this screen always rendered "no activities", even when the
+      // event had a full schedule.
+      const { data: event, error: apiError } = await api.events.get(id);
 
-      console.log('[Activities] Response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[Activities] API error:', response.status, errorText);
-        
-        if (response.status === 401 || response.status === 403) {
-          Alert.alert(
-            'Unauthorized', 
-            'You do not have permission to view this event',
-            [
-              { text: 'OK', onPress: () => router.back() }
-            ]
-          );
-        } else if (response.status === 404) {
-          Alert.alert(
-            'Event Not Found',
-            'This event does not exist or has been deleted',
-            [
-              { text: 'OK', onPress: () => router.back() }
-            ]
-          );
+      if (apiError) {
+        console.error('[Activities] API error:', apiError.status, apiError.message);
+        if (apiError.status === 401 || apiError.status === 403) {
+          Alert.alert('Unauthorized', 'You do not have permission to view this event',
+            [{ text: 'OK', onPress: () => router.back() }]);
+        } else if (apiError.status === 404) {
+          Alert.alert('Event Not Found', 'This event does not exist or has been deleted',
+            [{ text: 'OK', onPress: () => router.back() }]);
         } else {
-          Alert.alert(
-            'Error',
-            `Failed to load activities (${response.status}). Please try again.`
-          );
+          Alert.alert('Error', `Failed to load activities. ${apiError.message}`);
         }
         setLoading(false);
         return;
       }
 
-      const data = await response.json();
-      console.log('[Activities] Event loaded successfully');
+      const blocks = Array.isArray(event?.timeline_blocks) ? event.timeline_blocks : [];
 
-      if (data.event && data.event.timeline_blocks) {
-        const blocks = Array.isArray(data.event.timeline_blocks) 
-          ? data.event.timeline_blocks 
-          : [];
-        
-        console.log('[Activities] Found', blocks.length, 'timeline blocks');
-        
-        // Sort by start time
-        const sortedBlocks = blocks.sort((a: TimelineBlock, b: TimelineBlock) => {
-          return a.start_time.localeCompare(b.start_time);
-        });
-        
-        setActivities(sortedBlocks);
-      } else {
-        console.log('[Activities] No timeline blocks found');
-        setActivities([]);
-      }
+      // Sorted on a copy: the array belongs to the response object, and sorting
+      // in place mutates it.
+      setActivities([...blocks].sort((a, b) => a.start_time.localeCompare(b.start_time)));
     } catch (error) {
       console.error('[Activities] Exception:', error);
       Alert.alert(
