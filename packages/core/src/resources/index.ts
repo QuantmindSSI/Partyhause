@@ -15,6 +15,7 @@ import type { Transport, ApiResponse } from '../http/transport';
 import type {
   PartyEvent, Guest, TimelineBlock, Poll, CrewMember, CrewMemberRow, CrewCreatorRow,
   Notification, UploadedBlob, UserProfileDetail, SuggestedUser,
+  FeedContentType, CrewFeedPage,
 } from '../types';
 
 /**
@@ -316,6 +317,42 @@ export function createPartyCrewResource(t: Transport): PartyCrewResource {
       t.request<{ success: boolean }>('/api/partycrew/requests', { method: 'POST', body: { creatorId } }),
     cancelRequest: (creatorId) =>
       t.request<{ success: boolean }>('/api/partycrew/requests', { method: 'DELETE', body: { creatorId } }),
+  };
+}
+
+export interface FeedResource {
+  /**
+   * Cursor-paginated crew feed. Pass `cursor` from the previous page's
+   * `next_cursor`; omit it for the first page.
+   */
+  crew(options?: {
+    limit?: number;
+    cursor?: string;
+    contentType?: FeedContentType;
+  }): Promise<ApiResponse<CrewFeedPage>>;
+  /**
+   * Report real impressions. The route caps this at 100 ids per call and
+   * rejects empty or non-string entries with a 400, so callers must chunk.
+   */
+  markSeen(postIds: string[]): Promise<ApiResponse<number>>;
+}
+
+export function createFeedResource(t: Transport): FeedResource {
+  return {
+    crew: (options) =>
+      t.request<CrewFeedPage>('/api/feed/crew', {
+        method: 'GET',
+        query: {
+          limit: options?.limit,
+          cursor: options?.cursor,
+          content_type: options?.contentType,
+        },
+      }),
+    markSeen: (postIds) =>
+      unwrapOne<number>(
+        t.request('/api/feed/seen', { method: 'POST', body: { post_ids: postIds } }),
+        'marked',
+      ),
   };
 }
 

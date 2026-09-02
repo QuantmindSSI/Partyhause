@@ -170,6 +170,67 @@ export interface UserProfileDetail {
   last_active_at: string | null;
 }
 
+export type FeedContentType =
+  | 'update'
+  | 'photo'
+  | 'video'
+  | 'poll'
+  | 'event_announcement'
+  | 'tip'
+  | 'recap';
+
+/** The creator summary embedded in every feed post. */
+export interface FeedPostCreator {
+  id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  is_verified: boolean;
+}
+
+/**
+ * A row from GET /api/feed/crew.
+ *
+ * `feed_score` is computed per request by the ranking pass, not stored, so it
+ * is not stable across calls. `poll_options` is a JSON column whose shape
+ * depends on `content_type`; it stays `unknown` so callers are forced to
+ * narrow it rather than assume.
+ */
+export interface FeedPost {
+  id: string;
+  creator: FeedPostCreator;
+  content_type: FeedContentType;
+  title: string | null;
+  body: string | null;
+  media_urls: string[];
+  event_id: string | null;
+  poll_options: unknown;
+  poll_ends_at: string | null;
+
+  likes_count: number;
+  comments_count: number;
+  shares_count: number;
+  views_count: number;
+
+  viewer_has_liked: boolean;
+  viewer_has_commented: boolean;
+  viewer_has_shared: boolean;
+
+  published_at: string;
+  created_at: string;
+  feed_score: number;
+}
+
+/**
+ * GET /api/feed/crew is cursor-paginated, not offset-paginated.
+ * `next_cursor` is null on the final page.
+ */
+export interface CrewFeedPage {
+  posts: FeedPost[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
 /** Rows from GET /api/users/suggested, which carry a human-readable `reason`. */
 export interface SuggestedUser {
   id: string;

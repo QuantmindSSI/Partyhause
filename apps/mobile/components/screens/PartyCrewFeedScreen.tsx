@@ -16,6 +16,7 @@ import {
 import { useRouter } from 'expo-router';
 import { CrewingWithBar } from '@/components/partycrew/CrewingWithBar';
 import { ContentFeedCard } from '@/components/partycrew/ContentFeedCard';
+import type { FeedContentType } from '@partyhause/core';
 import { useCrewFeed } from '@/hooks/partycrew/useCrewFeed';
 
 type FilterTab = 'all' | 'events' | 'tips' | 'recaps';
@@ -24,7 +25,7 @@ export function PartyCrewFeedScreen() {
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   
-  const contentTypeMap: Record<FilterTab, string | undefined> = {
+  const contentTypeMap: Record<FilterTab, FeedContentType | undefined> = {
     all: undefined,
     events: 'event_announcement',
     tips: 'tip',

@@ -4,9 +4,9 @@
  */
 
 import { useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import type { CrewToggleResult } from '@partyhause/core';
 import * as Haptics from 'expo-haptics';
-import { getApiBaseUrl } from '../../lib/api';
+import { api } from '@/lib/client';
 
 interface UsePartyCrewResult {
   isJoining: boolean;
@@ -16,49 +16,26 @@ interface UsePartyCrewResult {
   toggleCrew: (creatorId: string, currentStatus: boolean) => Promise<boolean>;
 }
 
-interface ToggleResponse {
-  success: boolean;
-  action: 'joined' | 'left' | 'requested';
-  partycrew_count?: number;
-  message: string;
-  error?: string;
-}
-
 export function usePartyCrew(): UsePartyCrewResult {
   const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * The route requires `action`; omitting it is a 400, so it is a required
+   * argument here rather than an optional one. Throwing on failure is kept
+   * deliberately: both callers already translate a throw into an error haptic.
+   */
   const makeRequest = async (
-    creatorId: string, 
-    action?: 'join' | 'leave'
-  ): Promise<ToggleResponse> => {
-    if (!supabase) {
-      throw new Error('Supabase not initialized');
+    creatorId: string,
+    action: 'join' | 'leave',
+  ): Promise<CrewToggleResult> => {
+    const { data, error: apiError } = await api.partycrew.toggle(creatorId, action);
+
+    if (apiError) {
+      throw new Error(apiError.message);
     }
-
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session?.access_token) {
-      throw new Error('Not authenticated');
-    }
-
-    const apiUrl = getApiBaseUrl();
-    const response = await fetch(`${apiUrl}/api/partycrew/toggle`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        creatorId,
-        ...(action && { action })
-      }),
-    });
-
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || data.error || 'Request failed');
+    if (!data) {
+      throw new Error('Request failed');
     }
 
     return data;

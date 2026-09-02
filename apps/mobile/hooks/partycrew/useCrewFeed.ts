@@ -4,35 +4,10 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
-import { getApiBaseUrl } from '../../lib/api';
+import type { FeedPost, FeedContentType } from '@partyhause/core';
+import { api } from '@/lib/client';
 
-interface FeedPost {
-  id: string;
-  creator: {
-    id: string;
-    username: string;
-    display_name: string;
-    avatar_url: string | null;
-    is_verified: boolean;
-  };
-  content_type: 'update' | 'photo' | 'video' | 'poll' | 'event_announcement' | 'tip' | 'recap';
-  title: string | null;
-  body: string | null;
-  media_urls: string[];
-  event_id: string | null;
-  poll_options: any;
-  
-  likes_count: number;
-  comments_count: number;
-  shares_count: number;
-  
-  viewer_has_liked: boolean;
-  viewer_has_commented: boolean;
-  
-  published_at: string;
-  feed_score: number;
-}
+export type { FeedPost };
 
 interface UseCrewFeedResult {
   posts: FeedPost[];
@@ -44,7 +19,7 @@ interface UseCrewFeedResult {
 }
 
 export function useCrewFeed(
-  contentType?: string,
+  contentType?: FeedContentType,
   limit: number = 10
 ): UseCrewFeedResult {
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -54,58 +29,33 @@ export function useCrewFeed(
   const [hasMore, setHasMore] = useState(true);
 
   const fetchFeed = useCallback(async (reset: boolean = false) => {
-    if (!supabase) {
+    if (!(await api.auth.isAuthenticated())) {
       setIsLoading(false);
       return;
     }
 
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session?.access_token) {
-        setIsLoading(false);
-        return;
-      }
+    // On a reset the cursor is deliberately dropped, otherwise a refresh would
+    // resume mid-stream and silently hide everything published since.
+    const { data, error: apiError } = await api.feed.crew({
+      limit,
+      contentType,
+      cursor: reset ? undefined : cursor ?? undefined,
+    });
 
-      const apiUrl = getApiBaseUrl();
-      let url = `${apiUrl}/api/feed/crew?limit=${limit}`;
-      
-      if (contentType) {
-        url += `&content_type=${contentType}`;
-      }
-      
-      if (!reset && cursor) {
-        url += `&cursor=${cursor}`;
-      }
-
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch feed');
-      }
-
-      const data = await response.json();
-      
+    if (apiError) {
+      setError(apiError.message);
+      console.error('[useCrewFeed Error]:', apiError.message);
+    } else if (data) {
       if (reset) {
         setPosts(data.posts);
       } else {
         setPosts(prev => [...prev, ...data.posts]);
       }
-      
       setCursor(data.next_cursor);
       setHasMore(data.has_more);
       setError(null);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to load feed';
-      setError(errorMsg);
-      console.error('[useCrewFeed Error]:', err);
-    } finally {
-      setIsLoading(false);
     }
+    setIsLoading(false);
   }, [contentType, limit, cursor]);
 
   useEffect(() => {
