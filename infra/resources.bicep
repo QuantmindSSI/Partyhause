@@ -37,6 +37,9 @@ param emailDataLocation string = 'United States'
 @description('Custom sending domain to provision (requires DNS verification before use)')
 param emailCustomDomain string = 'partyhause.com'
 
+@description('Public custom domain bound to the web Container App. Both the apex and the www host are permitted CORS origins, and the apex is the canonical base URL for links in outbound email.')
+param publicDomain string = 'partyhause.com'
+
 @description('Link the custom domain to the Communication Service. Only set true AFTER the domain shows Verified, otherwise the deployment fails.')
 param linkCustomEmailDomain bool = false
 
@@ -299,7 +302,11 @@ module apiApp 'modules/container-app.bicep' = {
     envVars: [
       { name: 'NODE_ENV', value: 'production' }
       { name: 'PORT', value: '3001' }
-      { name: 'CORS_ALLOWED_ORIGINS', value: 'https://${webApp.outputs.fqdn}' }
+      // Both custom hostnames plus the container FQDN. The FQDN is kept so the
+      // app is still reachable if a custom domain binding is ever removed;
+      // dropping it would make the API unusable from the only URL that is
+      // guaranteed to exist. Comma-separated: server/index.ts splits on comma.
+      { name: 'CORS_ALLOWED_ORIGINS', value: 'https://${publicDomain},https://www.${publicDomain},https://${webApp.outputs.fqdn}' }
       { name: 'POSTGRES_HOST', value: postgres.outputs.serverFqdn }
       { name: 'POSTGRES_PORT', value: '5432' }
       { name: 'POSTGRES_DB', value: postgresDbName }
@@ -339,7 +346,9 @@ module apiApp 'modules/container-app.bicep' = {
       { name: 'AZURE_OPENAI_API_VERSION', value: '2024-10-21' }
       // Base URL for links embedded in verification / password-reset emails.
       // Without it the API defaults to http://localhost:5173.
-      { name: 'VITE_APP_URL', value: 'https://${webApp.outputs.fqdn}' }
+      // Canonical public domain, not the container FQDN: this string is what
+      // recipients see in invitation, verification and password-reset links.
+      { name: 'VITE_APP_URL', value: 'https://${publicDomain}' }
     ]
     secrets: [
       { name: 'postgres-password', value: postgresAdminPassword }
