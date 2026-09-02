@@ -13,7 +13,8 @@
 
 import type { Transport, ApiResponse } from '../http/transport';
 import type {
-  PartyEvent, Guest, TimelineBlock, Poll, CrewMember, Notification, UploadedBlob, UserProfile,
+  PartyEvent, Guest, TimelineBlock, Poll, CrewMember, CrewMemberRow, CrewCreatorRow,
+  Notification, UploadedBlob, UserProfileDetail, SuggestedUser,
 } from '../types';
 
 /**
@@ -223,14 +224,19 @@ export interface CrewStatus {
 /** POST /api/partycrew/toggle answers with the action taken, not a flag. */
 export interface CrewToggleResult {
   success: boolean;
-  action: 'joined' | 'left';
+  /**
+   * A private account does not join immediately; the route creates a pending
+   * connection request and answers 'requested'. Treating this as a join is the
+   * bug that makes a follow button flip to "Crewing" when nothing was granted.
+   */
+  action: 'joined' | 'left' | 'requested';
   partycrew_count?: number;
   message?: string;
 }
 
 /** GET /api/partycrew/members is paginated. */
 export interface CrewMembersPage {
-  members: CrewMember[];
+  members: CrewMemberRow[];
   total: number;
   has_more: boolean;
   limit: number;
@@ -244,7 +250,7 @@ export interface CrewMembersPage {
  * caller but does not select the subject.
  */
 export interface CrewingWithPage {
-  creators: CrewMember[];
+  creators: CrewCreatorRow[];
   total: number;
   has_more: boolean;
   limit: number;
@@ -260,7 +266,16 @@ export interface CrewRequestsPage {
 
 export interface PartyCrewResource {
   /** Paginated; returns the whole page so callers can drive infinite scroll. */
-  members(options?: { limit?: number; offset?: number }): Promise<ApiResponse<CrewMembersPage>>;
+  /**
+   * Paginated; returns the whole page so callers can drive infinite scroll.
+   * `includeMutualCount` opts into the route's `include_mutual_count=true`
+   * branch, which costs two extra queries and populates `mutual_crew_count`.
+   */
+  members(options?: {
+    limit?: number;
+    offset?: number;
+    includeMutualCount?: boolean;
+  }): Promise<ApiResponse<CrewMembersPage>>;
   /** `userId` names whose crew to read; the token identifies the caller. */
   crewingWith(userId: string, options?: { limit?: number; offset?: number }): Promise<ApiResponse<CrewingWithPage>>;
   status(creatorId: string): Promise<ApiResponse<CrewStatus>>;
@@ -276,7 +291,12 @@ export function createPartyCrewResource(t: Transport): PartyCrewResource {
     members: (options) =>
       t.request<CrewMembersPage>('/api/partycrew/members', {
         method: 'GET',
-        query: { limit: options?.limit, offset: options?.offset },
+        query: {
+          limit: options?.limit,
+          offset: options?.offset,
+          // The route compares against the literal string 'true'.
+          include_mutual_count: options?.includeMutualCount ? 'true' : undefined,
+        },
       }),
     crewingWith: (userId, options) =>
       t.request<CrewingWithPage>('/api/partycrew/crewing-with', {
@@ -300,14 +320,24 @@ export function createPartyCrewResource(t: Transport): PartyCrewResource {
 }
 
 export interface UsersResource {
-  suggested(): Promise<ApiResponse<CrewMember[]>>;
-  get(id: string): Promise<ApiResponse<UserProfile>>;
+  /** Rows arrive under `suggestions`, not as a bare array. */
+  suggested(): Promise<ApiResponse<SuggestedUser[]>>;
+  /** Returned flat by the route; nothing to unwrap. */
+  get(id: string): Promise<ApiResponse<UserProfileDetail>>;
 }
 
 export function createUsersResource(t: Transport): UsersResource {
   return {
-    suggested: () => t.request<CrewMember[]>('/api/users/suggested', { method: 'GET' }),
-    get: (id) => unwrapOne<UserProfile>(t.request(`/api/users/${encodeURIComponent(id)}`, { method: 'GET' }), 'profile'),
+    suggested: () =>
+      unwrapList<SuggestedUser>(
+        t.request('/api/users/suggested', { method: 'GET' }),
+        'suggestions',
+      ),
+    // Deliberately NOT unwrapped. GET /api/users/:id answers with the profile
+    // object itself; asking for a `profile` key returned null with no error,
+    // so every caller saw an empty profile and no failure to report.
+    get: (id) =>
+      t.request<UserProfileDetail>(`/api/users/${encodeURIComponent(id)}`, { method: 'GET' }),
   };
 }
 
