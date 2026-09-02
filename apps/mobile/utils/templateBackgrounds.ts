@@ -17,7 +17,7 @@ export interface TemplateColors {
  * For now using placeholder images from Unsplash
  * TODO: Replace with custom background images in assets/backgrounds/
  */
-export const getTemplateBackground = (templateType: string): string => {
+export const getTemplateBackground = (templateType?: string | null): string => {
   const backgrounds: Record<string, string> = {
     // Birthday & Celebrations
     'birthday': 'https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=800&q=80', // Balloons
@@ -49,13 +49,13 @@ export const getTemplateBackground = (templateType: string): string => {
     'default': 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&q=80', // Generic celebration
   };
   
-  return backgrounds[templateType] || backgrounds['default'];
+  return backgrounds[templateType ?? ''] || backgrounds['default'];
 };
 
 /**
  * Get color theme for template type
  */
-export const getTemplateColors = (templateType: string): TemplateColors => {
+export const getTemplateColors = (templateType?: string | null): TemplateColors => {
   const colors: Record<string, TemplateColors> = {
     // Birthday & Celebrations
     'birthday': {
@@ -144,7 +144,7 @@ export const getTemplateColors = (templateType: string): TemplateColors => {
     },
   };
   
-  return colors[templateType] || {
+  return colors[templateType ?? ''] || {
     primary: '#9333ea', // Default purple
     accent: '#a855f7',
     background: '#f3e8ff',
@@ -155,7 +155,7 @@ export const getTemplateColors = (templateType: string): TemplateColors => {
 /**
  * Get formatted template name for display
  */
-export const getTemplateDisplayName = (templateType: string): string => {
+export const getTemplateDisplayName = (templateType?: string | null): string => {
   const names: Record<string, string> = {
     'birthday': 'Birthday Party',
     'kids-birthday': 'Kids Birthday',
@@ -171,13 +171,18 @@ export const getTemplateDisplayName = (templateType: string): string => {
     'travel': 'Travel',
   };
   
+  // template_type is a nullable column: events created from scratch have none.
+  // The fallback branch dereferences the argument, so the guard has to come
+  // first or this throws on exactly those events.
+  if (!templateType) return 'Event';
+
   return names[templateType] || templateType.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
 };
 
 /**
  * Get icon name for template type (compatible with Ionicons)
  */
-export const getTemplateIcon = (templateType: string): string => {
+export const getTemplateIcon = (templateType?: string | null): string => {
   const icons: Record<string, string> = {
     'birthday': 'gift',
     'kids-birthday': 'balloon',
@@ -193,5 +198,5 @@ export const getTemplateIcon = (templateType: string): string => {
     'travel': 'airplane',
   };
   
-  return icons[templateType] || 'calendar';
+  return icons[templateType ?? ''] || 'calendar';
 };

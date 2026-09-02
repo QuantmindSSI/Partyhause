@@ -44,6 +44,18 @@ export interface UserProfile {
 
 export type EventType = 'single_day' | 'multi_day';
 
+/** Enforced by a CHECK constraint on events.privacy. */
+export type EventPrivacy = 'public' | 'private' | 'unlisted';
+
+/**
+ * Enforced by a CHECK constraint on events.status.
+ *
+ * Note there is no 'cancelled'. UI that branches on it is handling a state the
+ * database will reject on write, while 'active' and 'archived' are real states
+ * that such UI then fails to handle.
+ */
+export type EventStatus = 'draft' | 'published' | 'active' | 'completed' | 'archived';
+
 export interface PartyEvent {
   id: string;
   host_id: string;
@@ -57,7 +69,27 @@ export interface PartyEvent {
   is_public: boolean;
   invite_image_url?: string;
   template_type?: string;
+  template_data?: Record<string, unknown>;
   spotify_playlist_url?: string;
+  /**
+   * A second name column, nullable, kept in sync with `name`.
+   *
+   * The template-era flows write `title`; the classic creation form writes
+   * `name`. POST /api/events accepts either and populates both, so a row read
+   * back carries both. Neither can be assumed to be the one a given screen
+   * displays, which is why both are on this type.
+   */
+  title?: string | null;
+  timezone?: string | null;
+  /**
+   * NOT NULL, defaulting to 'private'. The column carries a CHECK constraint
+   * restricting it to these three values, so the union is enforced by the
+   * database rather than merely hoped for.
+   */
+  privacy: EventPrivacy;
+  /** NOT NULL, defaulting to 'draft'. */
+  status: EventStatus;
+  settings?: Record<string, unknown>;
   /**
    * JSON column on the event row, defaulting to `[]`.
    *

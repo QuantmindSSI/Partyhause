@@ -85,7 +85,9 @@ export const DashboardScreen = ({ userId, userEmail, onSignOut }: DashboardScree
     start_date: event.start_date || event.event_date,
     end_date: event.event_date,
     location: event.venue || event.location,
-    status: (event.status || 'published') as 'draft' | 'published' | 'cancelled' | 'completed',
+    // Cast matches the CHECK constraint on events.status; the previous cast
+    // asserted 'cancelled', which the column does not accept.
+    status: (event.status || 'published') as 'draft' | 'published' | 'active' | 'completed' | 'archived',
     settings: {},
   }));
 

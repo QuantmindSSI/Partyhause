@@ -10,11 +10,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '@/lib/supabase';
-import { getApiBaseUrl } from '../../../lib/api';
-
-// Get API URL from environment variable
-const API_URL = getApiBaseUrl();
+import { api } from '@/lib/client';
 
 export default function ReviewScreen() {
   const router = useRouter();
@@ -93,18 +89,7 @@ export default function ReviewScreen() {
     try {
       setIsPublishing(true);
 
-      // Get auth token from Supabase
-      console.log('[Review] Step 1: Getting auth session');
-      if (!supabase) {
-        Alert.alert('Error', 'Supabase client not initialized');
-        setIsPublishing(false);
-        return;
-      }
-
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      if (!token) {
+      if (!(await api.auth.isAuthenticated())) {
         Alert.alert('Error', 'Please sign in to create events');
         setIsPublishing(false);
         return;
@@ -140,35 +125,13 @@ export default function ReviewScreen() {
       });
 
       // Create event
-      console.log('[Review] Step 4: Sending create event request to:', `${API_URL}/api/events`);
-      const eventResponse = await fetch(`${API_URL}/api/events`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(eventData),
-      });
+      const { data: createdEvent, error: createError } = await api.events.create(eventData);
 
-      console.log('[Review] Step 5: Event API response status:', eventResponse.status);
-
-      if (!eventResponse.ok) {
-        const errorText = await eventResponse.text();
-        console.error('[Review] Event creation failed:', errorText);
-        let errorData;
-        try {
-          errorData = JSON.parse(errorText);
-        } catch {
-          errorData = { message: errorText };
-        }
-        throw new Error(errorData.message || 'Failed to create event');
+      if (createError) {
+        throw new Error(createError.message || 'Failed to create event');
       }
 
-      const eventResult = await eventResponse.json();
-      const eventId = eventResult.id || eventResult.event?.id || eventResult.data?.id;
-
-      console.log('[Review] Step 6: Event created with ID:', eventId);
-
+      const eventId = createdEvent?.id;
       if (!eventId) {
         throw new Error('Event created but no ID returned');
       }
@@ -190,38 +153,26 @@ export default function ReviewScreen() {
           }
           
           if (guests.length > 0) {
-            // Prepare guest data with event context for invitations
-            const guestPayload = {
-              eventId: eventId,
-              guests: guests.map((guest: any) => ({
+            // The route reads camelCase per guest. This previously sent
+            // `plus_ones`, which is not a key it looks at, so every imported
+            // guest was created with plus_ones 0.
+            //
+            // It also sent `eventDetails` and `sendInvitations: true`. The
+            // route destructures only `{ eventId, guests }` and ignores both,
+            // so no invitation email was ever triggered here despite the flag.
+            // Guests are created; inviting them is a separate step.
+            const { error: guestsError } = await api.guests.createMany(
+              eventId,
+              guests.map((guest: { name: string; email?: string; phone?: string; plus_ones?: number }) => ({
                 name: guest.name,
                 email: guest.email,
-                phone: guest.phone || null,
-                plus_ones: guest.plus_ones || 0,
+                phone: guest.phone,
+                plusOnes: guest.plus_ones ?? 0,
               })),
-              // Pass event details for invitation emails
-              eventDetails: {
-                title,
-                template_type: templateType,
-                start_date: startDate,
-                end_date: endDate,
-                location: location,
-                settings: templateSettings, // Template-specific data for personalized invitations
-              },
-              sendInvitations: true, // Trigger invitation emails
-            };
+            );
 
-            const guestsResponse = await fetch(`${API_URL}/api/guests`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`,
-              },
-              body: JSON.stringify(guestPayload),
-            });
-
-            if (!guestsResponse.ok) {
-              console.error('[Review] Failed to import guests');
+            if (guestsError) {
+              console.error('[Review] Failed to import guests:', guestsError.message);
             }
           }
         } catch (error) {
@@ -246,17 +197,26 @@ export default function ReviewScreen() {
           }
           
           if (timeline.length > 0) {
-            await fetch(`${API_URL}/api/timeline`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                event_id: eventId,
-                blocks: timeline,
-              }),
+            // Written onto the event, not to POST /api/timeline.
+            //
+            // That endpoint creates ONE block from
+            // `{ eventId, label, startTime, duration, type }` in camelCase and
+            // writes it to the `timeline_blocks` table. This was sending
+            // `{ event_id, blocks: [...] }`, so it failed validation with a
+            // 400 every time and the schedule was silently lost, swallowed by
+            // the surrounding catch.
+            //
+            // Even had it been shaped correctly, it would have written to a
+            // table nothing reads: the live schedule is the
+            // `events.timeline_blocks` JSON column, which is what the
+            // activities screen renders.
+            const { error: timelineError } = await api.events.update(eventId, {
+              timeline_blocks: timeline,
             });
+
+            if (timelineError) {
+              console.error('[Review] Failed to save timeline:', timelineError.message);
+            }
           }
         } catch (error) {
           console.error('[Review] Failed to create timeline:', error);
