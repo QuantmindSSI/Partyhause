@@ -4,25 +4,9 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
 import { getApiBaseUrl } from '../../lib/api';
-
-interface CrewStatus {
-  isFollowing: boolean;
-  isPending: boolean;
-  isMutual: boolean;
-  connection: {
-    id: string;
-    created_at: string;
-    notify_on_events: boolean;
-    notify_on_posts: boolean;
-  } | null;
-  request: {
-    id: string;
-    status: string;
-    created_at: string;
-  } | null;
-}
+import { api } from '@/lib/client';
+import type { CrewStatus } from '@partyhause/core';
 
 interface UseCrewStatusResult {
   status: CrewStatus | null;
@@ -38,14 +22,11 @@ export function useCrewStatus(creatorId: string | undefined): UseCrewStatusResul
   const [error, setError] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
-    if (!creatorId || !supabase) {
+    if (!creatorId) {
       setIsLoading(false);
       return;
     }
-
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session?.access_token) {
+    if (!(await api.auth.isAuthenticated())) {
       setIsLoading(false);
       return;
     }
@@ -53,30 +34,17 @@ export function useCrewStatus(creatorId: string | undefined): UseCrewStatusResul
     setIsLoading(true);
     setError(null);
 
-    try {
-      const apiUrl = getApiBaseUrl();
-      const response = await fetch(
-        `${apiUrl}/api/partycrew/toggle?creatorId=${creatorId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-        }
-      );
+    // The Authorization header is attached by the shared transport, so the
+    // manual session lookup and header construction are gone.
+    const { data, error: apiError } = await api.partycrew.status(creatorId);
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch status');
-      }
-
-      const data = await response.json();
+    if (apiError) {
+      setError(apiError.message);
+      console.error('[useCrewStatus Error]:', apiError.message);
+    } else {
       setStatus(data);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to check status';
-      setError(errorMsg);
-      console.error('[useCrewStatus Error]:', err);
-    } finally {
-      setIsLoading(false);
     }
+    setIsLoading(false);
   }, [creatorId]);
 
   useEffect(() => {

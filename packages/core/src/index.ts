@@ -29,7 +29,7 @@ export type {
   PartyCrewResource, UsersResource, NotificationsResource,
   StorageResource, EmailResource, EmailLogsResource,
   GuestCreateInput, GuestUpdateInput, EmailLog, EmailLogInput,
-  CrewStatus, CrewToggleResult, CrewMembersPage, CrewingWithPage, CrewRequestsPage,
+  CrewStatus, CrewConnection, CrewRequest, CrewToggleResult, CrewMembersPage, CrewingWithPage, CrewRequestsPage,
 } from './resources';
 
 export * from './types';
