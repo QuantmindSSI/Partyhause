@@ -10,7 +10,11 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png" />
     <link rel="shortcut icon" href="/icons/favicon-48x48.png" />
-    <link rel="manifest" href="/manifest.json" />
+    <!-- No manifest link here on purpose. vite-plugin-pwa injects the
+         rel=manifest tag pointing at manifest.webmanifest at build time.
+         A hardcoded link to /manifest.json shipped a second, competing
+         manifest in the same document, and its static source in public/
+         disagreed with the generated one on scope and icons. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <meta name="theme-color" content="#6366F1" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
