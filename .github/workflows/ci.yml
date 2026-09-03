@@ -32,6 +32,17 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      # @prisma/client ships as a stub whose types are written by `generate`.
+      # Without this step the package exports nothing, and typechecking
+      # tsconfig.server.json fails with TS2305 "has no exported member
+      # 'PrismaClient'" plus knock-on TS2322 errors where inferred query
+      # results collapse to `unknown`. There is no postinstall hook, so
+      # `npm ci` alone does not produce it. It passes locally only because a
+      # previous manual `prisma generate` left the client in node_modules.
+      # No database connection is required to generate from the schema.
+      - name: Generate Prisma client
+        run: npx prisma generate
+
       - name: Lint
         run: npm run lint
 

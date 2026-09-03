@@ -16,7 +16,7 @@
     "build": "npx vite build",
     "build:web": "npx vite build",
     "build:mobile": "node ./scripts/build-mobile-pwa.cjs",
-    "typecheck": "npx tsc -p tsconfig.app.json && npx tsc -p tsconfig.node.json && npx tsc -p tsconfig.server.json && npx tsc -p packages/core/tsconfig.json",
+    "typecheck": "npx tsc -p tsconfig.app.json && npx tsc -p tsconfig.node.json && npx tsc -p tsconfig.server.json && npx tsc -p packages/core/tsconfig.json && npx tsc --noEmit -p apps/mobile/tsconfig.json",
     "build:check": "npm run typecheck && npm run audit:contracts && npx vite build",
     "lint": "eslint .",
     "preview": "npx vite preview",
@@ -113,7 +113,6 @@
     "@types/testing-library__jest-dom": "^5.14.9",
     "@typescript-eslint/eslint-plugin": "^6.7.2",
     "@typescript-eslint/parser": "^6.7.2",
-    "@vercel/node": "^3.2.0",
     "autoprefixer": "^10.4.15",
     "baseline-browser-mapping": "^2.10.38",
     "eslint": "^8.57.1",
@@ -129,5 +128,9 @@
     "vite-plugin-pwa": "^1.1.0",
     "vitest": "^3.2.4",
     "workbox-window": "^7.3.0"
+  },
+  "overrides": {
+    "body-parser": "1.20.6",
+    "qs": "6.16.0"
   }
 }

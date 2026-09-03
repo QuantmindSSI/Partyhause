@@ -12,24 +12,14 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '@/lib/supabase';
-import { getApiBaseUrl } from '../../../lib/api';
+import { api } from '@/lib/client';
 
-interface Guest {
-  id: string;
-  name: string;
-  email: string;
-  phone?: string;
-  rsvp_status: 'pending' | 'accepted' | 'declined' | 'maybe';
-  plus_ones: number;
-  plus_ones_names?: string[];
-  dietary_restrictions?: string;
-  notes?: string;
-  checked_in: boolean;
-  checked_in_at?: string;
-  invited_at: string;
-  rsvp_responded_at?: string;
-}
+import type { Guest } from '@partyhause/core';
+
+// The local Guest interface this replaces declared four columns the schema does
+// not have: plus_ones_names, notes, invited_at and rsvp_responded_at. Because
+// the type asserted they were present, the UI read them without guarding, and
+// `invited_at` in particular rendered as "Invited: Invalid Date" on every row.
 
 interface GuestStats {
   total: number;
@@ -40,7 +30,6 @@ interface GuestStats {
   checked_in: number;
 }
 
-const API_BASE_URL = getApiBaseUrl();
 
 export default function EventGuestsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -77,136 +66,57 @@ export default function EventGuestsScreen() {
 
       console.log('[Guest List] Fetching guests for event:', id);
 
-      // Get auth token from Supabase session
-      if (!supabase) {
-        console.error('[Guest List] Supabase client not initialized');
-        Alert.alert('Configuration Error', 'Supabase client not initialized');
-        setLoading(false);
-        setRefreshing(false);
-        return;
-      }
-      
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.error('[Guest List] Session error:', sessionError);
-      }
-      
-      const token = session?.access_token;
-      
-      if (!token) {
-        console.error('[Guest List] No auth token found');
+      if (!(await api.auth.isAuthenticated())) {
         Alert.alert(
-          'Authentication Required', 
+          'Authentication Required',
           'Please sign in to view guests',
-          [
-            { text: 'OK', style: 'cancel' }
-          ]
+          [{ text: 'OK', style: 'cancel' }]
         );
         setLoading(false);
         setRefreshing(false);
         return;
       }
 
-      console.log('[Guest List] Making API request to:', `${API_BASE_URL}/api/guests?eventId=${id}`);
-      
-      const response = await fetch(`${API_BASE_URL}/api/guests?eventId=${id}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      // The content-type sniffing and HTML-error-page detection this replaces
+      // are handled by the shared transport, which parses defensively and
+      // reports a message rather than throwing on a non-JSON body.
+      const { data, error: apiError } = await api.guests.listForEventWithStats(id);
 
-      console.log('[Guest List] Response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[Guest List] API error:', response.status, errorText);
-        
-        if (response.status === 401 || response.status === 403) {
+      if (apiError) {
+        console.error('[Guest List] API error:', apiError.status, apiError.message);
+        if (apiError.status === 401 || apiError.status === 403) {
           Alert.alert(
-            'Unauthorized', 
+            'Unauthorized',
             'You do not have permission to view this guest list. Only event hosts can view guests.',
-            [
-              { text: 'OK', style: 'cancel' }
-            ]
+            [{ text: 'OK', style: 'cancel' }]
           );
-        } else if (response.status === 404) {
-          Alert.alert(
-            'Event Not Found',
-            'This event does not exist or has been deleted',
-            [
-              { text: 'OK', style: 'cancel' }
-            ]
-          );
+        } else if (apiError.status === 404) {
+          Alert.alert('Event Not Found', 'This event does not exist or has been deleted',
+            [{ text: 'OK', style: 'cancel' }]);
         } else {
-          Alert.alert(
-            'Error',
-            `Failed to load guest list (${response.status}). Please try again.`
-          );
+          Alert.alert('Error', `Failed to load guest list. ${apiError.message}`,
+            [{ text: 'Retry', onPress: () => fetchGuests() }, { text: 'Cancel', style: 'cancel' }]);
         }
         setLoading(false);
         setRefreshing(false);
         return;
       }
 
-      // Check content type before parsing JSON
-      const contentType = response.headers.get('content-type');
-      console.log('[Guest List] Content-Type:', contentType);
-      
-      if (!contentType || !contentType.includes('application/json')) {
-        const responseText = await response.text();
-        console.error('[Guest List] Non-JSON response received:');
-        console.error('[Guest List] First 500 chars:', responseText.substring(0, 500));
-        console.error('[Guest List] URL was:', `${API_BASE_URL}/api/guests?eventId=${id}`);
-        
-        // Check if it's an HTML error page
-        if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
-          Alert.alert(
-            'API Error',
-            'The server returned an HTML page instead of data. This might be:\n\n' +
-            '1. API endpoint not deployed\n' +
-            '2. Route configuration issue\n' +
-            '3. Server error page\n\n' +
-            'Check console logs for details.',
-            [
-              { text: 'Retry', onPress: () => fetchGuests() },
-              { text: 'Cancel', style: 'cancel' }
-            ]
-          );
-        } else {
-          Alert.alert(
-            'Error',
-            'Server returned invalid response format.',
-            [
-              { text: 'Retry', onPress: () => fetchGuests() },
-              { text: 'Cancel', style: 'cancel' }
-            ]
-          );
-        }
-        setLoading(false);
-        setRefreshing(false);
-        return;
-      }
+      setGuests(data?.guests ?? []);
 
-      const data = await response.json();
-      console.log('[Guest List] Loaded successfully:', data.guests?.length || 0, 'guests');
-      
-      setGuests(data.guests || []);
-      
-      // Map API response stats (camelCase) to component stats (snake_case)
-      if (data.stats) {
+      // The server counts these; re-deriving them here would miss that
+      // `accepted` also covers the legacy 'confirmed' status. Only the
+      // checked-in key needs renaming, camelCase on the wire and snake_case
+      // in this component's state.
+      if (data?.stats) {
         setStats({
-          total: data.stats.total || 0,
-          accepted: data.stats.accepted || 0,
-          declined: data.stats.declined || 0,
-          pending: data.stats.pending || 0,
-          maybe: data.stats.maybe || 0,
-          checked_in: data.stats.checkedIn || 0,
+          total: data.stats.total,
+          accepted: data.stats.accepted,
+          declined: data.stats.declined,
+          pending: data.stats.pending,
+          maybe: data.stats.maybe,
+          checked_in: data.stats.checkedIn,
         });
-        console.log('[Guest List] Stats:', data.stats);
-      } else {
-        console.log('[Guest List] No stats found in response');
       }
     } catch (error) {
       console.error('[Guest List] Exception:', error);
@@ -233,55 +143,28 @@ export default function EventGuestsScreen() {
     try {
       console.log('[Guest List] Checking in guest:', guestId, 'Current status:', currentStatus);
       
-      // Get auth token from Supabase session
-      if (!supabase) {
-        console.error('[Guest List] Supabase client not initialized');
-        Alert.alert('Configuration Error', 'Supabase client not initialized');
-        return;
-      }
-      
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.error('[Guest List] Session error:', sessionError);
-      }
-      
-      const token = session?.access_token;
-      
-      if (!token) {
-        console.error('[Guest List] No auth token found');
+      if (!(await api.auth.isAuthenticated())) {
         Alert.alert('Authentication Required', 'Please sign in to check in guests');
         return;
       }
 
-      console.log('[Guest List] Updating check-in status to:', !currentStatus);
-      
-      const response = await fetch(`${API_BASE_URL}/api/guests?id=${guestId}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          checkedIn: !currentStatus, // API expects camelCase
-        }),
+      // This previously sent PATCH /api/guests?id=<id>. The route is
+      // PUT /api/guests/:id and there is no PATCH handler at all, so the
+      // request 404'd and check-in never persisted. The toggle would flip in
+      // the UI and revert on the next refresh.
+      const { error: apiError } = await api.guests.update(guestId, {
+        checkedIn: !currentStatus,
       });
 
-      console.log('[Guest List] Check-in response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[Guest List] Check-in API error:', response.status, errorText);
-        
-        if (response.status === 401 || response.status === 403) {
+      if (apiError) {
+        console.error('[Guest List] Check-in API error:', apiError.status, apiError.message);
+        if (apiError.status === 401 || apiError.status === 403) {
           Alert.alert('Unauthorized', 'You do not have permission to check in guests');
         } else {
-          Alert.alert('Error', `Failed to update check-in status (${response.status})`);
+          Alert.alert('Error', `Failed to update check-in status. ${apiError.message}`);
         }
         return;
       }
-
-      console.log('[Guest List] Check-in updated successfully');
 
       // Update local state
       setGuests((prev) =>
@@ -480,31 +363,26 @@ export default function EventGuestsScreen() {
               </View>
 
               {/* Additional Info */}
-              {(guest.plus_ones > 0 || guest.dietary_restrictions || guest.notes) && (
+              {(guest.plus_ones > 0 || (guest.dietary_restrictions?.length ?? 0) > 0) && (
                 <View style={styles.guestDetails}>
                   {guest.plus_ones > 0 && (
                     <View style={styles.detailRow}>
                       <Ionicons name="people" size={16} color="#6b7280" />
-                      <Text style={styles.detailText}>
-                        +{guest.plus_ones} guest{guest.plus_ones > 1 ? 's' : ''}
-                        {guest.plus_ones_names && guest.plus_ones_names.length > 0
-                          ? `: ${guest.plus_ones_names.join(', ')}`
-                          : ''}
-                      </Text>
-                    </View>
-                  )}
-                  {guest.dietary_restrictions && (
-                    <View style={styles.detailRow}>
-                      <Ionicons name="restaurant" size={16} color="#6b7280" />
-                      <Text style={styles.detailText}>{guest.dietary_restrictions}</Text>
-                    </View>
-                  )}
-                  {guest.notes && (
-                    <View style={styles.detailRow}>
-                      <Ionicons name="document-text" size={16} color="#6b7280" />
-                      <Text style={styles.detailText}>{guest.notes}</Text>
-                    </View>
-                  )}
+                        <Text style={styles.detailText}>
+                          +{guest.plus_ones} guest{guest.plus_ones > 1 ? 's' : ''}
+                        </Text>
+                      </View>
+                    )}
+                    {guest.dietary_restrictions && guest.dietary_restrictions.length > 0 && (
+                      <View style={styles.detailRow}>
+                        <Ionicons name="restaurant" size={16} color="#6b7280" />
+                        {/* text[] in Postgres, so an array here. Rendering it
+                            directly concatenated the entries with no separator. */}
+                        <Text style={styles.detailText}>
+                          {guest.dietary_restrictions.join(', ')}
+                        </Text>
+                      </View>
+                    )}
                 </View>
               )}
 
@@ -533,14 +411,20 @@ export default function EventGuestsScreen() {
                 </TouchableOpacity>
               )}
 
-              {/* Timestamps */}
+              {/* Timestamps. `created_at` is when the guest row was added,
+                  which is the closest the schema has to an invite time; there
+                  is no invited_at column, and reading it produced an
+                  "Invalid Date" on every row. There is no rsvp_responded_at
+                  either, so the second line is gone rather than always hidden. */}
               <View style={styles.timestamps}>
-                <Text style={styles.timestampText}>
-                  Invited: {new Date(guest.invited_at).toLocaleDateString()}
-                </Text>
-                {guest.rsvp_responded_at && (
+                {guest.created_at && (
                   <Text style={styles.timestampText}>
-                    Responded: {new Date(guest.rsvp_responded_at).toLocaleDateString()}
+                    Added: {new Date(guest.created_at).toLocaleDateString()}
+                  </Text>
+                )}
+                {guest.checked_in_at && (
+                  <Text style={styles.timestampText}>
+                    Checked in: {new Date(guest.checked_in_at).toLocaleDateString()}
                   </Text>
                 )}
               </View>

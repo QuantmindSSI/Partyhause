@@ -1,7 +1,7 @@
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { supabase } from '@/lib/supabase';
+import { api } from '@/lib/client';
 
 export default function CreateEventLayout() {
   const router = useRouter();
@@ -13,21 +13,16 @@ export default function CreateEventLayout() {
   }, []);
 
   const checkAuth = async () => {
-    if (!supabase) {
-      setIsAuthenticated(false);
-      setIsChecking(false);
-      router.replace('/(tabs)');
-      return;
-    }
-
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
-        router.replace('/(tabs)');
-      } else {
+      // Reads the persisted token; no network round trip, so the gate does not
+      // block the create flow on API latency.
+      if (await api.auth.isAuthenticated()) {
         setIsAuthenticated(true);
+      } else {
+        router.replace('/(tabs)');
       }
     } catch (error) {
+      // Storage failures land here. Failing closed is correct for an auth gate.
       console.error('Auth check error:', error);
       router.replace('/(tabs)');
     } finally {

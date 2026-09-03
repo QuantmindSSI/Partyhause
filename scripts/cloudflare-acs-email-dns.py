@@ -38,6 +38,21 @@ API_ROOT = "https://api.cloudflare.com/client/v4"
 TIMEOUT_SECONDS = 30
 DEFAULT_TTL = 3600
 
+# Azure Container Apps custom-domain binding for the web app.
+# Two records are required before `az containerapp hostname bind` will issue a
+# managed certificate:
+#   asuid.www  TXT    the container app's customDomainVerificationId
+#   www        CNAME  the container app's default FQDN
+# www.partyhause.com currently points at ca-web-partyhause-l2apcqjqxo6qu, a
+# container app in an environment that no longer exists, so the domain has been
+# serving nothing.
+AZURE_WEB_FQDN = "ca-web-partyhause-gipkzrenusqpy.calmtree-5b646dc8.eastus2.azurecontainerapps.io"
+AZURE_DOMAIN_VERIFICATION_ID = "A1649ACA37F3077A3425C0DD96A3D8E44AFFBAF436A1C392628176A375203CB8"
+# Static ingress IP of the Container Apps environment, used for the apex A
+# record. Stable for the life of the environment; it changes if the environment
+# is recreated, which is exactly what stranded the previous www CNAME.
+AZURE_ENV_STATIC_IP = "20.22.165.141"
+
 DKIM_RECORDS = [
     ("selector1-azurecomm-prod-net._domainkey",
      "selector1-azurecomm-prod-net._domainkey.azurecomm.net"),
@@ -96,6 +111,35 @@ def fqdn_for(zone_name: str, name: str) -> str:
     return zone_name if name in ("@", zone_name) else f"{name}.{zone_name}"
 
 
+def decide_upsert(existing: list[dict], content: str) -> str:
+    """
+    Decide what an upsert should do, given the records already present.
+
+    Pure: no I/O, so the decision can be tested without a Cloudflare account.
+    Cloudflare returns TXT content wrapped in quotes while callers pass it
+    bare, so both sides are unquoted before comparison; skipping that makes
+    every TXT record look permanently out of date and rewrite on each run.
+
+    :returns: ``unchanged`` when a record already holds this exact content,
+              otherwise ``create``.
+    """
+    wanted = content.strip('"')
+    for record in existing:
+        if record.get("content", "").strip('"') == wanted:
+            return "unchanged"
+    return "create"
+
+
+def render(action: str, rtype: str, fqdn: str, content: str) -> str:
+    """Format one planned or completed action for the operator log."""
+    symbols = {
+        "unchanged": f"    [=] {rtype} {fqdn} already correct",
+        "create": f"    [+] created {rtype} {fqdn} -> {content}",
+        "would-create": f"    [+] WOULD CREATE {rtype} {fqdn} -> {content}",
+    }
+    return symbols[action]
+
+
 def upsert(token: str, zid: str, zone_name: str, rtype: str, name: str,
            content: str, dry_run: bool) -> str:
     """
@@ -104,22 +148,28 @@ def upsert(token: str, zid: str, zone_name: str, rtype: str, name: str,
     Always sets ``proxied=False``: a proxied DKIM CNAME can never verify, and
     none of these record types benefit from proxying.
 
+    The decision is made by ``decide_upsert`` and the wording by ``render``, so
+    this function only performs I/O. ``--dry-run`` returns the decision without
+    issuing the write.
+
     :returns: One of ``unchanged``, ``created``, ``would-create``.
     """
     fqdn = fqdn_for(zone_name, name)
-    existing = find_records(token, zid, rtype, fqdn)
-    for record in existing:
-        if record.get("content", "").strip('"') == content.strip('"'):
-            print(f"    [=] {rtype} {fqdn} already correct")
-            return "unchanged"
+    action = decide_upsert(find_records(token, zid, rtype, fqdn), content)
+
+    if action == "unchanged":
+        print(render("unchanged", rtype, fqdn, content))
+        return "unchanged"
+
     if dry_run:
-        print(f"    [+] WOULD CREATE {rtype} {fqdn} -> {content}")
+        print(render("would-create", rtype, fqdn, content))
         return "would-create"
+
     request(token, "POST", f"zones/{zid}/dns_records", {
         "type": rtype, "name": fqdn, "content": content,
         "ttl": DEFAULT_TTL, "proxied": False,
     })
-    print(f"    [+] created {rtype} {fqdn} -> {content}")
+    print(render("create", rtype, fqdn, content))
     return "created"
 
 
@@ -168,14 +218,103 @@ def apply_spf(token: str, zid: str, zone_name: str, dry_run: bool) -> str:
     return "updated"
 
 
-def main() -> int:
+def delete_records(token: str, zid: str, records: list[dict], reason: str,
+                   dry_run: bool) -> int:
+    """
+    Delete every record in ``records``.
+
+    Callers select what to delete; this only removes. Keeping selection out of
+    here is what stops an over-broad query from taking the apex MX records with
+    it, which would silently stop inbound mail.
+
+    :returns: Count of records deleted, or that would be deleted in a dry run.
+    """
+    for record in records:
+        print(f"    [-] {reason}: {record.get('content')}")
+        if not dry_run:
+            request(token, "DELETE", f"zones/{zid}/dns_records/{record['id']}")
+            print("    [-] removed")
+    return len(records)
+
+
+def publish_email_records(token: str, zid: str, zone: str,
+                          verification_token: str, dmarc_policy: str,
+                          dry_run: bool) -> None:
+    """Publish the DKIM, ownership, SPF and DMARC records for ACS email."""
+    print("==> DKIM CNAMEs (forced DNS-only; a proxied DKIM record never verifies)")
+    for name, target in DKIM_RECORDS:
+        upsert(token, zid, zone, "CNAME", name, target, dry_run)
+
+    print("==> Domain ownership TXT")
+    upsert(token, zid, zone, "TXT", zone,
+           f"ms-domain-verification={verification_token}", dry_run)
+
+    apply_spf(token, zid, zone, dry_run)
+
+    print(f"==> DMARC (p={dmarc_policy})")
+    upsert(token, zid, zone, "TXT", "_dmarc",
+           f"v=DMARC1; p={dmarc_policy}; rua=mailto:dmarc@{zone}; fo=1",
+           dry_run)
+
+
+def publish_azure_web_records(token: str, zid: str, zone: str, dry_run: bool) -> None:
+    """
+    Point the apex and www at the web Container App.
+
+    www gets a CNAME to the app FQDN. The apex gets an A record to the
+    environment's static IP, because a CNAME cannot sit at the zone root
+    alongside SOA and NS. Cloudflare offers CNAME flattening, but flattening
+    requires the record to be proxied and a proxied record cannot complete
+    Azure's managed-certificate validation, so the A record is the only form
+    that leaves TLS issuable.
+
+    Both names also need an ownership TXT: ``asuid.www`` for the subdomain and
+    ``asuid`` for the apex, with no label.
+    """
+    print("==> Azure Container Apps custom domains")
+
+    # Replace rather than add: the previous records pointed at an app in an
+    # environment that no longer exists, which is why neither name resolved.
+    stale_www = [r for r in find_records(token, zid, "CNAME", f"www.{zone}")
+                 if r.get("content") != AZURE_WEB_FQDN]
+    delete_records(token, zid, stale_www, "stale CNAME www", dry_run)
+
+    upsert(token, zid, zone, "TXT", "asuid.www", AZURE_DOMAIN_VERIFICATION_ID, dry_run)
+    upsert(token, zid, zone, "CNAME", "www", AZURE_WEB_FQDN, dry_run)
+
+    # A CNAME and an A record cannot coexist on one name, so Cloudflare rejects
+    # the apex A record with error 81054 until the CNAME is gone. Removed here
+    # rather than by hand so a re-run cannot half-apply. Only CNAMEs are
+    # selected: the apex MX, TXT and NS records are a different type and must
+    # survive, since deleting the Zoho MX records would stop inbound mail.
+    apex_cnames = find_records(token, zid, "CNAME", zone)
+    delete_records(token, zid, apex_cnames,
+                   f"apex CNAME {zone} (blocks the A record)", dry_run)
+
+    stale_apex_a = [r for r in find_records(token, zid, "A", zone)
+                    if r.get("content") != AZURE_ENV_STATIC_IP]
+    delete_records(token, zid, stale_apex_a, f"stale A {zone}", dry_run)
+
+    upsert(token, zid, zone, "TXT", "asuid", AZURE_DOMAIN_VERIFICATION_ID, dry_run)
+    upsert(token, zid, zone, "A", "@", AZURE_ENV_STATIC_IP, dry_run)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Build the CLI. Split out so the parser can be exercised in tests."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--zone", default="partyhause.com")
     parser.add_argument("--verification-token", required=True,
                         help="Value of the Azure ms-domain-verification TXT record")
-    parser.add_argument("--dmarc-policy", default="none", choices=["none", "quarantine", "reject"])
+    parser.add_argument("--dmarc-policy", default="none",
+                        choices=["none", "quarantine", "reject"])
     parser.add_argument("--dry-run", action="store_true")
-    args = parser.parse_args()
+    parser.add_argument("--azure-web", action="store_true",
+                        help="Also publish the Azure Container Apps custom-domain records")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
 
     token = (os.environ.get("CLOUDFLARE_API_TOKEN") or "").strip()
     if not token:
@@ -188,26 +327,17 @@ def main() -> int:
         zid = zone_id(token, zone)
         print(f"    zone id: {zid}")
 
-        print("==> DKIM CNAMEs (forced DNS-only; a proxied DKIM record never verifies)")
-        for name, target in DKIM_RECORDS:
-            upsert(token, zid, zone, "CNAME", name, target, args.dry_run)
+        publish_email_records(token, zid, zone, args.verification_token,
+                              args.dmarc_policy, args.dry_run)
 
-        print("==> Domain ownership TXT")
-        upsert(token, zid, zone, "TXT", zone,
-               f"ms-domain-verification={args.verification_token}", args.dry_run)
-
-        apply_spf(token, zid, zone, args.dry_run)
-
-        print(f"==> DMARC (p={args.dmarc_policy})")
-        upsert(token, zid, zone, "TXT", "_dmarc",
-               f"v=DMARC1; p={args.dmarc_policy}; rua=mailto:dmarc@{zone}; fo=1",
-               args.dry_run)
+        if args.azure_web:
+            publish_azure_web_records(token, zid, zone, args.dry_run)
     except CloudflareError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
     print()
-    print("Done." if not args.dry_run else "Dry run complete, nothing changed.")
+    print("Dry run complete, nothing changed." if args.dry_run else "Done.")
     return 0
 
 

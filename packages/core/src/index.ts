@@ -26,10 +26,10 @@ export type { AsyncStorageLike, WebStorageLike } from './http/storage-adapters';
 export type { AuthResource } from './resources/auth';
 export type {
   EventsResource, GuestsResource, TimelineResource, PollsResource,
-  PartyCrewResource, UsersResource, NotificationsResource,
+  PartyCrewResource, UsersResource, FeedResource, NotificationsResource,
   StorageResource, EmailResource, EmailLogsResource,
   GuestCreateInput, GuestUpdateInput, EmailLog, EmailLogInput,
-  CrewStatus, CrewToggleResult, CrewMembersPage, CrewingWithPage, CrewRequestsPage,
+  CrewStatus, CrewConnection, CrewRequest, CrewToggleResult, CrewMembersPage, CrewingWithPage, CrewRequestsPage,
 } from './resources';
 
 export * from './types';

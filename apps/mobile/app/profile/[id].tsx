@@ -18,7 +18,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useUserProfile } from '@/hooks/partycrew/useUserProfile';
 import { JoinCrewButton } from '@/components/partycrew/JoinCrewButton';
-import { supabase } from '@/lib/supabase';
+import { api } from '@/lib/client';
 
 export default function ProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -28,9 +28,13 @@ export default function ProfileScreen() {
 
   React.useEffect(() => {
     const getUserId = async () => {
-      if (!supabase) return;
-      const { data: { session } } = await supabase.auth.getSession();
-      setCurrentUserId(session?.user?.id || null);
+      // Reads the cached session from AsyncStorage. The previous version went
+      // through the Supabase stub, which is null on mobile because no
+      // EXPO_PUBLIC_SUPABASE_* values are configured, so this always bailed and
+      // currentUserId stayed null: the profile could never be recognised as
+      // the viewer's own.
+      const user = await api.auth.getCachedUser();
+      setCurrentUserId(user?.id ?? null);
     };
     getUserId();
   }, []);
@@ -48,18 +52,14 @@ export default function ProfileScreen() {
       <View style={styles.errorContainer}>
         <Ionicons name="person-circle-outline" size={80} color="#CBD5E1" />
         <Text style={styles.errorTitle}>Profile Not Found</Text>
-        <Text style={styles.errorText}>
-          This user profile hasn't been created yet.{'\n\n'}
-          If this is your profile, you need to create it in Supabase first.
-        </Text>
+          <Text style={styles.errorText}>
+            This user profile hasn't been created yet.
+          </Text>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Text style={styles.backButtonText}>Go Back</Text>
         </TouchableOpacity>
-        <Text style={styles.helpText}>
-          💡 Check scripts/create-user-profile.sql for instructions
-        </Text>
-      </View>
-    );
+        </View>
+      );
   }
 
   const isOwnProfile = currentUserId === profile.id;
