@@ -17,13 +17,13 @@ import { createAuthResource } from './resources/auth';
 import type { AuthResource } from './resources/auth';
 import {
   createEventsResource, createGuestsResource, createTimelineResource,
-  createPollsResource, createPartyCrewResource, createUsersResource,
+  createPollsResource, createPartyCrewResource, createUsersResource, createFeedResource,
   createNotificationsResource, createStorageResource, createEmailResource,
   createEmailLogsResource,
 } from './resources';
 import type {
   EventsResource, GuestsResource, TimelineResource, PollsResource,
-  PartyCrewResource, UsersResource, NotificationsResource, StorageResource, EmailResource,
+  PartyCrewResource, UsersResource, FeedResource, NotificationsResource, StorageResource, EmailResource,
   EmailLogsResource,
 } from './resources';
 
@@ -34,7 +34,8 @@ export interface ApiClient {
   timeline: TimelineResource;
   polls: PollsResource;
   partycrew: PartyCrewResource;
-  users: UsersResource;
+    users: UsersResource;
+    feed: FeedResource;
   notifications: NotificationsResource;
   storage: StorageResource;
   email: EmailResource;
@@ -63,7 +64,8 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
     timeline: createTimelineResource(transport),
     polls: createPollsResource(transport),
     partycrew: createPartyCrewResource(transport),
-    users: createUsersResource(transport),
+      users: createUsersResource(transport),
+      feed: createFeedResource(transport),
     notifications: createNotificationsResource(transport),
     storage: createStorageResource(transport),
     email: createEmailResource(transport),

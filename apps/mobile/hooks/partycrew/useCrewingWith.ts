@@ -4,21 +4,15 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
-import { getApiBaseUrl } from '../../lib/api';
+import type { CrewCreatorRow } from '@partyhause/core';
+import { api } from '@/lib/client';
 
-interface Creator {
-  id: string;
-  username: string;
-  display_name: string;
-  avatar_url: string | null;
-  bio: string | null;
-  is_verified: boolean;
-  is_mutual: boolean;
-  account_type: string;
-  events_hosted: number;
-  followed_at: string;
-}
+/**
+ * Re-exported so existing consumers that imported the local `Creator` shape
+ * keep compiling. The canonical definition now lives in @partyhause/core and
+ * is checked against the route by scripts/audit-contracts.cjs.
+ */
+export type Creator = CrewCreatorRow;
 
 interface UseCrewingWithResult {
   creators: Creator[];
@@ -40,38 +34,37 @@ export function useCrewingWith(
   const [hasMore, setHasMore] = useState(false);
 
   const fetchCreators = useCallback(async (reset: boolean = false) => {
-    if (!supabase) {
+    if (!(await api.auth.isAuthenticated())) {
       setIsLoading(false);
       return;
     }
 
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session?.access_token) {
-        setIsLoading(false);
-        return;
-      }
+    // The route reads `userId` straight off the query string and never falls
+    // back to the bearer token's subject, so omitting it produces a 404 rather
+    // than "my own crew". Resolve it from the cached session instead.
+    let targetUserId = userId;
+    if (!targetUserId) {
+      const cached = await api.auth.getCachedUser();
+      targetUserId = cached?.id;
+    }
+    if (!targetUserId) {
+      setIsLoading(false);
+      return;
+    }
 
-      const targetUserId = userId || session.user.id;
-      const currentOffset = reset ? 0 : offset;
+    const currentOffset = reset ? 0 : offset;
 
-      const apiUrl = getApiBaseUrl();
-      const response = await fetch(
-        `${apiUrl}/api/partycrew/crewing-with?userId=${targetUserId}&limit=${limit}&offset=${currentOffset}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-        }
-      );
+    // The Authorization header is attached by the shared transport, so the
+    // manual session lookup and URL assembly are gone.
+    const { data, error: apiError } = await api.partycrew.crewingWith(targetUserId, {
+      limit,
+      offset: currentOffset,
+    });
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch creators');
-      }
-
-      const data = await response.json();
-      
+    if (apiError) {
+      setError(apiError.message);
+      console.error('[useCrewingWith Error]:', apiError.message);
+    } else if (data) {
       if (reset) {
         setCreators(data.creators);
         setOffset(limit);
@@ -79,16 +72,10 @@ export function useCrewingWith(
         setCreators(prev => [...prev, ...data.creators]);
         setOffset(prev => prev + limit);
       }
-      
       setHasMore(data.has_more);
       setError(null);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to load creators';
-      setError(errorMsg);
-      console.error('[useCrewingWith Error]:', err);
-    } finally {
-      setIsLoading(false);
     }
+    setIsLoading(false);
   }, [userId, limit, offset]);
 
   useEffect(() => {
