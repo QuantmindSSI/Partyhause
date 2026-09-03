@@ -34,8 +34,6 @@ export const AuthScreen = ({
   userIntent = 'explore_features',
   onBackToLanding 
 }: AuthScreenProps) => {
-  console.log('🎨 AUTH_SCREEN: AuthScreen component is rendering');
-
   // Add conditional motion component logic for better compatibility
   const MotionDiv = process.env.NODE_ENV === 'test' ? 'div' : motion.div;
   const MotionH1 = process.env.NODE_ENV === 'test' ? 'h1' : motion.h1;

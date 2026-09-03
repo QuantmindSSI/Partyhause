@@ -163,7 +163,7 @@ export const PWAInstallBanner = () => {
 
               <div className="flex items-start gap-4">
                 <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg">
-                  <img src="/partyhause-icon.svg" alt="PartyHause" className="w-12 h-12" />
+                  <img src="/icons/icon-192.png" alt="PartyHause" className="w-12 h-12" />
                 </div>
 
                 <div className="flex-1">

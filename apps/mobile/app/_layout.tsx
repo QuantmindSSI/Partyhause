@@ -19,18 +19,23 @@ export default function RootLayout() {
 
   // Register service worker for PWA on web
   useEffect(() => {
-    if (Platform.OS === 'web' && 'serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker
-          .register('/sw.js')
-          .then((registration) => {
-            console.log('Service Worker registered:', registration);
-          })
-          .catch((error) => {
-            console.error('Service Worker registration failed:', error);
-          });
-      });
+    if (Platform.OS !== 'web' || !('serviceWorker' in navigator)) {
+      return;
     }
+
+    const registerServiceWorker = () => {
+      navigator.serviceWorker.register('/sw.js').catch((error) => {
+        console.error('Service Worker registration failed:', error);
+      });
+    };
+
+    if (document.readyState === 'complete') {
+      registerServiceWorker();
+      return;
+    }
+
+    window.addEventListener('load', registerServiceWorker, { once: true });
+    return () => window.removeEventListener('load', registerServiceWorker);
   }, []);
 
   return (

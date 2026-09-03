@@ -23,6 +23,8 @@
  *   1. No cycles anywhere in the emitted chunk import graph.
  *   2. react-vendor imports nothing, so React cannot be initialised late.
  *   3. Exactly one rel=manifest tag, since two competing manifests shipped once.
+ *   4. Both frontend manifests reference real PNG files with honest dimensions.
+ *   5. Docker receives the public assets referenced by the generated manifest.
  *
  * The suite is skipped when dist/ is absent so `npm run test:run` still works
  * without a prior build; `npm run build:check` builds before testing.
@@ -32,9 +34,42 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const DIST = path.resolve(process.cwd(), 'dist');
+const ROOT = process.cwd();
+const DIST = path.resolve(ROOT, 'dist');
 const ASSETS = path.join(DIST, 'assets');
+const MOBILE_PUBLIC = path.resolve(ROOT, 'apps/mobile/public');
 const built = fs.existsSync(ASSETS);
+
+interface ManifestIcon {
+  src: string;
+  sizes: string;
+  type?: string;
+}
+
+interface WebManifest {
+  icons?: ManifestIcon[];
+  shortcuts?: Array<{ icons?: ManifestIcon[] }>;
+}
+
+function assertManifestIcons(root: string, manifest: WebManifest): void {
+  const icons = [
+    ...(manifest.icons ?? []),
+    ...(manifest.shortcuts ?? []).flatMap((shortcut) => shortcut.icons ?? []),
+  ];
+  expect(icons.length, 'manifest declares no icons').toBeGreaterThan(0);
+
+  for (const icon of icons) {
+    const relativePath = new URL(icon.src, 'https://partyhause.test').pathname.replace(/^\/+/, '');
+    const iconPath = path.join(root, relativePath);
+    expect(fs.existsSync(iconPath), `missing manifest icon: ${icon.src}`).toBe(true);
+
+    if (icon.type === 'image/png') {
+      const png = fs.readFileSync(iconPath);
+      expect([...png.subarray(0, 8)], `${icon.src} is not a PNG`).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+      expect(`${png.readUInt32BE(16)}x${png.readUInt32BE(20)}`, `${icon.src} dimensions`).toBe(icon.sizes);
+    }
+  }
+}
 
 /** Relative chunk imports Rollup emits, e.g. `from"./vendor-abc.js"`. */
 function readChunkGraph(): Map<string, Set<string>> {
@@ -120,5 +155,35 @@ describe.skipIf(!built)('emitted index.html', () => {
     // A missing file falls through nginx's SPA rewrite and is parsed as HTML,
     // which is the "Manifest: Line 1, column 1, Syntax error" console failure.
     expect(fs.existsSync(path.join(DIST, href!.replace(/^\//, '')))).toBe(true);
+  });
+
+  it('ships every image declared by the web app manifest', () => {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(DIST, 'manifest.webmanifest'), 'utf8'),
+    ) as WebManifest;
+    assertManifestIcons(DIST, manifest);
+  });
+});
+
+describe('mobile PWA manifest', () => {
+  it('references valid, correctly sized icon files', () => {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(MOBILE_PUBLIC, 'manifest.json'), 'utf8'),
+    ) as WebManifest;
+    assertManifestIcons(MOBILE_PUBLIC, manifest);
+  });
+});
+
+describe('web container PWA assets', () => {
+  it('keeps the Vite public directory in the Docker build context', () => {
+    const ignoredPaths = fs.readFileSync(path.join(ROOT, '.dockerignore'), 'utf8')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line !== '' && !line.startsWith('#'));
+    const excludesPublic = ignoredPaths.some((entry) => {
+      const normalized = entry.replace(/^\/+/, '');
+      return normalized === 'public' || normalized.startsWith('public/');
+    });
+    expect(excludesPublic, 'public PWA assets are excluded from the Docker image').toBe(false);
   });
 });

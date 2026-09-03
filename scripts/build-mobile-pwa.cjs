@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Build script for deploying React Native Expo app as PWA
- * This script builds the Expo web app and prepares it for Vercel deployment
+ * Build the React Native Expo app as a standalone static PWA artifact.
  */
 
 const { execSync } = require('child_process');
@@ -14,7 +13,20 @@ console.log('🚀 Building PartyHause Mobile as PWA...');
 // Directories
 const rootDir = path.join(__dirname, '..');
 const mobileDir = path.join(rootDir, 'apps/mobile');
-const distDir = path.join(rootDir, 'dist');
+const distDir = path.join(mobileDir, 'dist');
+
+function collectHtmlFiles(directory) {
+  const htmlFiles = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      htmlFiles.push(...collectHtmlFiles(entryPath));
+    } else if (entry.isFile() && entry.name.endsWith('.html')) {
+      htmlFiles.push(entryPath);
+    }
+  }
+  return htmlFiles;
+}
 
 // Install dependencies for the workspace (including mobile)
 console.log('📦 Installing workspace dependencies...');
@@ -29,7 +41,8 @@ try {
 
 // Build Expo web app
 console.log('🔨 Building Expo web app...');
-execSync(`npx expo export --platform web --output-dir ${distDir}`, {
+fs.rmSync(distDir, { recursive: true, force: true });
+execSync(`npx expo export --platform web --output-dir "${distDir}"`, {
   cwd: mobileDir,
   stdio: 'inherit'
 });
@@ -68,39 +81,58 @@ const iconFiles = [
   'icon.png',
   'favicon.png',
   'icon-192.png',
-  'icon-512.png'
+  'icon-512.png',
+  'icon-maskable-192.png',
+  'icon-maskable-512.png',
+  'shortcut-create.png',
+  'shortcut-events.png',
+  'badge.png'
 ];
 
 iconFiles.forEach(iconFile => {
   const sourcePath = path.join(assetsDir, iconFile);
   const destPath = path.join(distDir, iconFile);
-  
-  if (fs.existsSync(sourcePath)) {
-    fs.copyFileSync(sourcePath, destPath);
-    console.log(`  ✓ Copied ${iconFile}`);
-  } else {
-    console.log(`  ⚠️  ${iconFile} not found, skipping`);
+
+  if (!fs.existsSync(sourcePath)) {
+    throw new Error(`Required PWA icon not found: ${sourcePath}`);
   }
+
+  fs.copyFileSync(sourcePath, destPath);
+  console.log(`  ✓ Copied ${iconFile}`);
 });
 
-// Fix HTML to add type="module" to script tags
-console.log('🔧 Fixing HTML script tags...');
-const indexPath = path.join(distDir, 'index.html');
-if (fs.existsSync(indexPath)) {
-  let html = fs.readFileSync(indexPath, 'utf8');
-  
-  // Add type="module" to the main entry script
+// Add the PWA manifest and module scripts to every statically rendered route.
+console.log('🔧 Preparing exported HTML...');
+const htmlFiles = collectHtmlFiles(distDir);
+if (htmlFiles.length === 0) {
+  throw new Error(`Expo output contains no HTML files: ${distDir}`);
+}
+
+for (const htmlPath of htmlFiles) {
+  let html = fs.readFileSync(htmlPath, 'utf8');
+
   html = html.replace(
     /<script src="\/_expo\/static\/js\/web\/entry-([^"]+)\.js" defer>/g,
     '<script type="module" src="/_expo/static/js/web/entry-$1.js"></script>'
   );
-  
-  fs.writeFileSync(indexPath, html);
-  console.log('  ✓ Added type="module" to script tags');
+
+  if (!html.includes('rel="manifest"')) {
+    html = html.replace(
+      '</head>',
+      '  <link rel="manifest" href="/manifest.json" />\n</head>'
+    );
+  }
+
+  if (!html.includes('rel="manifest"')) {
+    throw new Error(`Expo output does not contain a closing head element: ${htmlPath}`);
+  }
+
+  fs.writeFileSync(htmlPath, html);
 }
+console.log(`  ✓ Prepared ${htmlFiles.length} HTML files`);
 
 console.log('');
 console.log('✅ Build complete!');
 console.log('');
-console.log('📁 Output directory: dist/');
+console.log('📁 Output directory: apps/mobile/dist/');
 console.log('');

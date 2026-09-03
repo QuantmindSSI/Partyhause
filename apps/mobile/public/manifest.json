@@ -17,22 +17,16 @@
       "purpose": "any"
     },
     {
-      "src": "/icon-192.png",
+      "src": "/icon-maskable-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "any maskable"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-maskable.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
+      "purpose": "any maskable"
     }
   ],
   "shortcuts": [
@@ -40,15 +34,15 @@
       "name": "Create Event",
       "short_name": "New Event",
       "description": "Create a new event",
-      "url": "/events/new",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "url": "/events/create",
+      "icons": [{ "src": "/shortcut-create.png", "sizes": "96x96", "type": "image/png" }]
     },
     {
       "name": "My Events",
       "short_name": "Events",
       "description": "View all your events",
       "url": "/",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/shortcut-events.png", "sizes": "96x96", "type": "image/png" }]
     }
   ],
   "display_override": ["window-controls-overlay", "standalone"],

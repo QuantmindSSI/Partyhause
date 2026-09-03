@@ -32,7 +32,7 @@ The web app registers monitoring tools on the browser's Model Context (`navigato
 ## Using it
 
 1. Run the app (`npm run dev`) and open it in a WebMCP-capable Chrome with an agent bridge (e.g. `chrome-devtools` MCP server).
-2. The console logs `WebMCP: 8 PartyHause monitoring tools registered` when active, or `modelContext unavailable — monitoring disabled` otherwise.
+2. The console logs `WebMCP: 8 PartyHause monitoring tools registered` when active. It remains silent when WebMCP is unavailable.
 3. Agents list tools via the bridge and call them; e.g. `get_health_status` returns backend reachability/latency plus API error-rate aggregates.
 
 ## Known caveats

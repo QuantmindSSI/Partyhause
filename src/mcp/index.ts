@@ -31,7 +31,6 @@ export function initWebMCP(): void {
   flags[INIT_FLAG] = true;
 
   if (!modelContextAvailable()) {
-    console.info('WebMCP: modelContext unavailable — monitoring disabled');
     return;
   }
 
