@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getApiBaseUrl } from '../../lib/api';
 
 interface FeedPost {
   id: string;
@@ -66,7 +67,7 @@ export function useCrewFeed(
         return;
       }
 
-      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://www.partyhause.com';
+      const apiUrl = getApiBaseUrl();
       let url = `${apiUrl}/api/feed/crew?limit=${limit}`;
       
       if (contentType) {

@@ -17,7 +17,7 @@
     "build:web": "npx vite build",
     "build:mobile": "node ./scripts/build-mobile-pwa.cjs",
     "typecheck": "npx tsc -p tsconfig.app.json && npx tsc -p tsconfig.node.json && npx tsc -p tsconfig.server.json && npx tsc -p packages/core/tsconfig.json",
-    "build:check": "npm run typecheck && npx vite build",
+    "build:check": "npm run typecheck && npm run audit:contracts && npx vite build",
     "lint": "eslint .",
     "preview": "npx vite preview",
     "test": "vitest",
@@ -27,7 +27,9 @@
     "smoke-test:migration": "node ./scripts/smoke-test-migration.js",
     "server": "tsx server/index.ts",
     "dev:api": "tsx watch server/dev-api.ts",
-    "dev:docker": "docker-compose up --build"
+    "dev:docker": "docker-compose up --build",
+    "audit:endpoints": "node scripts/audit-endpoints.cjs",
+    "audit:contracts": "node scripts/audit-contracts.cjs"
   },
   "dependencies": {
     "@azure/communication-email": "^1.1.0",

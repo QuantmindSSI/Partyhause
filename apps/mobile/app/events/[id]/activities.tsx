@@ -11,6 +11,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
+import { getApiBaseUrl } from '../../../lib/api';
 
 interface TimelineBlock {
   id: string;
@@ -89,7 +90,7 @@ export default function ActivitiesScreen() {
         return;
       }
 
-      const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://www.partyhause.com';
+      const API_BASE_URL = getApiBaseUrl();
       console.log('[Activities] Making API request to:', `${API_BASE_URL}/api/events?id=${id}`);
       
       const response = await fetch(`${API_BASE_URL}/api/events?id=${id}`, {

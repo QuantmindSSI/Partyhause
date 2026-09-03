@@ -11,9 +11,10 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
+import { getApiBaseUrl } from '../../../lib/api';
 
 // Get API URL from environment variable
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://www.partyhause.com';
+const API_URL = getApiBaseUrl();
 
 export default function ReviewScreen() {
   const router = useRouter();

@@ -12,6 +12,7 @@ import { useLocalSearchParams, Stack, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { Event, getEventLocation } from '@/types/event';
+import { getApiBaseUrl } from '../../../lib/api';
 
 interface EventStats {
   total_guests: number;
@@ -23,7 +24,7 @@ interface EventStats {
   media_count: number;
 }
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://www.partyhause.com';
+const API_BASE_URL = getApiBaseUrl();
 
 export default function EventDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();

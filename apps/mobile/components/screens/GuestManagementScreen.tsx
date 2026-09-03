@@ -12,7 +12,8 @@ import {
   Switch,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase, requireSupabase } from '@/lib/supabase';
+import { api } from '@/lib/client';
+import { toLocalGuests } from '@/lib/mappers';
 import { sendInvitationEmail, generateInvitationUrl } from '@/lib/email';
 import { Guest } from '@/types/guest';
 import { Event } from '@/types/event';
@@ -35,27 +36,16 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
   const { data: guests = [], isLoading } = useQuery<Guest[]>({
     queryKey: ['event-guests', eventId],
     queryFn: async () => {
-      console.log('[GuestManagement] Fetching guests for event:', eventId);
-      if (!supabase) {
-        console.log('[GuestManagement] No supabase client');
-        return [];
-      }
-      
-      const { data, error } = await supabase
-        .from('guests')
-        .select('*')
-        .eq('event_id', eventId)
-        .order('created_at', { ascending: false });
+      const { data, error } = await api.guests.listForEvent(eventId);
 
       if (error) {
-        console.error('[GuestManagement] Error fetching guests:', error);
-        throw error;
+        console.error('[GuestManagement] Error fetching guests:', error.message);
+        throw new Error(error.message);
       }
 
-      console.log('[GuestManagement] Fetched', data?.length || 0, 'guests');
-      return data || [];
+      return toLocalGuests(data);
     },
-    enabled: !!eventId && !!supabase,
+    enabled: !!eventId,
   });
 
   // Add guest mutation
@@ -75,59 +65,38 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
       }
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       
-      const client = requireSupabase();
-      
-      // Step 1: Add guest to database
-      const { data, error } = await client
-        .from('guests')
-        .insert({
-          event_id: eventId,
-          name: newGuest.name.trim(),
-          email: newGuest.email.trim(),
-          is_checked_in: false,
-        } as any)
-        .select()
-        .single();
+      // Step 1: create the guest.
+      // The old insert set `is_checked_in: false`. The Guest model carries that
+      // as a legacy column alongside `checked_in`, and the API reads and writes
+      // only the latter, so anything stored there was invisible to this API and
+      // to the web app. The server defaults check-in state, so it is omitted.
+      const { data: guestData, error } = await api.guests.create(eventId, {
+        name: newGuest.name.trim(),
+        email: newGuest.email.trim(),
+      });
 
-      if (error) {
-        console.error('[GuestManagement] ❌ Database error:', error);
-        throw error;
+      if (error || !guestData) {
+        console.error('[GuestManagement] Failed to create guest:', error?.message);
+        throw new Error(error?.message ?? 'Failed to create guest');
       }
 
-      const guestData = data as any; // Type assertion for Supabase data
-      console.log('[GuestManagement] ✅ Guest created in database:', guestData.id);
-
-      // Step 2: Send invitation email if requested and event data is available
-      console.log('[GuestManagement] 📧 Checking email send conditions:', {
-        sendInvite: newGuest.sendInvite,
-        hasEvent: !!event,
-        hasData: !!data,
-        willSendEmail: !!(newGuest.sendInvite && event && guestData)
-      });
-      
+      // Step 2: send the invitation when requested and event data is available.
       if (newGuest.sendInvite && event && guestData) {
         console.log('[GuestManagement] 📧 Proceeding to send invitation email...');
         
         try {
-          // Create email log entry in database
-          const { data: emailLogData, error: logError } = await client
-            .from('email_logs')
-            .insert({
-              event_id: eventId,
-              guest_id: guestData.id,
-              email_type: 'invitation',
-              recipient_email: newGuest.email.trim(),
-              subject: `🎉 You're Invited to ${event.name || event.title}!`,
-              status: 'pending',
-            } as any)
-            .select()
-            .single();
+          const { data: emailLog, error: logError } = await api.emailLogs.create({
+            event_id: eventId,
+            guest_id: guestData.id,
+            email_type: 'invitation',
+            recipient_email: newGuest.email.trim(),
+            subject: `You're invited to ${event.name || event.title}`,
+            status: 'pending',
+          });
 
           if (logError) {
-            console.warn('[GuestManagement] Failed to create email log:', logError);
+            console.warn('[GuestManagement] Failed to create email log:', logError.message);
           }
-
-          const emailLog = emailLogData as any; // Type assertion for email log
 
           // Send the email
           const invitationUrl = generateInvitationUrl(eventId, guestData.id);
@@ -144,43 +113,40 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
           );
 
           if (emailResult.success) {
-            console.log('[GuestManagement] Email sent successfully');
-            
-            // Update email log status
             if (emailLog) {
-              await (client.from('email_logs') as any).update({
+              await api.emailLogs.update(emailLog.id, {
                 status: 'sent',
-                resend_email_id: emailResult.messageId,
                 sent_at: new Date().toISOString(),
-              }).eq('id', emailLog.id);
+              });
             }
 
-            // Update guest email_sent_at timestamp
-            await (client.from('guests') as any).update({
-              email_sent_at: new Date().toISOString()
-            }).eq('id', guestData.id);
+            // PUT /api/guests/:id destructures a fixed set of names and ignores
+            // anything else, so these must be the API's spellings, not the
+            // column names.
+            await api.guests.update(guestData.id, {
+              email_status: 'sent',
+              last_email_sent_at: new Date().toISOString(),
+              ...(emailLog ? { email_log_id: emailLog.id } : {}),
+            });
 
-            return { ...(guestData as object), emailSent: true };
-          } else {
-            console.warn('[GuestManagement] Email sending failed:', emailResult.error);
-            
-            // Update email log with error
-            if (emailLog) {
-              await (client.from('email_logs') as any).update({
-                status: 'failed',
-                error_message: emailResult.error,
-              }).eq('id', emailLog.id);
-            }
-
-            return { ...(guestData as object), emailSent: false, emailError: emailResult.error };
+            return { ...guestData, emailSent: true };
           }
+
+          console.warn('[GuestManagement] Email sending failed:', emailResult.error);
+          if (emailLog) {
+            await api.emailLogs.update(emailLog.id, {
+              status: 'failed',
+              error_message: emailResult.error,
+            });
+          }
+          return { ...guestData, emailSent: false, emailError: emailResult.error };
         } catch (emailError) {
           console.error('[GuestManagement] Error in email flow:', emailError);
-          return { ...(guestData as object), emailSent: false, emailError: String(emailError) };
+          return { ...guestData, emailSent: false, emailError: String(emailError) };
         }
       }
 
-      return data;
+      return guestData;
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['event-guests', eventId] });
@@ -211,15 +177,12 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
   // Toggle check-in mutation
   const toggleCheckInMutation = useMutation({
     mutationFn: async ({ guestId, isCheckedIn }: { guestId: string; isCheckedIn: boolean | undefined }) => {
-      console.log('[GuestManagement] Toggling check-in for guest:', guestId, 'to', !isCheckedIn);
-      const client = requireSupabase();
-      const { data, error } = await (client.from('guests') as any)
-        .update({ is_checked_in: !isCheckedIn })
-        .eq('id', guestId)
-        .select()
-        .single();
-
-      if (error) throw error;
+      // `checkedIn` is the name PUT /api/guests/:id destructures; it maps to the
+      // checked_in column and also stamps checked_in_at. The old code wrote
+      // `is_checked_in`, the legacy column the API never reads, so check-ins
+      // recorded on mobile were invisible everywhere else.
+      const { data, error } = await api.guests.update(guestId, { checkedIn: !isCheckedIn });
+      if (error) throw new Error(error.message);
       return data;
     },
     onSuccess: () => {
@@ -234,14 +197,8 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
   // Delete guest mutation
   const deleteGuestMutation = useMutation({
     mutationFn: async (guestId: string) => {
-      console.log('[GuestManagement] Deleting guest:', guestId);
-      const client = requireSupabase();
-      const { error } = await client
-        .from('guests')
-        .delete()
-        .eq('id', guestId);
-
-      if (error) throw error;
+      const { error } = await api.guests.remove(guestId);
+      if (error) throw new Error(error.message);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['event-guests', eventId] });

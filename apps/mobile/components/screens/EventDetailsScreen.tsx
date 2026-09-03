@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
+import { api } from '@/lib/client';
+import { toLocalGuests } from '@/lib/mappers';
 import { Event, getEventLocation } from '@/types/event';
 import { Guest } from '@/types/guest';
 
@@ -15,30 +16,22 @@ export const EventDetailsScreen = ({ event, onBack, onViewGuests }: EventDetails
   const { data: guests = [], isLoading: isLoadingGuests } = useQuery<Guest[]>({
     queryKey: ['event-guests', event.id],
     queryFn: async () => {
-      console.log('[EventDetails] Fetching guests for event:', event.id);
-      if (!supabase) {
-        console.log('[EventDetails] No supabase client');
-        return [];
-      }
-      
-      const { data, error } = await supabase
-        .from('guests')
-        .select('*')
-        .eq('event_id', event.id)
-        .order('created_at', { ascending: false });
+      const { data, error } = await api.guests.listForEvent(event.id);
 
       if (error) {
-        console.error('[EventDetails] Error fetching guests:', error);
-        throw error;
+        console.error('[EventDetails] Error fetching guests:', error.message);
+        throw new Error(error.message);
       }
 
-      console.log('[EventDetails] Fetched', data?.length || 0, 'guests');
-      return data || [];
+      return toLocalGuests(data);
     },
-    enabled: !!event.id && !!supabase,
+    enabled: !!event.id,
   });
 
-  const checkedInCount = guests.filter(g => g.is_checked_in).length;
+  // The API returns `checked_in`. `is_checked_in` is declared in
+  // types/guest.ts as an "alternative field name" but nothing populated it, so
+  // this counter always read zero. toLocalGuests now sets both.
+  const checkedInCount = guests.filter((g) => g.checked_in).length;
   const totalGuests = guests.length;
   const checkInPercentage = totalGuests > 0 ? Math.round((checkedInCount / totalGuests) * 100) : 0;
 

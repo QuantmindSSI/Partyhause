@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getApiBaseUrl } from '../../lib/api';
 
 interface UserProfile {
   id: string;
@@ -65,7 +66,7 @@ export function useUserProfile(userId: string | undefined): UseUserProfileResult
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
-      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'https://www.partyhause.com';
+      const apiUrl = getApiBaseUrl();
       const headers: any = {};
       
       if (session?.access_token) {
