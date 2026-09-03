@@ -84,8 +84,23 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      # @prisma/client ships as a stub whose types are written by `generate`.
+      # Without this, typechecking tsconfig.server.json fails with TS2305
+      # "has no exported member 'PrismaClient'". There is no postinstall hook,
+      # so `npm ci` alone does not produce it. No database is required.
+      - name: Generate Prisma client
+        run: npx prisma generate
+
       - name: Lint code
         run: npm run lint
+
+      # This job previously ran lint and tests only, so the gate protecting
+      # production was weaker than the one on pull requests: code that did not
+      # typecheck, or that broke the contract audit, could still be built into
+      # an image and deployed. build:check runs typecheck (web, node, server,
+      # core and mobile), the server/client contract audit, and the vite build.
+      - name: Typecheck, contract audit and build
+        run: npm run build:check
 
       - name: Run tests
         run: npm run test:run
