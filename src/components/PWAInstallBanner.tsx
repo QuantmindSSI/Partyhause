@@ -16,6 +16,16 @@ export const PWAInstallBanner = () => {
   const [platform, setPlatform] = useState<Platform>('unknown');
   const [isInstalled, setIsInstalled] = useState(false);
 
+  // Shown inside the mock address bar in the install instructions. Read from
+  // the live location rather than hardcoded: this previously read
+  // "partyhause.vercel.app", a host the app has not been served from since the
+  // move to Azure, so the illustration told users to look for a domain that no
+  // longer existed. Deriving it means it stays correct across domain changes.
+  const addressBarHost =
+    typeof window !== 'undefined' && window.location?.host
+      ? window.location.host
+      : 'partyhause.com';
+
   useEffect(() => {
     // Check if matchMedia is available (not in test environments)
     if (!window.matchMedia) {
@@ -358,7 +368,7 @@ export const PWAInstallBanner = () => {
                         </p>
                         <div className="bg-gray-100 rounded-xl p-4 flex items-center justify-center">
                           <div className="flex items-center gap-2 border-2 border-gray-300 rounded-lg px-4 py-2">
-                            <span className="text-gray-500 text-sm">partyhause.vercel.app</span>
+                            <span className="text-gray-500 text-sm">{addressBarHost}</span>
                             <div className="w-6 h-6 bg-indigo-600 rounded flex items-center justify-center">
                               <span className="text-white text-lg">⊕</span>
                             </div>
