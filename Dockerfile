@@ -32,14 +32,14 @@ RUN npm run build:web
 FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# SPA fallback: route everything to index.html
-RUN echo 'server { \
-  listen 80; \
-  location / { \
-    root /usr/share/nginx/html; \
-    try_files $uri $uri/ /index.html; \
-  } \
-}' > /etc/nginx/conf.d/default.conf
+# Cache policy plus the SPA fallback. This was an inline `RUN echo` config that
+# set no Cache-Control on any response, which left every URL to heuristic
+# browser caching and stranded service-worker clients on a stale precache.
+# See nginx.conf for the full reasoning.
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Fail the build rather than ship a container that will not start.
+RUN nginx -t
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

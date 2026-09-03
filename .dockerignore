@@ -22,6 +22,5 @@ bun.lockb
 netlify
 supabase
 scripts
-public
 LICENSE
 schema.sql
