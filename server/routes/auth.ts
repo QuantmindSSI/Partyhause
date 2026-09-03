@@ -52,9 +52,17 @@ function resolveExpiresIn(): SignOptions['expiresIn'] {
 const JWT_EXPIRES_IN = resolveExpiresIn();
 const APP_URL = process.env.VITE_APP_URL || 'http://localhost:5173';
 
+/**
+ * Mint a session token.
+ *
+ * `email_verified` is carried as a claim so `requireVerifiedEmail` can gate a
+ * request without a database round trip. It is only ever true here because the
+ * sole caller is login, which refuses unconfirmed accounts, and verification,
+ * which has just confirmed one. Signup no longer mints a token at all.
+ */
 function signToken(user: { id: string; email: string; name?: string | null }): string {
   return jwt.sign(
-    { sub: user.id, email: user.email, name: user.name },
+    { sub: user.id, email: user.email, name: user.name, email_verified: true },
     getJwtSecret(),
     { expiresIn: JWT_EXPIRES_IN },
   );
@@ -98,6 +106,52 @@ function logAuthLinkInDev(label: string, link: string): void {
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
+ * Body of the address-confirmation email.
+ *
+ * The previous version was a single unstyled `<p>` containing the word "here"
+ * as the only link. That is the exact shape spam filters score against, and it
+ * gives the reader nothing to judge legitimacy by. Confirmation is now a
+ * blocking step for access, so this email failing to arrive or failing to be
+ * trusted means the account is unusable.
+ *
+ * Deliberate choices:
+ *   - the destination is shown in full as text, so the reader can see where the
+ *     link goes without hovering, and can paste it if the button is stripped
+ *   - table-based layout with inline styles, because Gmail and Outlook discard
+ *     <style> blocks and most flexbox
+ *   - states the expiry in words, and says what happens if they did not sign up
+ *
+ * @param verifyLink Absolute URL carrying the single-use token.
+ */
+function verificationEmailHtml(verifyLink: string): string {
+  return `<!doctype html>
+<html lang="en">
+<body style="margin:0;padding:0;background:#f6f6f8;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f6f8;padding:32px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:12px;padding:32px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f2330;">
+        <tr><td style="font-size:20px;font-weight:700;padding-bottom:8px;">Confirm your email address</td></tr>
+        <tr><td style="font-size:15px;line-height:22px;color:#454b5c;padding-bottom:24px;">
+          Thanks for creating a PartyHause account. Confirm this address to finish setting it up and sign in.
+        </td></tr>
+        <tr><td align="center" style="padding-bottom:24px;">
+          <a href="${verifyLink}" style="display:inline-block;background:#6366F1;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:13px 28px;border-radius:8px;">Confirm email address</a>
+        </td></tr>
+        <tr><td style="font-size:13px;line-height:20px;color:#6b7280;padding-bottom:8px;">
+          If the button does not work, paste this into your browser:
+        </td></tr>
+        <tr><td style="font-size:12px;line-height:18px;color:#6366F1;word-break:break-all;padding-bottom:24px;">${verifyLink}</td></tr>
+        <tr><td style="font-size:13px;line-height:20px;color:#6b7280;border-top:1px solid #e6e8ee;padding-top:16px;">
+          This link expires in 24 hours. If you did not create a PartyHause account, you can ignore this email and nothing will happen.
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+/**
  * Generate a fresh verification token for the user, persist its bcrypt hash,
  * and send (or log, in dev) the verification link. Failures are contained:
  * signup must never fail because the verification email could not be sent.
@@ -119,8 +173,8 @@ async function issueVerificationEmail(user: { id: string; email: string }): Prom
 
     await sendAuthEmail(
       user.email,
-      'Verify your PartyHause email',
-      `<p>Welcome to PartyHause! Click <a href="${verifyLink}">here</a> to verify your email address. This link expires in 24 hours.</p>`,
+      'Confirm your PartyHause email address',
+      verificationEmailHtml(verifyLink),
     );
   } catch (err) {
     console.warn('Failed to issue verification email:', err);
@@ -165,16 +219,18 @@ router.post('/signup', credentialLimiter, async (req, res) => {
       },
     });
 
-    const token = signToken(user);
-
     // Fire the verification email after the account exists. Non-blocking
     // for the response only in effect: we await so serverless-style runtimes
     // don't drop the work, but failures inside are contained and logged.
     await issueVerificationEmail({ id: user.id, email: user.email });
 
+    // Deliberately NO token. Signup used to return one immediately, so an
+    // address nobody controlled reached every authenticated route with a
+    // 7-day credential and the confirmation link was decorative. Access now
+    // starts at login, which refuses unconfirmed accounts.
     res.status(201).json({
       user: { id: user.id, email: user.email, name: user.name, email_verified: false },
-      token,
+      message: 'Account created. Check your email for a confirmation link before signing in.',
     });
   } catch (err) {
     console.error('Signup error:', err);
@@ -231,21 +287,40 @@ router.post('/verify-email', credentialLimiter, async (req, res) => {
   }
 });
 
-// POST /api/auth/resend-verification — re-issues the verification link for
-// the signed-in user. Idempotent for already-verified accounts.
-router.post('/resend-verification', credentialLimiter, requireAuth, async (req: AuthenticatedRequest, res) => {
+/**
+ * POST /api/auth/resend-verification
+ *
+ * Anonymous by design. This used to sit behind `requireAuth`, which was
+ * survivable only while signup handed out a token. Now that an unconfirmed
+ * account cannot obtain one, requiring a session here would make it the one
+ * endpoint a locked-out user needs and cannot reach.
+ *
+ * Answers identically whether or not the address exists, so it cannot be used
+ * to enumerate registered accounts. `credentialLimiter` bounds how often it
+ * can generate mail for an address the caller does not own.
+ */
+router.post('/resend-verification', credentialLimiter, async (req, res) => {
+  const genericResponse = {
+    success: true,
+    message: 'If that address needs confirming, a new link is on its way.',
+  };
+
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+    const { email } = req.body ?? {};
+    if (typeof email !== 'string' || email.trim() === '') {
+      return res.status(400).json({ error: 'Email is required' });
     }
 
-    if (user.email_verified) {
-      return res.json({ success: true, message: 'Email is already verified' });
+    const user = await prisma.user.findUnique({ where: { email: email.trim() } });
+
+    // No account, or already confirmed: same answer either way. Saying
+    // "already verified" would confirm the address is registered.
+    if (!user || user.email_verified) {
+      return res.json(genericResponse);
     }
 
     await issueVerificationEmail({ id: user.id, email: user.email });
-    res.json({ success: true, message: 'Verification email sent' });
+    res.json(genericResponse);
   } catch (err) {
     console.error('Resend verification error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -271,10 +346,22 @@ router.post('/login', credentialLimiter, async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
+    // Confirmed address required. Distinct from the 401 above on purpose: the
+    // credentials were correct, so telling the client "invalid email or
+    // password" would send the user round a password-reset loop that cannot
+    // help. The code lets the client offer "resend confirmation" instead.
+    if (!user.email_verified) {
+      return res.status(403).json({
+        error: 'Email address not confirmed',
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Confirm your email address to sign in. We can send a new link.',
+      });
+    }
+
     const token = signToken(user);
 
     res.json({
-      user: { id: user.id, email: user.email, name: user.name },
+      user: { id: user.id, email: user.email, name: user.name, email_verified: true },
       token,
     });
   } catch (err) {

@@ -8,6 +8,8 @@ export interface AuthenticatedRequest extends Request {
     id: string;
     email?: string;
     name?: string;
+    /** True only when the token carries a confirmed-address claim. */
+    email_verified?: boolean;
     [key: string]: unknown;
   };
 }
@@ -26,6 +28,16 @@ interface JwtPayload {
   sub: string;
   email?: string;
   name?: string;
+  /**
+   * Whether the address was confirmed when this token was minted.
+   *
+   * Absent on tokens issued before verification was enforced. Those are
+   * treated as unverified rather than trusted, because signup used to hand out
+   * a token immediately: an absent claim is exactly the population that could
+   * never confirm. They expire within the 7-day token lifetime, after which
+   * this branch goes cold.
+   */
+  email_verified?: boolean;
   [key: string]: unknown;
 }
 
@@ -89,13 +101,14 @@ function applyVerifiedToken(req: AuthenticatedRequest): boolean {
   const token = extractToken(req);
   if (!token) return false;
   try {
-    const payload = jwt.verify(token, getJwtSecret()) as JwtPayload;
-    req.user = {
-      id: payload.sub,
-      email: payload.email,
-      name: payload.name,
-    };
-    return true;
+      const payload = jwt.verify(token, getJwtSecret()) as JwtPayload;
+      req.user = {
+        id: payload.sub,
+        email: payload.email,
+        name: payload.name,
+        email_verified: payload.email_verified === true,
+      };
+      return true;
   } catch {
     return false;
   }
@@ -107,6 +120,25 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
   // otherwise writes are attributed to the synthetic dev user instead of
   // the signed-in account.
   if (applyVerifiedToken(req)) {
+    // A confirmed address is required, enforced here rather than only at
+    // login so tokens minted before this change cannot walk past it. Those
+    // carry no `email_verified` claim and are treated as unconfirmed; the
+    // holder signs in again and receives one that does.
+    //
+    // Nothing is stranded by this. The only action an unconfirmed user needs
+    // is resending their link, and POST /api/auth/resend-verification is
+    // anonymous, so it never reaches this middleware.
+    //
+    // 403 with a code, not 401: the credentials are valid, so a 401 would send
+    // the client into a re-login loop that cannot resolve anything.
+    if (req.user?.email_verified !== true) {
+      res.status(403).json({
+        error: 'Email address not confirmed',
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Confirm your email address to continue. Request a new link if it expired.',
+      });
+      return;
+    }
     next();
     return;
   }
@@ -116,6 +148,9 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
       id: bypassUserId(),
       email: BYPASS_USER_EMAIL,
       name: BYPASS_USER_NAME,
+      // The synthetic dev user counts as confirmed; it can never complete a
+      // real verification flow, and blocking it would break local work.
+      email_verified: true,
     };
     void ensureBypassUser().then(() => next());
     return;
@@ -147,6 +182,9 @@ export function optionalAuth(req: AuthenticatedRequest, _res: Response, next: Ne
       id: bypassUserId(),
       email: BYPASS_USER_EMAIL,
       name: BYPASS_USER_NAME,
+      // The synthetic dev user counts as confirmed; it can never complete a
+      // real verification flow, and blocking it would break local work.
+      email_verified: true,
     };
     void ensureBypassUser().then(() => next());
     return;

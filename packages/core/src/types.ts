@@ -23,6 +23,19 @@ export interface AuthSession {
   token: string;
 }
 
+/**
+ * POST /api/auth/signup.
+ *
+ * Note the absence of a token. Signup creates the account and sends a
+ * confirmation link; it does not establish a session. The route used to return
+ * one immediately, which let an address nobody controlled reach every
+ * authenticated endpoint for seven days.
+ */
+export interface SignUpResult {
+  user: AuthUser & { email_verified: boolean };
+  message: string;
+}
+
 /** GET /api/auth/me. Selects id, email, name, created_at, email_verified. */
 export interface CurrentUser {
   id: string;

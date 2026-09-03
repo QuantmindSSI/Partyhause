@@ -46,7 +46,14 @@ const ERROR_KEYS = new Set(['error', 'message']);
  * bug, because that is the case where callers reach for `.map` or a field that
  * lives one level down.
  */
-const SCALAR_KEYS = new Set(['success', 'count', 'updated', 'token', 'status', 'has_more', 'total']);
+// Keys that are part of a payload rather than a container around one. A
+// response of `{ user, message }` is not an envelope wrapping `user`: the
+// message is a sibling field the client is meant to read, exactly like
+// `token` in `{ user, token }`. Without this, adding a human-readable message
+// to any response makes the auditor demand the client unwrap it.
+const SCALAR_KEYS = new Set([
+  'success', 'count', 'updated', 'token', 'status', 'has_more', 'total', 'message',
+]);
 
 function parse(file) {
   return ts.createSourceFile(
@@ -186,8 +193,14 @@ function collectJsonKeys(node, out, sf) {
             : prop.name && ts.isStringLiteral(prop.name) ? prop.name.text : null;
           if (nm) names.push(nm);
         }
-        // A body of only error/message is a failure payload mislabelled 2xx.
-        const meaningful = names.filter((x) => !ERROR_KEYS.has(x));
+          // A body of ONLY error/message is a failure payload mislabelled 2xx,
+          // and carries no contract worth checking. But when `message`
+          // accompanies real payload, as in `{ user, message }`, it is a
+          // sibling field the client reads, not noise. Dropping it there made
+          // the response look like a single-key envelope and produced a false
+          // mismatch against a client that correctly reads the body directly.
+          const nonError = names.filter((x) => !ERROR_KEYS.has(x));
+          const meaningful = nonError.length ? names : [];
         if (meaningful.length || hasSpread) {
           for (const m of meaningful) out.add(m);
           if (hasSpread) out.add('<spread>');

@@ -10,17 +10,27 @@
 import type { Transport } from '../http/transport';
 import type { ApiResponse } from '../http/transport';
 import { STORAGE_KEYS } from '../http/adapters';
-import type { AuthSession, AuthUser, CurrentUser } from '../types';
+import type { AuthSession, AuthUser, CurrentUser, SignUpResult } from '../types';
 
 export interface AuthResource {
   signIn(email: string, password: string): Promise<ApiResponse<AuthSession>>;
-  signUp(email: string, password: string, name?: string): Promise<ApiResponse<AuthSession>>;
+  /**
+   * Create an account. Does NOT sign the user in: the route returns no token
+   * until the address is confirmed, so nothing is persisted and the caller
+   * must show a "check your email" state.
+   */
+  signUp(email: string, password: string, name?: string): Promise<ApiResponse<SignUpResult>>;
   signOut(): Promise<void>;
   me(): Promise<ApiResponse<CurrentUser>>;
   forgotPassword(email: string): Promise<ApiResponse<{ success: boolean }>>;
   resetPassword(token: string, password: string): Promise<ApiResponse<{ success: boolean }>>;
   verifyEmail(token: string): Promise<ApiResponse<{ success: boolean; message: string }>>;
-  resendVerification(): Promise<ApiResponse<{ success: boolean; message: string }>>;
+  /**
+   * Re-send the confirmation link. Anonymous and takes the address explicitly,
+   * because a user who cannot sign in has no session to authenticate with.
+   * Answers the same whether or not the address is registered.
+   */
+  resendVerification(email: string): Promise<ApiResponse<{ success: boolean; message: string }>>;
   /** Token from storage, or null. */
   getToken(): Promise<string | null>;
   /** Cached user from storage, or null when absent or corrupt. */
@@ -52,15 +62,25 @@ export function createAuthResource(transport: Transport): AuthResource {
       return result;
     },
 
-    async signUp(email, password, name) {
-      const result = await transport.request<AuthSession>('/api/auth/signup', {
-        method: 'POST',
-        body: name ? { email, password, name } : { email, password },
-        anonymous: true,
-      });
-      if (result.data?.token) await persist(transport, result.data);
-      return result;
-    },
+      async signUp(email, password, name) {
+        // Signup does NOT establish a session. The route deliberately returns
+        // no token: the address must be confirmed first, and it previously
+        // handed out a 7-day credential to an address nobody controlled.
+        // Nothing is persisted here, so callers must route to a
+        // "check your email" state rather than into the app.
+        return transport.request<SignUpResult>('/api/auth/signup', {
+          method: 'POST',
+          body: name ? { email, password, name } : { email, password },
+          anonymous: true,
+        });
+      },
+      async resendVerification(email) {
+        // Anonymous: a user who cannot sign in still needs to reach this.
+        return transport.request<{ success: boolean; message: string }>(
+          '/api/auth/resend-verification',
+          { method: 'POST', body: { email }, anonymous: true },
+        );
+      },
 
     async signOut() {
       // Best effort server-side; the local session is cleared regardless so a
@@ -96,13 +116,6 @@ export function createAuthResource(transport: Transport): AuthResource {
         body: { token },
         anonymous: true,
       });
-    },
-
-    resendVerification() {
-      return transport.request<{ success: boolean; message: string }>(
-        '/api/auth/resend-verification',
-        { method: 'POST' },
-      );
     },
 
     getToken() {
