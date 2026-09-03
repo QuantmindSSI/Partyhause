@@ -107,7 +107,8 @@ export const GuestManagementScreen = ({ eventId, eventName, event, onBack }: Gue
               name: event.name || event.title || '',
               date: (event.start_date || event.date || event.event_date || '') as string,
               location: typeof event.location === 'string' ? event.location : (event.location?.name || event.venue || ''),
-              description: event.description,
+                // Nullable column; the email payload wants absent, not null.
+                description: event.description ?? undefined,
             },
             { emailLogId: emailLog?.id }
           );

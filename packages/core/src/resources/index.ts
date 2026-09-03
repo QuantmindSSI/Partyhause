@@ -52,9 +52,35 @@ async function unwrapOne<T>(p: Promise<ApiResponse<unknown>>, key: string): Prom
   return unwrap<T>(await p, key);
 }
 
+/**
+ * Server-computed counts returned alongside a single event.
+ *
+ * `timeline_blocks` here is a COUNT. The event object carries a field with the
+ * same name that is the schedule array. They are not interchangeable.
+ *
+ * `guests_accepted` counts both 'accepted' and the legacy 'confirmed' status,
+ * which is the reason to take this rather than count client-side.
+ */
+export interface EventStats {
+  total_guests: number;
+  guests_accepted: number;
+  guests_declined: number;
+  guests_pending: number;
+  guests_checked_in: number;
+  timeline_blocks: number;
+  media_count: number;
+}
+
+export interface EventWithStats {
+  event: PartyEvent;
+  stats: EventStats;
+}
+
 export interface EventsResource {
   list(): Promise<ApiResponse<PartyEvent[]>>;
   get(id: string): Promise<ApiResponse<PartyEvent>>;
+  /** The same call as `get`, keeping the server-computed stats. */
+  getWithStats(id: string): Promise<ApiResponse<EventWithStats>>;
   create(input: Partial<PartyEvent>): Promise<ApiResponse<PartyEvent>>;
   update(id: string, input: Partial<PartyEvent>): Promise<ApiResponse<PartyEvent>>;
   remove(id: string): Promise<ApiResponse<{ success: boolean }>>;
@@ -68,6 +94,8 @@ export function createEventsResource(t: Transport): EventsResource {
     // silently returns the full list instead of one event. Mobile did exactly
     // that in two screens.
     get: (id) => unwrapOne<PartyEvent>(t.request(`/api/events/${encodeURIComponent(id)}`, { method: 'GET' }), 'event'),
+    getWithStats: (id) =>
+      t.request<EventWithStats>(`/api/events/${encodeURIComponent(id)}`, { method: 'GET' }),
     create: (input) => unwrapOne<PartyEvent>(t.request('/api/events', { method: 'POST', body: input }), 'event'),
     update: (id, input) =>
       unwrapOne<PartyEvent>(t.request(`/api/events/${encodeURIComponent(id)}`, { method: 'PUT', body: input }), 'event'),
@@ -103,15 +131,55 @@ export interface GuestUpdateInput {
 }
 
 /** One guest in a bulk create. The route takes an array, never a single row. */
+/**
+ * Per-guest payload for POST /api/guests.
+ *
+ * camelCase, unlike the Guest row that comes back, which is snake_case. The
+ * route reads `guest.plusOnes` and `guest.dietaryRestrictions`; sending the
+ * snake_case column names instead is silently accepted and dropped, so every
+ * guest lands with plus_ones 0 and no dietary restrictions.
+ *
+ * The route also ignores any other key, including `eventDetails` and
+ * `sendInvitations`. It creates guests and nothing else; it sends no email.
+ */
 export interface GuestCreateInput {
   name: string;
   email?: string;
   phone?: string;
-  plus_ones?: number;
+  plusOnes?: number;
+  dietaryRestrictions?: string[];
+  ticketType?: string;
+  customFields?: Record<string, unknown>;
+  role?: string;
+}
+
+/**
+ * Server-computed guest counts returned alongside the list.
+ *
+ * Worth taking rather than re-deriving: `accepted` counts both 'accepted' and
+ * the legacy 'confirmed' status, so a client that filters on 'accepted' alone
+ * silently undercounts every guest created before the invite-join unification.
+ *
+ * Note `checkedIn` is camelCase here while the Guest row uses `checked_in`.
+ */
+export interface GuestStats {
+  total: number;
+  accepted: number;
+  declined: number;
+  maybe: number;
+  pending: number;
+  checkedIn: number;
+}
+
+export interface GuestsPage {
+  guests: Guest[];
+  stats: GuestStats;
 }
 
 export interface GuestsResource {
   listForEvent(eventId: string): Promise<ApiResponse<Guest[]>>;
+  /** The same call as `listForEvent`, keeping the server-computed stats. */
+  listForEventWithStats(eventId: string): Promise<ApiResponse<GuestsPage>>;
   /**
    * Add one guest.
    *
@@ -130,6 +198,8 @@ export interface GuestsResource {
 export function createGuestsResource(t: Transport): GuestsResource {
   return {
     listForEvent: (eventId) => unwrapList<Guest>(t.request('/api/guests', { method: 'GET', query: { eventId } }), 'guests'),
+    listForEventWithStats: (eventId) =>
+      t.request<GuestsPage>('/api/guests', { method: 'GET', query: { eventId } }),
     create: async (eventId, guest) => {
       const res = await unwrapList<Guest>(
         t.request('/api/guests', { method: 'POST', body: { eventId, guests: [guest] } }),
@@ -151,6 +221,21 @@ export function createGuestsResource(t: Transport): GuestsResource {
   };
 }
 
+/**
+ * The /api/timeline TABLE endpoints.
+ *
+ * READ THIS BEFORE USING listForEvent: these operate on the `timeline_blocks`
+ * table, which nothing in the app populates. The live schedule lives in the
+ * `events.timeline_blocks` JSON column and is returned by
+ * `events.get(id).timeline_blocks`.
+ *
+ * `listForEvent` therefore returns [] for events that visibly have a schedule.
+ * Reading from here and writing the result back to the event erases it, which
+ * the web app hit and documented in `timelineService`.
+ *
+ * Use `events.get()` to read a schedule. These endpoints remain for the table,
+ * should anything start populating it.
+ */
 export interface TimelineResource {
   listForEvent(eventId: string): Promise<ApiResponse<TimelineBlock[]>>;
   create(input: Partial<TimelineBlock>): Promise<ApiResponse<TimelineBlock>>;

@@ -14,8 +14,15 @@
 export interface Event {
   // Core identification
   id: string;
-  title: string;
-  description?: string;
+  /**
+   * Optional, because the `title` column is nullable. `name` is the NOT NULL
+   * one. Declaring this required made every read look safe while the value
+   * could legitimately be null, which rendered a blank heading.
+   * Use `getEventTitle` rather than reading either field directly.
+   */
+  title?: string | null;
+  /** Nullable column, so null is a real value here, not just absence. */
+  description?: string | null;
   
   // Location details
   location?: string | { name?: string; address?: string; lat?: number; lng?: number };
@@ -39,13 +46,22 @@ export interface Event {
   
   // Visual and branding
   image_url?: string;
-  template_type: string;
+  /**
+   * Nullable column. The "create from scratch" flow legitimately has no
+   * template, so this is absent on those events.
+   */
+  template_type?: string;
   
   // Privacy and settings
   visibility?: 'private' | 'public' | 'network' | 'group';
   privacy?: 'public' | 'private' | 'unlisted'; // Alternative field name
   settings?: Record<string, any>; // JSONB field for template-specific data
-  status: 'draft' | 'published' | 'cancelled' | 'completed';
+  /**
+   * Matches the CHECK constraint on events.status. This previously listed
+   * 'cancelled', which the database rejects, and omitted 'active' and
+   * 'archived', which it accepts.
+   */
+  status: 'draft' | 'published' | 'active' | 'completed' | 'archived';
   
   // Metadata
   created_at?: string;
@@ -139,6 +155,22 @@ export function isEventDetail(event: Event | EventDetail): event is EventDetail 
 
 export function isEventWithStats(event: Event | EventWithStats): event is EventWithStats {
   return (event as EventWithStats).stats !== undefined;
+}
+
+/**
+ * Resolve the display name of an event.
+ *
+ * There are two name columns. `name` is NOT NULL and written by the classic
+ * creation form; `title` is nullable and written by the template flows.
+ * POST /api/events accepts either and populates both, but older rows and
+ * partial writes mean neither can be assumed present.
+ *
+ * Four screens each open-coded `event.name || event.title || 'Untitled Event'`
+ * and a fifth read `event.title` alone, which rendered an empty heading when
+ * the column was null. This is that rule in one place.
+ */
+export function getEventTitle(event: Pick<Event, 'name' | 'title'>): string {
+  return event.name || event.title || 'Untitled Event';
 }
 
 /**

@@ -123,7 +123,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.xxs,
     borderRadius: Radius.full,
-    backdropFilter: 'blur(10px)',
+    // `backdropFilter` is a CSS property with no React Native equivalent; it
+    // was carried over from the web styles and did nothing here. The
+    // translucent backgroundColor above is what actually produces the effect.
+    // Real blur would need expo-blur's BlurView wrapping this badge.
   },
   categoryText: {
     ...Typography.tiny,

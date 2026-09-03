@@ -44,6 +44,18 @@ export interface UserProfile {
 
 export type EventType = 'single_day' | 'multi_day';
 
+/** Enforced by a CHECK constraint on events.privacy. */
+export type EventPrivacy = 'public' | 'private' | 'unlisted';
+
+/**
+ * Enforced by a CHECK constraint on events.status.
+ *
+ * Note there is no 'cancelled'. UI that branches on it is handling a state the
+ * database will reject on write, while 'active' and 'archived' are real states
+ * that such UI then fails to handle.
+ */
+export type EventStatus = 'draft' | 'published' | 'active' | 'completed' | 'archived';
+
 export interface PartyEvent {
   id: string;
   host_id: string;
@@ -57,7 +69,35 @@ export interface PartyEvent {
   is_public: boolean;
   invite_image_url?: string;
   template_type?: string;
+  template_data?: Record<string, unknown>;
   spotify_playlist_url?: string;
+  /**
+   * A second name column, nullable, kept in sync with `name`.
+   *
+   * The template-era flows write `title`; the classic creation form writes
+   * `name`. POST /api/events accepts either and populates both, so a row read
+   * back carries both. Neither can be assumed to be the one a given screen
+   * displays, which is why both are on this type.
+   */
+  title?: string | null;
+  timezone?: string | null;
+  /**
+   * NOT NULL, defaulting to 'private'. The column carries a CHECK constraint
+   * restricting it to these three values, so the union is enforced by the
+   * database rather than merely hoped for.
+   */
+  privacy: EventPrivacy;
+  /** NOT NULL, defaulting to 'draft'. */
+  status: EventStatus;
+  settings?: Record<string, unknown>;
+  /**
+   * JSON column on the event row, defaulting to `[]`.
+   *
+   * Not to be confused with `stats.timeline_blocks` on the same response,
+   * which is a count. This is the schedule itself, and it is what the
+   * activities screen renders.
+   */
+  timeline_blocks?: TimelineBlock[];
   created_at: string;
   updated_at: string;
 }
@@ -68,23 +108,82 @@ export interface Guest {
   id: string;
   event_id: string;
   name: string;
-  email?: string;
+  /** NOT NULL in the schema, so always present on a row read from the API. */
+  email: string;
   phone?: string;
-  rsvp_status?: RsvpStatus;
-  checked_in?: boolean;
+  /** NOT NULL with a 'pending' default; never absent on a read. */
+  rsvp_status: RsvpStatus;
+  /** NOT NULL with a false default; never absent on a read. */
+  checked_in: boolean;
+  /**
+   * Legacy column from the initial schema, still present and still written by
+   * the default. `checked_in` is the one the API updates; read that.
+   */
+  is_checked_in?: boolean;
   plus_ones: number;
+  /** A Postgres text[], so an array on the wire, not a string. */
+  dietary_restrictions?: string[];
   special_requirements?: string;
   checked_in_at?: string;
+  custom_fields?: Record<string, unknown>;
+  role?: string;
+  user_id?: string | null;
+  /**
+   * When the guest row was created, which is the closest thing the schema has
+   * to "invited at". There is no `invited_at` column; UI that displayed one
+   * rendered `new Date(undefined)` as "Invalid Date".
+   */
   created_at: string;
+  updated_at?: string;
 }
 
+export type TimelineBlockType =
+  | 'activity'
+  | 'meal'
+  | 'speech'
+  | 'performance'
+  | 'break'
+  | 'custom';
+
+/**
+ * A schedule entry.
+ *
+ * IMPORTANT: there are two stores for these, and they are not interchangeable.
+ *
+ *   events.timeline_blocks   a JSON column on the event row. This is what every
+ *                            write path in the app actually updates, and it is
+ *                            where the live data is. `start_time` here is a
+ *                            bare "HH:MM" string.
+ *
+ *   timeline_blocks          a real table, served by /api/timeline. Nothing
+ *                            populates it, so it reads empty. Its `start_time`
+ *                            is a DateTime and arrives as ISO-8601.
+ *
+ * Reading the table and then writing the result back to the event is what
+ * destroys existing schedules: the read returns [] and the write persists that
+ * emptiness. See `timelineService` in the web app, which documents having hit
+ * exactly this.
+ *
+ * The field names below match both stores. Only `start_time`'s format differs,
+ * which is why it is documented rather than typed as `Date`.
+ */
 export interface TimelineBlock {
   id: string;
-  event_id: string;
-  title: string;
+  event_id?: string;
+  /** Not `title`. The column and the JSON payload both call this `label`. */
+  label: string;
   description?: string | null;
+  /** "HH:MM" in the JSON column; ISO-8601 when read from the table. */
   start_time: string;
-  end_time?: string | null;
+  /** Minutes. There is no `end_time`; duration is what is stored. */
+  duration: number;
+  type: TimelineBlockType;
+  host_notes?: string | null;
+  guest_visible?: boolean;
+  /** Minutes before `start_time` to send a reminder. */
+  notify_before?: number | null;
+  location?: string | null;
+  assigned_to?: string[];
   order_index?: number;
   created_at?: string;
 }

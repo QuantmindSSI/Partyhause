@@ -10,9 +10,8 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, Stack, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '@/lib/supabase';
-import { Event, getEventLocation } from '@/types/event';
-import { getApiBaseUrl } from '../../../lib/api';
+import { api } from '@/lib/client';
+import { Event, getEventLocation, getEventTitle } from '@/types/event';
 
 interface EventStats {
   total_guests: number;
@@ -24,7 +23,6 @@ interface EventStats {
   media_count: number;
 }
 
-const API_BASE_URL = getApiBaseUrl();
 
 export default function EventDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -58,26 +56,9 @@ export default function EventDetailsScreen() {
 
       console.log('[Event Details] Fetching event:', id);
 
-      // Get auth token from Supabase session
-      if (!supabase) {
-        console.error('[Event Details] Supabase client not initialized');
-        Alert.alert('Configuration Error', 'Supabase client not initialized');
-        setLoading(false);
-        return;
-      }
-      
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.error('[Event Details] Session error:', sessionError);
-      }
-      
-      const token = session?.access_token;
-      
-      if (!token) {
-        console.error('[Event Details] No auth token found');
+      if (!(await api.auth.isAuthenticated())) {
         Alert.alert(
-          'Authentication Required', 
+          'Authentication Required',
           'Please sign in to view event details',
           [
             { text: 'Cancel', style: 'cancel' },
@@ -88,52 +69,33 @@ export default function EventDetailsScreen() {
         return;
       }
 
-      console.log('[Event Details] Making API request to:', `${API_BASE_URL}/api/events?id=${id}`);
-      
-      const response = await fetch(`${API_BASE_URL}/api/events?id=${id}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      // Was GET /api/events?id=<id>. The route takes the id from the path
+      // (/:id?) and ignores that query parameter, so this returned the
+      // caller's event LIST: data.event was undefined and the screen showed an
+      // empty event with zeroed stats.
+      const { data, error: apiError } = await api.events.getWithStats(id);
 
-      console.log('[Event Details] Response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[Event Details] API error:', response.status, errorText);
-        
-        if (response.status === 401 || response.status === 403) {
-          Alert.alert(
-            'Unauthorized', 
-            'You do not have permission to view this event',
-            [
-              { text: 'OK', onPress: () => router.back() }
-            ]
-          );
-        } else if (response.status === 404) {
-          Alert.alert(
-            'Event Not Found',
-            'This event does not exist or has been deleted',
-            [
-              { text: 'OK', onPress: () => router.back() }
-            ]
-          );
+      if (apiError) {
+        console.error('[Event Details] API error:', apiError.status, apiError.message);
+        if (apiError.status === 401 || apiError.status === 403) {
+          Alert.alert('Unauthorized', 'You do not have permission to view this event',
+            [{ text: 'OK', onPress: () => router.back() }]);
+        } else if (apiError.status === 404) {
+          Alert.alert('Event Not Found', 'This event does not exist or has been deleted',
+            [{ text: 'OK', onPress: () => router.back() }]);
         } else {
-          Alert.alert(
-            'Error',
-            `Failed to load event details (${response.status}). Please try again.`
-          );
+          Alert.alert('Error', `Failed to load event details. ${apiError.message}`);
         }
         setLoading(false);
         return;
       }
 
-      const data = await response.json();
-      console.log('[Event Details] Event loaded successfully:', data.event?.name || data.event?.title);
-      
-      setEvent(data.event);
-      setStats(data.stats || stats);
+      if (data?.event) {
+        setEvent(data.event);
+      }
+      if (data?.stats) {
+        setStats(data.stats);
+      }
     } catch (error) {
       console.error('[Event Details] Exception:', error);
       Alert.alert(
@@ -149,13 +111,18 @@ export default function EventDetailsScreen() {
     }
   };
 
-  const getStatusColor = (status: string): string => {
+  // Cases match the CHECK constraint on events.status. 'cancelled' was handled
+  // here and is not a value the column accepts, while 'active' and 'archived'
+  // are and were falling through to the default grey.
+  const getStatusColor = (status?: string | null): string => {
     switch (status) {
       case 'published':
         return '#10b981';
+      case 'active':
+        return '#3b82f6';
       case 'draft':
         return '#f59e0b';
-      case 'cancelled':
+      case 'archived':
         return '#ef4444';
       case 'completed':
         return '#6b7280';
@@ -164,7 +131,8 @@ export default function EventDetailsScreen() {
     }
   };
 
-  const getTemplateIcon = (template: string): keyof typeof Ionicons.glyphMap => {
+  // template_type is nullable, so this must accept its absence.
+  const getTemplateIcon = (template?: string | null): keyof typeof Ionicons.glyphMap => {
     const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
       birthday: 'gift',
       'kids-birthday': 'balloon',
@@ -179,7 +147,7 @@ export default function EventDetailsScreen() {
       hackathon: 'code-slash',
       corporate: 'briefcase',
     };
-    return iconMap[template] || 'calendar';
+    return iconMap[template ?? ''] || 'calendar';
   };
 
   const renderBirthdayDetails = (settings: Record<string, any>) => {
@@ -547,8 +515,8 @@ export default function EventDetailsScreen() {
     <View style={styles.container}>
       <Stack.Screen
         options={{
-          title: event.title,
-          headerRight: () => (
+          title: getEventTitle(event),
+            headerRight: () => (
             <TouchableOpacity onPress={() => {/* TODO: Edit event */}}>
               <Ionicons name="create-outline" size={24} color="#9333ea" />
             </TouchableOpacity>
@@ -575,7 +543,7 @@ export default function EventDetailsScreen() {
             </View>
           </View>
           
-          <Text style={styles.title}>{event.title}</Text>
+          <Text style={styles.title}>{getEventTitle(event)}</Text>
           {event.description && (
             <Text style={styles.description}>{event.description}</Text>
           )}
@@ -772,8 +740,11 @@ export default function EventDetailsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Danger Zone */}
-        {event.status !== 'cancelled' && (
+        {/* Danger Zone. Guarded on 'archived', the schema's terminal state;
+            the previous check was against 'cancelled', which the CHECK
+            constraint on events.status does not permit, so it was always
+            true. */}
+        {event.status !== 'archived' && (
           <View style={styles.dangerZone}>
             <TouchableOpacity
               style={styles.dangerButton}

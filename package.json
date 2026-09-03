@@ -16,7 +16,7 @@
     "build": "npx vite build",
     "build:web": "npx vite build",
     "build:mobile": "node ./scripts/build-mobile-pwa.cjs",
-    "typecheck": "npx tsc -p tsconfig.app.json && npx tsc -p tsconfig.node.json && npx tsc -p tsconfig.server.json && npx tsc -p packages/core/tsconfig.json",
+    "typecheck": "npx tsc -p tsconfig.app.json && npx tsc -p tsconfig.node.json && npx tsc -p tsconfig.server.json && npx tsc -p packages/core/tsconfig.json && npx tsc --noEmit -p apps/mobile/tsconfig.json",
     "build:check": "npm run typecheck && npm run audit:contracts && npx vite build",
     "lint": "eslint .",
     "preview": "npx vite preview",
