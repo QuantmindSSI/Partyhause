@@ -1,0 +1,199 @@
+# Current-State Gap Register
+
+Audit date: September 3, 2026  
+Repository: PartyHause  
+Scope: Gaps between the current repository and the iOS 1.0 specification
+
+## Interpretation
+
+This register is based on static repository evidence. It does not claim that a production service, database, Apple account, or external provider was tested during the audit.
+
+| Severity | Meaning |
+|---|---|
+| `BLOCKER` | Submission or launch must not proceed while the feature remains visible or required |
+| `HIGH` | Core flow, security, privacy, integrity, or major review risk |
+| `MEDIUM` | Quality, consistency, accessibility, operability, or secondary-flow risk |
+
+Every item below was open at the audit date unless a later evidence-linked change closes it.
+
+## Authentication And Account
+
+| ID | Severity | Gap and evidence | Affected scope | Required outcome |
+|---|---|---|---|---|
+| `GAP-AUTH-01` | `BLOCKER` | Signup returns no token by design, but the web auth path stores a user and presents an authenticated state. `server/routes/auth.ts:227-234`, `src/lib/auth.ts:63-70`, `src/hooks/use-auth.ts:119-135` | `AUTH-03`, `AUTH-04`, `FL-A01` | Registration enters Check Your Email, never an authenticated application shell |
+| `GAP-AUTH-02` | `BLOCKER` | Mobile signup reports that it is signing in, then finds no session. `apps/mobile/components/screens/AuthScreen.tsx:38-61`, `packages/core/src/resources/auth.ts:65-75` | `AUTH-03`, `AUTH-04`, `FL-A01` | Match server signup semantics and route to verification recovery |
+| `GAP-AUTH-03` | `BLOCKER` | Mobile verification and reset clients omit the email required by the API. Reset signs a JWT with `email_verified: true` without updating or preserving the database verification state, the shared client discards the returned token, and the web stores a token without the user needed for restoration. `packages/core/src/resources/auth.ts:97-118`, `server/routes/auth.ts:58-68`, `443-485`, `src/pages/ResetPasswordPage.tsx:56-60`, `src/hooks/use-auth.ts:74-85` | `AUTH-05`, `AUTH-07`, `FL-A01`, `FL-A03` | Use one versioned `{ email, token, password }` contract, preserve verified state correctly, invalidate reset credentials, and return/store a complete usable session |
+| `GAP-AUTH-04` | `HIGH` | The web resend client sends an empty body while the API requires email, and its button depends on an authenticated state unavailable to an unverified user. `src/lib/auth.ts:121-137`, `src/pages/VerifyEmailPage.tsx:28-31`, `server/routes/auth.ts:291-323` | `AUTH-04`, `AUTH-05` | Resend accepts the pending signup email and applies visible rate limits |
+| `GAP-AUTH-05` | `BLOCKER` | Mobile has no route-connected check-email, verify-email, forgot-password, or reset-password experience. `apps/mobile/app/` route inventory | `AUTH-04` through `AUTH-07` | Build and deep-link all account action screens |
+| `GAP-AUTH-06` | `HIGH` | Entra/MSAL can create a browser identity, but the API accepts the custom HS256 token and the API client does not use the Entra token. `src/lib/msal.ts:115-143`, `src/lib/api-client.ts:10-12`, `server/middleware/auth.ts:98-115` | Login offering, `IOS-ACT-08` | Hide external identity controls until server validation and session exchange work end to end |
+| `GAP-AUTH-07` | `HIGH` | Product roles are stored only in client state and do not match persisted profile account types. `src/components/RoleSelection.tsx:40-52`, `prisma/schema.prisma:633-636` | Navigation and authorization | Remove global role switching; derive host, co-host, and guest capability per event |
+| `GAP-AUTH-08` | `BLOCKER` | No account-deletion route, API, worker, or data-lifecycle implementation exists. | `ACC-01`, `OPS-05`, `FL-D01`, `FL-O03` | Complete in-app deletion and operational fulfillment across account data and UGC |
+| `GAP-AUTH-09` | `HIGH` | Logout is client token disposal with no token revocation or refresh-token model. `server/routes/auth.ts:492-495` | `SET-02`, `FL-A02` | Define revocation/session policy and clear server and device associations |
+| `GAP-AUTH-10` | `HIGH` | Signup creates user and profile in separate writes, allowing a partially created account. `server/routes/auth.ts:197-220` | `FL-A01` | Create identity and profile transactionally with deterministic username collision handling |
+| `GAP-AUTH-11` | `BLOCKER` | Signup has no age-eligibility or legal-consent fields, stores no accepted policy versions, returns an explicit existing-email conflict, and always claims verification was sent after the email helper can swallow delivery failure. `apps/mobile/components/screens/AuthScreen.tsx:94-149`, `server/routes/auth.ts:159-234`, `prisma/schema.prisma:70-81` | `AUTH-03`, `AUTH-04`, `FL-A01`, age and consent | Store versioned consent and age eligibility, normalize email, make recovery privacy-safe, and use a durable outbox or truthful delivery status |
+| `GAP-AUTH-12` | `BLOCKER` | Native credentials use ordinary AsyncStorage, event drafts containing guest and timeline data use one global key, and sign-out removes only token and user keys. `apps/mobile/lib/client.ts:11-17`, `35-38`, `apps/mobile/app/events/create/review.tsx:278-305`, `apps/mobile/app/events/drafts.tsx:40-50`, `packages/core/src/resources/auth.ts:85-91` | `SYS-01`, `EVT-02`, `FL-A02`, `FL-E02`, `IOS-SEC-02` | Move credentials to Keychain-backed storage, scope and encrypt recovery data by account, migrate or remove legacy data, and clear all private caches on sign-out/deletion |
+| `GAP-AUTH-13` | `HIGH` | No signed-in password-change, session inventory, or remote session-revocation API exists for Account And Security. | `SET-02`, `FL-ST01` | Add recent-authenticated password change and session management with auditable revocation, or limit the screen to truthful available controls |
+
+## Navigation And Deep Links
+
+| ID | Severity | Gap and evidence | Affected scope | Required outcome |
+|---|---|---|---|---|
+| `GAP-NAV-01` | `BLOCKER` | Native public, auth, and app states share the Home tab, so signed-out screens can appear inside authenticated tab chrome. `apps/mobile/app/(tabs)/index.tsx:8-96`, `apps/mobile/app/(tabs)/_layout.tsx:13-40` | Root navigation | Split public, authentication, and authenticated route groups |
+| `GAP-NAV-02` | `BLOCKER` | Native has no invite-token, guest invitation, email verification, password reset, poll deep-link, notification destination, or not-found route. | `SYS-02`, `SYS-04`, `FL-Y01` | Implement the canonical route allow-list and all external destinations |
+| `GAP-NAV-03` | `BLOCKER` | Expo config defines a custom scheme but no iOS Associated Domains. `apps/mobile/app.config.ts:9-28` | Universal Links | Add associated domains and serve a valid `apple-app-site-association` document |
+| `GAP-NAV-04` | `HIGH` | Current web links point to route patterns the web router does not register. `src/components/JoinEventPage.tsx:125-130`, `src/features/polls/components/PollCard.tsx:65-67`, `src/App.tsx:256-283` | Web fallback for Universal Links | Ensure every shared URL has equivalent web and native handling |
+| `GAP-NAV-05` | `HIGH` | Most web navigation is persisted state rather than URL state, which makes direct-route back actions unreliable. `src/App.tsx:135-247`, `src/store/usePartyStore.ts:258-265` | Cross-platform link behavior | Use route-driven destinations and deterministic return context |
+| `GAP-NAV-06` | `MEDIUM` | Native root stack explicitly configures a starter modal that has no product purpose. `apps/mobile/app/modal.tsx`, `apps/mobile/app/_layout.tsx:40-44` | App completeness | Remove the route from the release build |
+| `GAP-NAV-07` | `BLOCKER` | Native invitation email builds `${getWebBaseUrl()}/events/:eventId`, defaults to the Container App host, generates no join token, and targets a web route that does not exist. `apps/mobile/lib/email.ts:381-398`, `apps/mobile/lib/api.ts:36-38`, `78-82`, `src/App.tsx:256-283` | `INV-03`, `INV-04`, `SYS-02` | Generate a scoped server token and use one shared canonical `https://partyhause.com/join/:token` link builder for email, QR, web, and native |
+
+## Events And Lifecycle
+
+| ID | Severity | Gap and evidence | Affected scope | Required outcome |
+|---|---|---|---|---|
+| `GAP-EVT-01` | `BLOCKER` | Mobile sends `published`, the server always stores `draft`, and the mobile mapper forces `published` visually. `apps/mobile/app/events/create/review.tsx:100-109`, `server/routes/events.ts:190-205`, `apps/mobile/lib/mappers.ts:33-48` | `EVT-09`, `EVT-10`, `FL-E01` | Implement and return a real publish transition; never overwrite status in a mapper |
+| `GAP-EVT-02` | `BLOCKER` | Event, guest, and timeline creation are separate operations; child failure is logged while overall success is shown. `apps/mobile/app/events/create/review.tsx:127-252` | `EVT-09`, `FL-E01` | Use an atomic or explicitly recoverable server draft workflow with accurate partial status |
+| `GAP-EVT-03` | `HIGH` | Native drafts exist only in AsyncStorage and are represented as resumable app drafts. `apps/mobile/app/events/drafts.tsx:31-118` | `EVT-02`, `FL-E02` | Persist drafts on the server and label local copies as recovery data |
+| `GAP-EVT-04` | `HIGH` | Wizard data is serialized through URL parameters across steps. `apps/mobile/app/events/create/basics.tsx:41-52`, `template-details.tsx:30-48`, `guests.tsx:110-138`, `timeline.tsx:88-114` | `EVT-03` through `EVT-09` | Store wizard state in a durable draft model keyed by event/draft ID |
+| `GAP-EVT-05` | `BLOCKER` | Several native event-type forms return a valid state without collecting meaningful data. `apps/mobile/components/forms/templates/BlockPartyForm.tsx`, `ClassReunionForm.tsx`, `HackathonForm.tsx`, `CorporateForm.tsx`, `FundraiserForm.tsx`, `TravelForm.tsx` | `EVT-04`, `EVT-06` | Implement schema-backed forms or remove those templates from 1.0 |
+| `GAP-EVT-06` | `HIGH` | Native omits the available smart brief; the web assistant simulates extraction locally instead of using the mounted AI APIs. `server/routes/ai.ts`, `src/components/templates/AIEventAssistant.tsx:88-127` | `EVT-03` | Port the real API with deterministic/manual fallback and AI privacy disclosure |
+| `GAP-EVT-07` | `BLOCKER` | Native event edit, media, vendor, and cancellation controls are inert. `apps/mobile/app/events/[id]/index.tsx:516-524`, `682-710`, `747-764` | `EVT-11` through `EVT-13` | Implement in-scope actions and remove excluded media/vendor actions |
+| `GAP-EVT-08` | `BLOCKER` | No co-host management route or UI exists, while authorization reads co-host records. | `EVT-14`, `FL-E04` | Build management API and UI with boolean permission enforcement |
+| `GAP-EVT-09` | `BLOCKER` | Co-host permission checks compare JSON booleans to string `'true'`, while other routes ignore granular permissions. `prisma/schema.prisma:213-220`, `server/lib/event-access.ts:118-145` | All co-host mutations | Normalize the permission schema and enforce it consistently in every endpoint |
+| `GAP-EVT-10` | `BLOCKER` | Public events have no discovery endpoint, but native Explore remains a top-level tab, advertises discovery, and deliberately returns no event data. `apps/mobile/app/(tabs)/_layout.tsx:26-32`, `apps/mobile/app/(tabs)/explore.tsx:61-80`, `142-147` | Scope boundary and App completeness | Replace Explore with the canonical PartyCrew tab and keep public event marketplace controls absent from 1.0 |
+| `GAP-EVT-11` | `HIGH` | Visibility is represented by both `privacy` and `is_public`, which can disagree. `server/lib/event-access.ts:59-68` | Event access and metadata | Migrate to one visibility source and test every actor |
+| `GAP-EVT-12` | `BLOCKER` | The target includes `cancelled`, archive metadata, validated transitions, and conflict-safe edits, while the schema omits `cancelled` and the generic update route accepts arbitrary status/privacy with no transition, revision, or lifecycle audit. `prisma/schema.prisma:178-180`, `server/routes/events.ts:268-324` | `EVT-12`, `EVT-13`, `FL-E03` | Migrate to the document 01 lifecycle, add `archived_at`, validate partial dates against stored data, require a revision/ETag, and audit each transition |
+| `GAP-EVT-13` | `BLOCKER` | Public access ignores lifecycle status and a readable event response returns the full event row plus host-oriented counts to every actor; native then displays management actions without relationship checks. `server/lib/event-access.ts:59-68`, `113-115`, `server/routes/events.ts:27-72`, `apps/mobile/app/events/[id]/index.tsx:594-741` | `EVT-11`, `EVT-15`, guest privacy | Return explicit host, permitted co-host, accepted-guest, invite-preview, and public DTOs; hide drafts and private fields; authorize insights separately; return caller permissions to the client |
+| `GAP-EVT-14` | `HIGH` | Native exposes 11 hard-coded templates, the shared client has no event-template resource, and the server stores a schema but validates only the event date while reporting feature setup it does not persist. `apps/mobile/app/events/create/index.tsx:8-86`, `packages/core/src/client.ts:30-43`, `server/routes/event-templates.ts:87-141` | `EVT-04`, `EVT-06` | Use one server template ID, schema version, field schema, defaults, and valid assets; validate overrides server-side and report only persisted capabilities |
+
+## Guests, Invitations, RSVP, And Check-In
+
+| ID | Severity | Gap and evidence | Affected scope | Required outcome |
+|---|---|---|---|---|
+| `GAP-INV-01` | `BLOCKER` | Native invitation composition uses fixed event data. `apps/mobile/app/events/[id]/invites/create.tsx:43-50` | `INV-03` | Bind authorized event data and current design state |
+| `GAP-INV-02` | `BLOCKER` | Native recipient selection uses fixed guests. `apps/mobile/app/events/[id]/invites/send.tsx:25-36` | `INV-04` | Query actual event guests and enforce invite permission |
+| `GAP-INV-03` | `BLOCKER` | Invitation email output ignores selected design/customization and a failed result can still produce a success alert. `apps/mobile/lib/email.ts:367-408`, `apps/mobile/app/events/[id]/invites/send.tsx:95-120` | `INV-03` through `INV-05` | Use one server-rendered invitation contract and inspect per-recipient results |
+| `GAP-INV-04` | `BLOCKER` | `POST /api/send-email` is public, accepts arbitrary recipients and HTML, and bypasses the global API rate limiter. `server/index.ts:138-173` | Email security, `IOS-SEC-06` | Replace client-controlled relay with authenticated event-scoped commands and abuse controls |
+| `GAP-INV-05` | `BLOCKER` | Saved email templates and visual invitation designs are separate systems. The API stores raw HTML unchanged, the web sanitizes only preview output, and send-time interpolation escapes neither a complete variable set nor final HTML. `server/routes/invite-templates.ts:33-58`, `src/components/TemplateManager.tsx:178-203`, `src/components/GuestList.tsx:112-150` | `INV-01`, `INV-02` | Unify them into one server-validated structured contract, sanitize at write/render, escape values, and reject unknown or unresolved variables |
+| `GAP-INV-06` | `BLOCKER` | Anonymous invite-token join omits required name/email, auto-runs at the wrong time, and crew conversion attempts a second join. `src/components/JoinEventPage.tsx:42-117`, `server/routes/invites.ts:87-247` | `RSVP-01` through `RSVP-03`, `FL-R01` | Add token preview and canonical anonymous/authenticated RSVP endpoints |
+| `GAP-INV-07` | `BLOCKER` | Public guest invitation route calls APIs protected by required authentication and has no RSVP controls. `src/App.tsx:258`, `server/routes/guests.ts:18-19`, `src/components/GuestView.tsx` | Public invitation fallback | Use scoped invitation credentials or a token-authorized API |
+| `GAP-INV-08` | `BLOCKER` | Token `allowed_emails` is stored but not enforced; listing/revocation is absent; usage and guest creation are not transactional. `server/routes/invites.ts` | `INV-06`, `FL-I03` | Enforce all policy fields, add inspect/revoke, and transact consumption |
+| `GAP-INV-09` | `HIGH` | Guest records have no event-plus-normalized-email uniqueness and authenticated token join can duplicate a manual invitation. | RSVP data integrity | Normalize identity and enforce deduplication transactionally |
+| `GAP-INV-10` | `BLOCKER` | Three incompatible QR payloads exist: check-in URI, invitation URL, and raw guest ID. `server/routes/guests.ts:21-24`, `src/components/GuestList.tsx:390-405`, `src/components/GuestView.tsx:216-223` | `CHK-02`, `CHK-03` | Define one signed, expiring, revocable `partyhause://checkin/v1/:opaqueCredential` payload that resolves event and guest server-side; reject raw IDs and retain manual fallback |
+| `GAP-INV-11` | `BLOCKER` | Native has no route-connected camera scanner or installed scanner dependency, despite camera purpose text. | `CHK-02`, `OS-03` | Implement the secure scanner and correct camera purpose string required by the fixed 1.0 scope |
+| `GAP-INV-12` | `BLOCKER` | Native guest route lists and checks in but does not expose complete add, edit, approve, reject, remove, and invite behavior; a richer component is not routed. | `GST-01`, `GST-02`, `FL-GST01` | Connect one complete guest-management experience with normalized deduplication and permission checks |
+| `GAP-INV-13` | `BLOCKER` | Any authenticated user can update an email-log ID and write delivery state without event ownership. Webhook verification becomes optional when its secret is absent, while the preferred Azure Communication Services path has engagement tracking disabled. `server/routes/email-logs.ts:65-94`, `server/routes/email-webhook.ts:113-129`, `server/lib/email.ts:193-214`, `infra/resources.bicep:194-211`, `302-352` | `INV-05`, `EVT-15`, delivery truth | Make provider delivery state server-owned, enforce event access, verify webhooks fail-closed, and expose only evidence supported by the active provider |
+| `GAP-INV-14` | `BLOCKER` | Approval-required, pending, and declined guest rows count as event participants, no host approval endpoint exists, and those rows can access polls. `server/lib/event-access.ts:82-107`, `147-149`, `server/routes/invites.ts:155-169`, `server/routes/polls.ts:155-159`, `221-225`, `341-347` | `RSVP-02`, `RSVP-03`, `FL-GST01`, `FL-R01` | Separate RSVP intent from approval, add host approve/reject commands, enforce accepted/approved participant access, capacity, plus-ones, and withdrawal |
+| `GAP-INV-15` | `BLOCKER` | Check-in is a generic guest update that accepts arbitrary checked state, does not require accepted RSVP, rewrites timestamps on repeat, allows all co-hosts, and records no actor audit. `server/routes/guests.ts:214-279`, `server/lib/event-access.ts:130-139` | `CHK-01`, `CHK-02`, `FL-C01` | Add an event-scoped idempotent check-in command with `check_in_guests`, accepted-state validation, signed credential validation, immutable actor/time audit, and separate correction permission |
+
+## Timeline, Polls, Costs, PartyBoard, And Games
+
+| ID | Severity | Gap and evidence | Affected scope | Required outcome |
+|---|---|---|---|---|
+| `GAP-PLAN-01` | `BLOCKER` | Timeline exists both as `Event.timeline_blocks` JSON and relational `TimelineBlock` rows; clients and API read different sources. | `TIM-01`, `TIM-02`, event stats | Migrate to one canonical relational source and remove the duplicate write path |
+| `GAP-PLAN-02` | `BLOCKER` | Full event reads can expose JSON timeline blocks and host notes to guests despite filtered timeline API behavior. | Guest privacy | Remove private fields from role-scoped event response models |
+| `GAP-PLAN-03` | `HIGH` | Native timeline add/edit controls are incomplete or inert, and reminders are not scheduled. `apps/mobile/app/events/[id]/activities.tsx:218-264` | `TIM-02`, `FL-T01` | Complete CRUD, reorder alternatives, visibility, conflict, and reminder behavior |
+| `GAP-PLAN-04` | `BLOCKER` | Mobile has no route-connected poll UI and the shared vote request does not match the API body. `server/routes/polls.ts`, `packages/core/src/resources/index.ts:258-278` | `POL-01` through `POL-03` | Port poll screens and align request/response contracts |
+| `GAP-PLAN-05` | `BLOCKER` | Ranking polls lack stored rank positions and are rendered as multi-select; consensus can close after one vote without quorum. | `FL-P01` | Remove ranking from 1.0 and implement the document 01 quorum formula for single and multiple choice |
+| `GAP-PLAN-06` | `BLOCKER` | Cost split API is host-only, accepts arbitrary status strings, has no dispute/confirmed vocabulary or immutable history, and no current UI consumes it. `server/routes/cost-split.ts:252-323`, `prisma/schema.prisma:997-1015` | `COST-01` through `COST-04` | Build host and actor-scoped guest APIs/UI using the canonical minor-unit rounding and transition table in document 01 |
+| `GAP-PLAN-07` | `HIGH` | Cost shares have no payment path but can imply collected status without a documented external-confirmation model. | `COST-03`, App Store payment positioning | Define a reimbursement-only ledger and prohibit sensitive payment data |
+| `GAP-PLAN-08` | `BLOCKER` | PartyBoard has no mounted API or Prisma model; native uses local sample state and web calls absent endpoints. `server/index.ts:172-192`, `packages/core/src/resources/index.ts:1-11`, `apps/mobile/app/events/[id]/planning/partyhub/partyboard/index.tsx:128-191` | `BRD-01`, `BRD-02` | Build the required 1.0 persistence, authorization, moderation, realtime/conflict handling, and accessible list mode |
+| `GAP-PLAN-09` | `BLOCKER` | Global native games use sample data and event-specific games end in an unavailable alert. `apps/mobile/app/(tabs)/games.tsx`, `apps/mobile/app/events/[id]/games.tsx:184-199` | `GAM-01` through `GAM-05` | Ship only the two complete local games and remove every unsupported game/control |
+
+## PartyCrew, Notifications, Support, And Safety
+
+| ID | Severity | Gap and evidence | Affected scope | Required outcome |
+|---|---|---|---|---|
+| `GAP-SOC-01` | `HIGH` | Native PartyCrew components exist but are not mounted in the three-tab layout. `apps/mobile/app/(tabs)/_layout.tsx:13-40` | `SOC-01`, `SOC-04` through `SOC-08` | Replace the tab model with the canonical four tabs and connect real APIs |
+| `GAP-SOC-02` | `BLOCKER` | Feed is read-only; post creation, like, comment, reply, and share persistence APIs are absent, while current controls log or do nothing. | `SOC-02`, `SOC-03`, `FL-S03` | Build the fixed 1.0 moderated post and interaction APIs plus native UI |
+| `GAP-SOC-03` | `HIGH` | Private PartyCrew response is optimistically rendered as joined rather than requested. `src/features/partycrew/components/JoinCrewButton.tsx:30-42`, `apps/mobile/components/partycrew/JoinCrewButton.tsx:32-44` | `FL-S01` | Use the server action result to render requested versus joined state |
+| `GAP-SOC-04` | `HIGH` | No complete reachable mobile request inbox exists, and shared methods confuse creator IDs with the request IDs required by server accept/reject/cancel routes. `packages/core/src/resources/index.ts:353-405`, `server/routes/partycrew.ts:659-791` | `SOC-08`, `FL-S02` | Build received/sent request management with explicit request-ID methods and idempotent actions |
+| `GAP-SOC-05` | `BLOCKER` | Blocking affects some reads through schema checks, but no block/unblock API or UI exists and enforcement is incomplete. | `SOC-09`, `OPS-03`, `IOS-UGC-04` | Build block management and enforce it across all relevant reads and writes |
+| `GAP-SOC-06` | `BLOCKER` | No user/content reporting model, API, app screen, moderation queue, or response process exists. | `MOD-01`, `OPS-01`, `OPS-02`, Guideline 1.2 | Build the complete safety system before UGC exposure |
+| `GAP-SOC-07` | `HIGH` | Profile Edit points to a missing native route; profile media is not wired. `apps/mobile/app/profile/[id].tsx:212-225` | `SOC-06` | Port complete edit behavior and selected-image upload |
+| `GAP-SOC-08` | `BLOCKER` | Notification list/read APIs exist, but native screens, typed destinations, preferences, and event/post interaction producers are absent; current producers are primarily PartyCrew actions. `server/routes/notifications.ts:17-100`, `server/routes/partycrew.ts:486-496`, `536-546`, `712-722`, `770-783` | `NTF-01`, `NTF-02`, `FL-N01` | Build producers, versioned action data, native screens, access-checked routing, pagination, preferences, and producer idempotency |
+| `GAP-SOC-09` | `BLOCKER` | APNs registration, device-token storage, push preferences, and notification handling are absent. | `OS-01`, `FL-N02` | Implement the fixed 1.0 end-to-end push capability while keeping authorization optional for each user |
+| `GAP-SOC-10` | `BLOCKER` | Existing public Privacy, Terms, and Support pages describe obsolete Supabase/MailerSend/Vercel behavior, email-only deletion, photo memories, complete tracking/offline behavior, and other claims that do not match current code. Native signup does not link current legal content and states that data is never shared with third parties. `public/privacy.html:55-85`, `121-123`, `public/terms.html:186-190`, `public/support.html:149-180`, `apps/mobile/components/screens/AuthScreen.tsx:182-201` | `LEG-01` through `LEG-03`, `SUP-01` through `SUP-03`, `OPS-04` | Replace all legal/support content from the final data map, add Community Guidelines, link it before signup and from Settings, build support intake, and verify every public claim |
+| `GAP-SOC-11` | `BLOCKER` | Privacy settings are stored but not enforced consistently. `show_attending_events` is not consumed by event/profile reads, and `show_partycrew_list` is enforced by one relationship list but ignored by another. `src/pages/PrivacySettingsPage.tsx:25-45`, `server/routes/users.ts:18-35`, `50-119`, `server/routes/partycrew.ts:29-65`, `197-220` | `SET-03`, `FL-ST01` | Define each setting's audience effect, enforce it on every endpoint and page, and test the full viewer matrix |
+| `GAP-SOC-12` | `HIGH` | Every suggested-user strategy excludes private profiles, so the private-profile request journey in `C08` cannot begin from Discover People. `server/routes/users.ts:213-229`, `267-275`, `307-315` | `SOC-04`, `FL-S01`, `C08` | Return privacy-safe private-account suggestions with request state and no protected profile data |
+
+## Privacy, Permissions, App Store, And Operations
+
+| ID | Severity | Gap and evidence | Affected scope | Required outcome |
+|---|---|---|---|---|
+| `GAP-IOS-01` | `BLOCKER` | Contact import requests the full address book and automatically stages the first 50 records. App config declares broad photo access, photo-add, microphone, and camera copy for memory capture while the fixed 1.0 scope needs explicit contact selection, system photo picker, and QR camera only. `apps/mobile/app/events/create/guests.tsx:59-87`, `apps/mobile/app.config.ts:22-28`, `apps/mobile/package.json:24-41` | `OS-02` through `OS-04`, permission minimization | Use explicit per-contact selection, transmit only confirmed contacts, use the system photo picker, remove photo-add/microphone declarations, and make camera copy specific to check-in |
+| `GAP-IOS-02` | `BLOCKER` | No repository evidence establishes an iOS privacy manifest, required-reason API audit, or final SDK signature audit. | App Store upload | Generate the release archive privacy report and include accurate manifests/reasons |
+| `GAP-IOS-03` | `BLOCKER` | No complete current Privacy Policy, App Privacy data map, consent inventory, or implemented retention schedule is tied to the mobile binary. | `LEG-03`, App Store privacy | Produce and reconcile all privacy artifacts against observed data flows |
+| `GAP-IOS-04` | `BLOCKER` | `eas.json` contains non-production Apple submission values. `apps/mobile/eas.json:33-39` | Submission automation | Configure real values in secure CI/account configuration, never in committed secrets |
+| `GAP-IOS-05` | `HIGH` | Existing mobile deployment documents claim production readiness based on UI polish rather than end-to-end launch evidence. `docs/mobile/MOBILE_PRODUCTION_DEPLOY.md` | Governance | Use this directory and current tests as authority; archive or label stale readiness claims |
+| `GAP-IOS-06` | `HIGH` | Existing parity documentation describes obsolete Supabase, Netlify, and MailerSend behavior as complete. `docs/WEB_MOBILE_PARITY_ASSESSMENT.md` | Product and App Review truthfulness | Reconcile public copy and internal release claims with the Azure/Express migration and actual binary |
+| `GAP-IOS-07` | `BLOCKER` | No evidence of App Store Connect app record, active agreements, age rating, DSA declaration, export answers, App Privacy answers, screenshots, or review account is present in the repo audit. | Submission package | Complete the account-side checklist and retain non-secret evidence |
+| `GAP-IOS-08` | `BLOCKER` | The app declares tablet support while locking portrait, major views capture fixed window dimensions at module load, and no iOS 17 deployment target is configured. `apps/mobile/app.config.ts:13-28`, `apps/mobile/components/cards/EventCard.tsx:26-30`, `apps/mobile/app/events/[id]/planning/partyhub/partyboard/index.tsx:90-97` | iPad layouts, orientation, screenshots, minimum OS | Keep the fixed 1.0 iPad scope: enable required orientations, use responsive safe-area/window hooks and adaptive navigation, configure iOS 17, and pass all critical cases on iPad |
+| `GAP-IOS-09` | `BLOCKER` | No deletion, moderation, support, and invitation operational monitoring or staff process exists in current product routes. | Post-launch operation | Implement queues, alerts, service objectives, escalation, and audit retention |
+| `GAP-IOS-10` | `BLOCKER` | Realtime negotiation exists but no mobile integration is present. Current server broadcasts use `sendToAll`, disclose event identifiers across tenants, and omit poll/timeline broadcasts; the web hook can replace guest state after an unrelated event refresh. `server/lib/pubsub.ts:69-84`, `src/hooks/use-realtime.ts:92-105`, `server/routes/events.ts:234-236`, `server/routes/guests.ts:164-165` | PartyBoard and event collaboration | Use authorized user/event groups, filter the active event, invalidate scoped queries, emit every supported event, and prove no cross-tenant identifiers before enabling realtime claims |
+| `GAP-IOS-11` | `BLOCKER` | Prisma points to a migrations directory that is absent, deployment does not run a database migration, schema comments do not create constraints, and invitation routes call unmanaged SQL functions. `prisma.config.ts:23-26`, `.github/workflows/deploy.yml:84-106`, `142-201`, `prisma/schema.prisma:14-25`, `server/routes/invites.ts:48-52`, `141-145` | Data integrity and clean deployment | Commit versioned migrations for tables, constraints, triggers, views, and functions; deploy before the API revision; verify schema version; seed required system data deterministically |
+| `GAP-IOS-12` | `BLOCKER` | No deterministic review/staging seed, database-backed API actor-matrix suite, native route/component suite, or physical-device end-to-end suite proves the 10 cases. Current seed creates templates only and existing client tests mock fetch. `prisma/seed.ts:93-149`, `vitest.config.ts:5-21`, `src/test/core-api-client.test.ts:34-43` | Release validation and App Review | Add idempotent fictional seed/reset tooling, API integration tests, native tests, and candidate-bound physical-device evidence |
+| `GAP-IOS-13` | `BLOCKER` | Native has no persisted query cache, connectivity manager, offline/pass/legal/help routes, maintenance contract, or required-update route. `apps/mobile/providers/AppProviders.tsx:6-13`, `apps/mobile/package.json:13-54`, `apps/mobile/app/` route inventory | `SYS-03`, `SYS-05`, `FL-Y02` | Build versioned encrypted caches, staleness metadata, mutation blocking, connectivity recovery, maintenance/minimum-version API, and fixed system routes |
+| `GAP-IOS-14` | `BLOCKER` | Release-visible excluded and incomplete controls remain: an empty Explore tab, CSV import marked unavailable, a profile event grid marked unavailable, unsupported PartyBoard item types, and app-description claims for photo memories. `apps/mobile/app/(tabs)/explore.tsx:61-80`, `142-147`, `apps/mobile/app/events/create/guests.tsx:93-105`, `apps/mobile/app/profile/[id].tsx:212-224`, `apps/mobile/app/events/[id]/planning/partyhub/partyboard/index.tsx:118-125`, `882-897`, `apps/mobile/app.config.ts:17` | App completeness | Enforce a release route/control allow-list in CI and remove every excluded, mock, dead, unavailable, or inaccurate product claim from the binary and metadata |
+| `GAP-IOS-15` | `BLOCKER` | Web email tracking logs recipients, full HTML and provider responses; the webhook logs full payloads; several API routes return raw exception messages. `src/lib/email-tracking.ts:128-166`, `223-227`, `server/routes/email-webhook.ts:103-105`, `server/routes/events.ts:113-119`, `server/routes/invites.ts:77-80` | `IOS-SEC-09`, privacy and incident response | Use structured allow-listed logs, redact identities/content/tokens, return opaque error codes with correlation IDs, and add automated redaction tests |
+| `GAP-IOS-16` | `BLOCKER` | Core native controls do not define accessible names, roles, states, hints, focus, or non-drag alternatives; no native accessibility-property usage was found. Examples: `apps/mobile/components/screens/AuthScreen.tsx:74-205`, `apps/mobile/app/events/create/timeline.tsx:245-263`, `apps/mobile/components/cards/EventCard.tsx:214-290` | Document 03 accessibility contract | Implement semantic controls, focus/error announcements, scalable layouts, non-drag paths, and automated plus physical-device accessibility assertions |
+| `GAP-IOS-17` | `HIGH` | Native dependencies include no crash, product analytics, or performance instrumentation despite required screen IDs, release funnels, and incident monitoring. `apps/mobile/package.json:13-54` | Operability and release evidence | Select privacy-reviewed telemetry, implement stable-ID event taxonomy and redaction, upload symbols, document retention/consent, and verify alerts |
+
+## Submission-Critical Sequence
+
+### Gate 1: Remove misleading surface area
+
+1. Hide external identity until API token validation works.
+2. Remove vendor, ticket, media-memory, unsupported game, and unavailable event controls.
+3. Remove unused microphone, photo-add, location, tracking, and other capabilities.
+4. Remove sample data and starter routes from production navigation.
+
+### Gate 2: Establish trust boundaries
+
+1. Close the public email relay.
+2. Normalize event and co-host authorization.
+3. Secure token storage and session lifecycle.
+4. Fix storage ownership, webhook verification, input validation, rate limits, and log redaction.
+5. Establish repeatable database constraints and migrations.
+
+### Gate 3: Complete identity and links
+
+1. Correct signup, verification, resend, reset, and session contracts.
+2. Build public/auth/app route groups.
+3. Configure Universal Links and safe web fallback.
+4. Build in-app permanent deletion and fulfillment.
+
+### Gate 4: Complete event truth
+
+1. Implement real draft and publish transitions.
+2. Make creation recoverable and stop carrying state in route parameters.
+3. Unify timeline storage.
+4. Complete event edit, lifecycle, co-host, insights, guest, invitation, RSVP, and check-in flows.
+5. Standardize QR and token contracts.
+
+### Gate 5: Complete collaboration and safety
+
+1. Port polls and cost shares with correct actor scoping.
+2. Build the required persistent PartyBoard with accessible list mode.
+3. Restrict Games to two complete experiences.
+4. Build social write APIs only with filtering, reporting, blocking, moderation, and support.
+5. Add in-app notifications and complete APNs while keeping push consent optional for the user.
+
+### Gate 6: Complete App Store evidence
+
+1. Reconcile Privacy Policy, App Privacy, privacy manifests, permissions, SDKs, and observed traffic.
+2. Complete age rating, export, DSA, agreements, metadata, screenshots, and review access.
+3. Pass all 10 cases on iPhone and iPad.
+4. Rehearse App Review from a clean install.
+5. Build with the current accepted Xcode and SDK and pass App Store Connect processing.
+
+## Closure Evidence Rule
+
+A gap is closed only when all applicable evidence exists:
+
+- Implementation merged and release-enabled.
+- API and authorization contract tested.
+- Client happy, empty, failure, offline, and retry states tested.
+- Accessibility behavior verified.
+- Privacy and App Store impact reconciled.
+- End-to-end case passes on the release candidate.
+- Production-like telemetry demonstrates the expected state without sensitive-data leakage.

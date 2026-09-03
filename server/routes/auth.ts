@@ -55,10 +55,17 @@ const APP_URL = process.env.VITE_APP_URL || 'http://localhost:5173';
 /**
  * Mint a session token.
  *
- * `email_verified` is carried as a claim so `requireVerifiedEmail` can gate a
- * request without a database round trip. It is only ever true here because the
- * sole caller is login, which refuses unconfirmed accounts, and verification,
- * which has just confirmed one. Signup no longer mints a token at all.
+ * `email_verified` is carried as a claim so `requireAuth` can gate a request
+ * without a database round trip.
+ *
+ * The claim is unconditionally true, which is safe ONLY because every caller
+ * has established that fact first: login refuses unconfirmed accounts, and
+ * password reset confirms the address as part of completing it, since the
+ * single-use token was delivered to that mailbox. Signup mints no token at
+ * all.
+ *
+ * Any new caller must uphold that invariant or set the column, otherwise it
+ * hands out a token asserting something untrue.
  */
 function signToken(user: { id: string; email: string; name?: string | null }): string {
   return jwt.sign(
@@ -477,11 +484,22 @@ router.post('/reset-password', credentialLimiter, async (req, res) => {
         password_hash,
         reset_token: null,
         reset_token_expires: null,
+        // Completing a reset proves control of the mailbox: the single-use
+        // token was delivered there and nowhere else. That is the same proof
+        // the verification link provides, so the address is confirmed here
+        // too.
+        //
+        // Without this the account is left inconsistent: signToken stamps
+        // email_verified into the claim, so the user is signed in immediately,
+        // while the column still says false and their NEXT login is refused
+        // with EMAIL_NOT_VERIFIED. Working now, locked out in seven days.
+        email_verified: true,
+        verification_token: null,
+        verification_token_expires: null,
       },
     });
 
     const authToken = signToken(user);
-
     res.json({ success: true, message: 'Password reset successfully', token: authToken });
   } catch (err) {
     console.error('Reset password error:', err);
