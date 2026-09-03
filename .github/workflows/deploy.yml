@@ -27,7 +27,16 @@ env:
   # with API_PUBLIC_URL at build time so the browser knows where to send /api/*.
   # These must match the FQDNs emitted by Bicep (resources.bicep outputs).
   API_PUBLIC_URL: https://ca-api-partyhause-gipkzrenusqpy.calmtree-5b646dc8.eastus2.azurecontainerapps.io
-  WEB_PUBLIC_URL: https://ca-web-partyhause-gipkzrenusqpy.calmtree-5b646dc8.eastus2.azurecontainerapps.io
+  # The web app is reached at the custom domain now that partyhause.com is
+  # bound with a managed certificate. This value is baked into the bundle as
+  # VITE_APP_URL, so it is the origin the app reports for itself and the one
+  # used to build absolute links; the container FQDN would leak into shared
+  # URLs. The API keeps its container FQDN because no custom domain is bound
+  # to it yet.
+  WEB_PUBLIC_URL: https://partyhause.com
+  # Kept for the post-deploy smoke test, which should verify the container
+  # directly rather than through DNS and the custom-domain certificate.
+  WEB_CONTAINER_URL: https://ca-web-partyhause-gipkzrenusqpy.calmtree-5b646dc8.eastus2.azurecontainerapps.io
   NODE_VERSION: '20'
   # Short SHA used to tag images for traceability (also tagged :latest).
   IMAGE_TAG: ${{ github.sha }}
@@ -231,7 +240,11 @@ jobs:
         # The web PWA is served by nginx; just verify the index returns 200.
         run: |
           set -euo pipefail
-          URL="${{ env.WEB_PUBLIC_URL }}/"
+          # Container FQDN, not the custom domain: this step checks that the
+          # revision we just deployed is serving. Going through the custom
+          # domain would also exercise DNS and the managed certificate, so a
+          # failure there would be ambiguous about what actually broke.
+          URL="${{ env.WEB_CONTAINER_URL }}/"
           echo "Polling $URL ..."
           for i in $(seq 1 24); do
             code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL" || echo "000")
