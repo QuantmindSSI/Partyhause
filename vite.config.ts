@@ -84,34 +84,72 @@ export default defineConfig({
         // Split stable vendor code from app code so app deploys don't bust
         // the (large, rarely-changing) vendor caches. Page code is split per
         // route via React.lazy in src/App.tsx.
-        manualChunks(id: string) {
-          // Lazy-only vendors get their own chunks so they never ride along
-          // in the eager 'vendor' bundle. These rules run FIRST so a
-          // package's commonjs-proxy virtual modules (\0-prefixed but still
-          // containing the package path) stay in the same chunk as the
-          // package — otherwise the proxy lands in eager vendor and drags
-          // the lazy chunk into the entry graph.
-          if (id.includes('@azure/msal-browser')) return 'msal-vendor';
-          if (id.includes('sanitize-html') || id.includes('htmlparser2') || id.includes('domhandler') || id.includes('domutils') || id.includes('dom-serializer') || id.includes('/entities/')) {
-            return 'sanitize-vendor';
-          }
-          if (id.includes('jsqr')) return 'qr-vendor';
-          // Rollup/Vite shared helper modules (preload helper, commonjs
-          // helpers) are used by many chunks — pin them to eager vendor.
-          if (id.startsWith('\0') || id.includes('commonjsHelpers') || id.includes('vite/preload-helper')) {
+          manualChunks(id: string) {
+            // A module and its commonjs proxy MUST land in the same chunk.
+            //
+            // react and react-dom are CommonJS, so Rollup emits virtual
+            // modules like `\0/…/node_modules/react/index.js?commonjs-proxy`
+            // alongside the real ones. A blanket `id.startsWith('\0')` rule
+            // sent every proxy to `vendor` while the real module went to
+            // `react-vendor`, producing exactly what Rollup then warned about:
+            //
+            //   Circular chunk: react-vendor -> vendor -> react-vendor
+            //
+            // That cycle is not cosmetic. It breaks module initialisation
+            // order, so React was still undefined when a dependency evaluated
+            // `React.useLayoutEffect` at module top level, and the app died on
+            // load with "Cannot read properties of undefined (reading
+            // 'useLayoutEffect')". The build exits 0, because Rollup treats it
+            // as a warning.
+            //
+            // The fix is to classify by the underlying package path for every
+            // module, virtual or not. Stripping the marker first means a proxy
+            // always resolves to the same chunk as the code it proxies.
+            const path = id.startsWith('\0') ? id.slice(1) : id;
+
+            // Shared Rollup/Vite helpers are deliberately NOT pinned.
+            //
+            // Pinning them to `vendor` was the remaining half of the cycle:
+            // react is CommonJS, so react-vendor depends on commonjsHelpers in
+            // vendor, while vendor's own packages import React back out of
+            // react-vendor. Returning undefined lets Rollup hoist the helpers
+            // into a chunk every dependant can reach without a cycle, which is
+            // what its placement algorithm exists to do.
+            if (path.includes('commonjsHelpers') || path.includes('vite/preload-helper')) {
+              return undefined;
+            }
+
+            if (!path.includes('node_modules')) return undefined;
+
+            // Lazy-only vendors, kept out of the eager bundle so they are not
+            // dragged into the entry graph.
+            if (path.includes('@azure/msal-browser')) return 'msal-vendor';
+            if (path.includes('sanitize-html') || path.includes('htmlparser2') || path.includes('domhandler') || path.includes('domutils') || path.includes('dom-serializer') || path.includes('/entities/')) {
+              return 'sanitize-vendor';
+            }
+            if (path.includes('jsqr')) return 'qr-vendor';
+
+            // Eager vendors, split for cache stability across deploys.
+            if (path.includes('/node_modules/react-router')) return 'router-vendor';
+            // Anchored to `node_modules/` so only the real packages match.
+            // `/react-dom/` on its own also matched @floating-ui/react-dom,
+            // which pulled that package into react-vendor while its own
+            // dependencies (@floating-ui/dom, @floating-ui/core) stayed in
+            // vendor. That was the other half of the cycle, and floating-ui is
+            // the module that reads React.useLayoutEffect at import time, so
+            // it is what actually threw when the ordering broke.
+            if (
+              path.includes('/node_modules/react/') ||
+              path.includes('/node_modules/react-dom/') ||
+              path.includes('/node_modules/scheduler/')
+            ) {
+              return 'react-vendor';
+            }
+            if (path.includes('framer-motion')) return 'motion-vendor';
+            if (path.includes('@radix-ui')) return 'radix-vendor';
+            if (path.includes('date-fns')) return 'date-vendor';
             return 'vendor';
-          }
-          if (!id.includes('node_modules')) return undefined;
-          // Eager vendors, split for cache stability across deploys.
-          if (id.includes('react-router')) return 'router-vendor';
-          if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/scheduler/')) {
-            return 'react-vendor';
-          }
-          if (id.includes('framer-motion')) return 'motion-vendor';
-          if (id.includes('@radix-ui')) return 'radix-vendor';
-          if (id.includes('date-fns')) return 'date-vendor';
-          return 'vendor';
-        },
+          },
       }
     },
     chunkSizeWarningLimit: 700,
