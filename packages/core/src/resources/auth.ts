@@ -23,8 +23,14 @@ export interface AuthResource {
   signOut(): Promise<void>;
   me(): Promise<ApiResponse<CurrentUser>>;
   forgotPassword(email: string): Promise<ApiResponse<{ success: boolean }>>;
-  resetPassword(token: string, password: string): Promise<ApiResponse<{ success: boolean }>>;
-  verifyEmail(token: string): Promise<ApiResponse<{ success: boolean; message: string }>>;
+  /**
+   * Second step of the reset. The address is part of the contract, not just the
+   * token: the route looks the user up by email and then bcrypt-compares the
+   * token against that row's hash, so a body without it is rejected outright.
+   */
+  resetPassword(email: string, token: string, password: string): Promise<ApiResponse<{ success: boolean }>>;
+  /** Same shape as resetPassword, and for the same reason. */
+  verifyEmail(email: string, token: string): Promise<ApiResponse<{ success: boolean; message: string }>>;
   /**
    * Re-send the confirmation link. Anonymous and takes the address explicitly,
    * because a user who cannot sign in has no session to authenticate with.
@@ -102,18 +108,18 @@ export function createAuthResource(transport: Transport): AuthResource {
       });
     },
 
-    resetPassword(token, password) {
+    resetPassword(email, token, password) {
       return transport.request<{ success: boolean }>('/api/auth/reset-password', {
         method: 'POST',
-        body: { token, password },
+        body: { email, token, password },
         anonymous: true,
       });
     },
 
-    verifyEmail(token) {
+    verifyEmail(email, token) {
       return transport.request<{ success: boolean; message: string }>('/api/auth/verify-email', {
         method: 'POST',
-        body: { token },
+        body: { email, token },
         anonymous: true,
       });
     },

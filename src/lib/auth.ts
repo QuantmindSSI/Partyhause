@@ -1,4 +1,4 @@
-import { getStoredToken, setStoredToken, getStoredUser, setStoredUser, clearAuth, supabase } from './supabase';
+import { getStoredToken, setStoredToken, getStoredUser, setStoredUser, clearAuth } from './supabase';
 import { apiUrl } from './apiBase';
 
 export interface AuthResponse {
@@ -6,9 +6,36 @@ export interface AuthResponse {
   user?: { id: string; email: string; name?: string } | null;
   error?: string;
   message?: string;
+  /**
+   * True when the account exists and the password was correct, but the address
+   * has not been confirmed. The caller should offer to resend the link rather
+   * than treat this as a credential failure: sending the user to password
+   * reset cannot resolve it.
+   */
+  needsEmailVerification?: boolean;
+  /** Set when signup succeeded but no session was established. */
+  awaitingVerification?: boolean;
 }
 
-const TOKEN_KEY = 'partyhause_auth_token';
+/**
+ * Error carrying the server's machine-readable `code` alongside its message.
+ *
+ * The plain `new Error(data.error)` this replaces discarded the code, so a
+ * caller could not tell an unconfirmed address (403 EMAIL_NOT_VERIFIED) from a
+ * wrong password (401). They need opposite responses: one offers to resend a
+ * link, the other offers a password reset.
+ */
+export class AuthApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = 'AuthApiError';
+    this.status = status;
+    this.code = code;
+  }
+}
 
 async function apiPostAuth<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(apiUrl(path), {
@@ -17,7 +44,9 @@ async function apiPostAuth<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) {
+    throw new AuthApiError(data.error || `HTTP ${res.status}`, res.status, data.code);
+  }
   return data as T;
 }
 
@@ -56,18 +85,57 @@ export const authService = {
       setStoredUser(data.user);
       return { success: true, user: data.user };
     } catch (error: any) {
+      // An unconfirmed address is not a credential failure. Surfacing it as
+      // one sends the user to password reset, which cannot help: the password
+      // was correct.
+      if (error instanceof AuthApiError && error.code === 'EMAIL_NOT_VERIFIED') {
+        return {
+          success: false,
+          needsEmailVerification: true,
+          error: error.message,
+        };
+      }
       return { success: false, error: error.message };
     }
   },
 
+  /**
+   * Create an account. Does NOT sign the user in.
+   *
+   * The route returns no token until the address is confirmed, so nothing is
+   * stored here. Reading `data.token` and calling `setStoredToken` on it, as
+   * this did, now writes `undefined` and leaves a half-signed-in state that
+   * every later request rejects.
+   */
   signUp: async (email: string, password: string, name?: string): Promise<AuthResponse> => {
     try {
-      const data = await apiPostAuth<{ user: { id: string; email: string; name?: string }; token: string }>(
-        '/api/auth/signup', { email, password, name },
+      const data = await apiPostAuth<{
+        user: { id: string; email: string; name?: string };
+        message: string;
+      }>('/api/auth/signup', { email, password, name });
+
+      return {
+        success: true,
+        user: data.user,
+        awaitingVerification: true,
+        message: data.message ?? 'Check your email for a confirmation link before signing in.',
+      };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  },
+
+  /**
+   * Re-send the confirmation link. Anonymous, because a user who cannot sign in
+   * has no session to authenticate with. The server answers identically whether
+   * or not the address is registered, so this cannot confirm an account exists.
+   */
+  resendVerification: async (email: string): Promise<AuthResponse> => {
+    try {
+      const data = await apiPostAuth<{ success: boolean; message: string }>(
+        '/api/auth/resend-verification', { email },
       );
-      setStoredToken(data.token);
-      setStoredUser(data.user);
-      return { success: true, user: data.user, message: 'Account created successfully!' };
+      return { success: true, message: data.message };
     } catch (error: any) {
       return { success: false, error: error.message };
     }
@@ -112,25 +180,6 @@ export const authService = {
       const data = await apiPostAuth<{ success: boolean; message: string }>(
         '/api/auth/verify-email', { email, token },
       );
-      return { success: true, message: data.message };
-    } catch (error: any) {
-      return { success: false, error: error.message };
-    }
-  },
-
-  /** Re-issue the verification link for the signed-in user. */
-  resendVerification: async (): Promise<AuthResponse> => {
-    try {
-      const res = await fetch(apiUrl('/api/auth/resend-verification'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${getStoredToken()}`,
-        },
-        body: JSON.stringify({}),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       return { success: true, message: data.message };
     } catch (error: any) {
       return { success: false, error: error.message };

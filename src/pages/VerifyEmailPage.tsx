@@ -9,7 +9,6 @@ import { CheckCircle2, XCircle, Loader2, MailCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { authService } from '@/lib/auth';
-import { getStoredToken } from '@/lib/supabase';
 
 type VerifyState =
   | { phase: 'verifying' }
@@ -27,7 +26,6 @@ export default function VerifyEmailPage() {
 
   const email = params.get('email') ?? '';
   const token = params.get('token') ?? '';
-  const signedIn = Boolean(getStoredToken());
 
   useEffect(() => {
     if (started.current) return;
@@ -49,7 +47,7 @@ export default function VerifyEmailPage() {
 
   const handleResend = async () => {
     setResending(true);
-    const result = await authService.resendVerification();
+    const result = await authService.resendVerification(email);
     setResending(false);
     if (result.success) {
       setState({ phase: 'resent', message: result.message ?? 'Verification email sent' });
@@ -97,7 +95,14 @@ export default function VerifyEmailPage() {
               <XCircle className="h-12 w-12 mx-auto text-destructive" aria-hidden="true" />
               <h1 className="text-xl font-bold text-foreground">Verification failed</h1>
               <p className="text-sm text-muted-foreground">{state.message}</p>
-              {signedIn && (
+              {/*
+                Gated on the address, not on a session. An account that has not
+                been confirmed cannot obtain a token, so gating this on
+                `getStoredToken()` hid the button from the only people who need
+                it. The endpoint is anonymous for that reason. `email` comes
+                from the link, and the server rejects an empty one.
+              */}
+              {email && (
                 <Button className="w-full" onClick={handleResend} disabled={resending}>
                   {resending ? 'Sending…' : 'Send a new verification link'}
                 </Button>
