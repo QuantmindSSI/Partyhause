@@ -29,6 +29,15 @@ export interface EventAccess {
   coHostPermissions: Record<string, unknown> | null;
   /** Caller appears on the guest list (by user_id or email). */
   isGuest: boolean;
+  /**
+   * The guest row's rsvp_status, or null when the caller is not a guest.
+   *
+   * Appearing on a guest list is not the same as attending. Someone invited and
+   * still pending, or who has explicitly declined, is on the list but is not a
+   * participant. Without this field that distinction could not be made, and
+   * `isEventParticipant` treated all three identically.
+   */
+  guestRsvpStatus: string | null;
   isPublic: boolean;
   hostId: string | null;
 }
@@ -39,6 +48,7 @@ const NO_ACCESS: EventAccess = {
   isCoHost: false,
   coHostPermissions: null,
   isGuest: false,
+  guestRsvpStatus: null,
   isPublic: false,
   hostId: null,
 };
@@ -74,6 +84,7 @@ export async function getEventAccess(
       isCoHost: false,
       coHostPermissions: null,
       isGuest: false,
+      guestRsvpStatus: null,
       isPublic,
       hostId: event.host_id,
     };
@@ -92,7 +103,7 @@ export async function getEventAccess(
           ...(userEmail ? [{ email: userEmail }] : []),
         ],
       },
-      select: { id: true },
+      select: { id: true, rsvp_status: true },
     }),
   ]);
 
@@ -105,6 +116,7 @@ export async function getEventAccess(
         ? (coHost.permissions as Record<string, unknown>)
         : null,
     isGuest: !!guest,
+    guestRsvpStatus: guest?.rsvp_status ?? null,
     isPublic,
     hostId: event.host_id,
   };
@@ -177,9 +189,32 @@ export function canEditTimeline(a: EventAccess): boolean {
   return a.exists && (a.isHost || a.isCoHost);
 }
 
-/** RLS: polls READ/CREATE/VOTE — any event participant. */
+/**
+ * RSVP values that mean the person is actually coming.
+ *
+ * 'confirmed' is legacy vocabulary for 'accepted' and both are present in live
+ * data, so both count. Anything else, including 'pending', 'declined',
+ * 'maybe' and null, does not.
+ */
+const ATTENDING_RSVP = new Set(['accepted', 'confirmed']);
+
+/**
+ * RLS: polls READ/CREATE/VOTE — host, co-host, or a guest who accepted.
+ *
+ * This previously returned true for `isGuest` alone, so anyone on the guest
+ * list counted as a participant regardless of their RSVP. Someone who had
+ * explicitly declined, or who was merely invited and never responded, could
+ * read, create and vote on that event's polls. Four endpoints in
+ * server/routes/polls.ts gate on this function, so the defect applied to all of
+ * them. That is GAP-INV-14.
+ *
+ * Being on a guest list is an invitation. Participation is what you get after
+ * accepting one.
+ */
 export function isEventParticipant(a: EventAccess): boolean {
-  return a.exists && (a.isHost || a.isCoHost || a.isGuest);
+  if (!a.exists) return false;
+  if (a.isHost || a.isCoHost) return true;
+  return a.isGuest && ATTENDING_RSVP.has((a.guestRsvpStatus ?? '').toLowerCase());
 }
 
 export default {

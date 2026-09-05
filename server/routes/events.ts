@@ -139,6 +139,8 @@ router.get('/:id?', async (req: AuthenticatedRequest, res) => {
       isCoHost: coHostSet.has(row.id as string),
       coHostPermissions: null,
       isGuest: guestSet.has(row.id as string),
+      // List rows carry no RSVP; the DTO does not consult it.
+      guestRsvpStatus: null,
       isPublic: row.privacy === 'public',
       hostId: row.host_id as string,
     }));

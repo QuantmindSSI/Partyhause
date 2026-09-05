@@ -31,6 +31,7 @@ import {
   canInviteGuests,
   canModerate,
   canDeleteEvent,
+  isEventParticipant,
   type EventAccess,
 } from '../../server/lib/event-access';
 
@@ -41,6 +42,7 @@ function access(over: Partial<EventAccess> = {}): EventAccess {
     isCoHost: false,
     coHostPermissions: null,
     isGuest: false,
+    guestRsvpStatus: null,
     isPublic: false,
     hostId: 'host-1',
     ...over,
@@ -123,5 +125,58 @@ describe('co-host permissions: host and existence still dominate', () => {
   it('never grants delete to a co-host, whatever their permissions say', () => {
     // Deletion is host-only by design. No permission key escalates to it.
     expect(canDeleteEvent(coHost({ can_edit: true, can_moderate: true }))).toBe(false);
+  });
+});
+
+/**
+ * GAP-INV-14: appearing on a guest list is not the same as attending.
+ *
+ * `isEventParticipant` returned true for any guest row regardless of RSVP, so
+ * someone who had explicitly declined, or who was merely invited and never
+ * replied, counted as a participant. Four endpoints in server/routes/polls.ts
+ * gate on it, so a declined guest could read, create and vote on that event's
+ * polls.
+ */
+describe('event participation requires an accepted RSVP', () => {
+  const guest = (rsvp: string | null) =>
+    access({ isGuest: true, guestRsvpStatus: rsvp });
+
+  it('admits a guest who accepted', () => {
+    expect(isEventParticipant(guest('accepted'))).toBe(true);
+  });
+
+  it('admits "confirmed", which is legacy vocabulary for accepted', () => {
+    // Both spellings exist in live data; events.ts counts them together too.
+    expect(isEventParticipant(guest('confirmed'))).toBe(true);
+  });
+
+  it('is case-insensitive, since the column is free text', () => {
+    expect(isEventParticipant(guest('Accepted'))).toBe(true);
+  });
+
+  it('refuses a guest who declined', () => {
+    // The headline defect: a declined guest could vote in the poll.
+    expect(isEventParticipant(guest('declined'))).toBe(false);
+  });
+
+  it('refuses a guest who has not replied', () => {
+    expect(isEventParticipant(guest('pending'))).toBe(false);
+  });
+
+  it('refuses "maybe", which is not attendance', () => {
+    expect(isEventParticipant(guest('maybe'))).toBe(false);
+  });
+
+  it('refuses a guest row with no RSVP recorded', () => {
+    expect(isEventParticipant(guest(null))).toBe(false);
+  });
+
+  it('still admits the host and co-hosts, who run the event', () => {
+    expect(isEventParticipant(access({ isHost: true }))).toBe(true);
+    expect(isEventParticipant(access({ isCoHost: true }))).toBe(true);
+  });
+
+  it('refuses everyone when the event does not exist', () => {
+    expect(isEventParticipant(access({ exists: false, isHost: true }))).toBe(false);
   });
 });
