@@ -390,6 +390,49 @@ asserts `.dockerignore` does not re-exclude it.
 
 ---
 
+## Mobile build path
+
+There is no iOS build yet and nothing has been submitted. The scaffolding is in
+place; what is missing needs accounts, not code.
+
+**Ready.** `eas-cli` is a devDependency. Build profiles for `development`,
+`preview` and `production` are configured with auto-increment on both platforms.
+Bundle identifier is `com.partyhause.mobile` for iOS and Android. The one iOS
+usage description the app can justify, contacts, is declared and the four it
+could not were removed.
+
+**Missing, and it needs you rather than a commit:**
+
+| What | Why it blocks |
+|---|---|
+| An EAS project | `app.config.ts` has no `eas.projectId`, yet `eas.json` sets `appVersionSource: "remote"`, which requires one. Created by `eas init`, which needs an Expo account |
+| Apple Team ID | The AASA `appID` is `TEAMID.com.partyhause.mobile` and submission needs it. Only an Apple Developer account produces it |
+| App Store Connect record | `ascAppId` cannot exist before the app record does |
+
+```bash
+cd apps/mobile
+npm run eas:login          # Expo account
+npm run eas:init           # writes eas.projectId into app.config.ts
+npm run build:ios:preview  # first real artefact, simulator build
+```
+
+`submit.production.ios` is deliberately **empty**. It previously held
+`your-apple-id@example.com`, `REPLACE_WITH_APP_STORE_CONNECT_APP_ID` and
+`REPLACE_WITH_TEAM_ID`. A placeholder there is worse than an omission: `eas
+submit` reads it and fails against Apple with an authentication error that looks
+like a credential problem rather than a configuration one. Omitted, EAS prompts
+for each value and caches it, and the failure mode is "you have not supplied
+this yet", which is true.
+
+**Universal Links are not configured.** `associatedDomains` is empty and
+`/.well-known/apple-app-site-association` is served correctly by nginx but no
+file exists there, so it returns 404. That 404 is honest: this domain currently
+claims no app association. Write the file once the Team ID exists, not before,
+because Apple's CDN caches it and a wrong `appID` poisons Universal Links until
+the cache expires.
+
+---
+
 ## Testing
 
 15 files in `src/test/`, 155 passing and 5 skipped. Vitest with jsdom.
