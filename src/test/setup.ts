@@ -1,6 +1,29 @@
 import '@testing-library/jest-dom'
+import { configure } from '@testing-library/dom'
 import { vi } from 'vitest'
 import React from 'react'
+
+/**
+ * Raise the async-utility bound for every `waitFor` and `findBy*` in the suite.
+ *
+ * Every page in src/App.tsx sits behind React.lazy, so an integration test that
+ * renders <App /> must resolve a chunk through Suspense before any text exists
+ * in the DOM. On an idle machine that lands in roughly 200ms and testing
+ * library's 1000ms default never bites. Put the machine under load, which is
+ * the normal condition of a CI runner, and it does.
+ *
+ * The failure does not look like a timeout. It surfaces as
+ * `Unable to find an element with the text: PartyHause` with the Suspense
+ * fallback spinner still in the DOM, which reads as a broken assertion rather
+ * than a slow one. That cost real time to diagnose.
+ *
+ * 5000ms is set here rather than per-assertion because the problem belongs to
+ * every test that renders a lazy route, not to the one that happened to fail
+ * first. A passing test still returns as soon as its condition is met, so this
+ * costs nothing on the happy path; it only changes how long a genuine failure
+ * takes to report.
+ */
+configure({ asyncUtilTimeout: 5000 })
 
 // Mock framer-motion components FIRST to avoid animation issues
 vi.mock('framer-motion', () => {
