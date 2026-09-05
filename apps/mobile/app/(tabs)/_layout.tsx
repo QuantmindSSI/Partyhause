@@ -7,7 +7,7 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 /**
- * Home is the only tab.
+ * Home and PartyCrew.
  *
  * Explore and Games were removed on 2026-09-05. Neither had a backend: there is
  * no discovery endpoint behind Explore (GAP-EVT-10) and no games API behind
@@ -34,6 +34,13 @@ export default function TabLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="partycrew"
+        options={{
+          title: 'PartyCrew',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.2.fill" color={color} />,
         }}
       />
     </Tabs>

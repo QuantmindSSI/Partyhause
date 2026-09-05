@@ -420,10 +420,62 @@ export interface FeedResource {
    * rejects empty or non-string entries with a 400, so callers must chunk.
    */
   markSeen(postIds: string[]): Promise<ApiResponse<number>>;
+  /**
+   * Like a post. Idempotent: a repeat call, or a retry after a dropped
+   * response, returns the current state rather than inflating the counter.
+   */
+  like(postId: string): Promise<ApiResponse<{ liked: boolean; likes_count: number }>>;
+  /** Remove a like. Idempotent in the same way. */
+  unlike(postId: string): Promise<ApiResponse<{ liked: boolean; likes_count: number }>>;
+  /** Comments oldest-first, cursor paginated. */
+  comments(postId: string, options?: { limit?: number; cursor?: string }): Promise<ApiResponse<PostCommentPage>>;
+  /** Add a comment, or a reply when `parentCommentId` is supplied. */
+  comment(postId: string, body: string, parentCommentId?: string): Promise<ApiResponse<{ comment: PostComment; comments_count: number }>>;
+  /** Record a share. Not deduplicated: sharing twice is two real events. */
+  share(postId: string, sharedTo?: 'feed' | 'external' | 'message'): Promise<ApiResponse<{ shared: boolean; shares_count: number }>>;
+}
+
+export interface PostCommentAuthor {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+}
+
+export interface PostComment {
+  id: string;
+  body: string;
+  parent_comment_id: string | null;
+  created_at: string;
+  user: PostCommentAuthor;
+}
+
+export interface PostCommentPage {
+  comments: PostComment[];
+  next_cursor: string | null;
 }
 
 export function createFeedResource(t: Transport): FeedResource {
   return {
+    like: (postId) =>
+      t.request<{ liked: boolean; likes_count: number }>(`/api/feed/posts/${postId}/like`, { method: 'POST' }),
+    unlike: (postId) =>
+      t.request<{ liked: boolean; likes_count: number }>(`/api/feed/posts/${postId}/like`, { method: 'DELETE' }),
+    comments: (postId, options) =>
+      t.request<PostCommentPage>(`/api/feed/posts/${postId}/comments`, {
+        method: 'GET',
+        query: { limit: options?.limit, cursor: options?.cursor },
+      }),
+    comment: (postId, body, parentCommentId) =>
+      t.request<{ comment: PostComment; comments_count: number }>(`/api/feed/posts/${postId}/comments`, {
+        method: 'POST',
+        body: { body, parent_comment_id: parentCommentId ?? null },
+      }),
+    share: (postId, sharedTo) =>
+      t.request<{ shared: boolean; shares_count: number }>(`/api/feed/posts/${postId}/share`, {
+        method: 'POST',
+        body: { shared_to: sharedTo ?? 'external' },
+      }),
     crew: (options) =>
       t.request<CrewFeedPage>('/api/feed/crew', {
         method: 'GET',

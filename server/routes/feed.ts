@@ -326,4 +326,236 @@ router.post('/seen', requireAuth, async (req: AuthenticatedRequest, res: Respons
   }
 });
 
+
+/**
+ * Feed interactions: like, comment, share.
+ *
+ * These endpoints did not exist. `PostLike`, `PostComment` and `PostShare` were
+ * in the schema with `likes_count`, `comments_count` and `shares_count`
+ * denormalised onto `PartycrewPost`, and nothing wrote to any of it. The mobile
+ * feed rendered the counters and its handlers were three TODOs that logged to
+ * the console, so every tap looked like it worked and changed nothing. That is
+ * GAP-SOC-02.
+ *
+ * Two invariants govern all three:
+ *
+ * 1. The counter and the row are written in one transaction. They are two
+ *    representations of the same fact, so a partial write leaves the feed
+ *    permanently lying about a number users can see.
+ *
+ * 2. Visibility is checked before writing. `canSeePost` reuses the same rule the
+ *    feed read path applies, so a post you could never have been shown cannot be
+ *    liked by guessing its id.
+ */
+
+/**
+ * A post is visible if you are its author, or its author is in your crew.
+ *
+ * Mirrors the relationship test the crew feed already applies when selecting
+ * posts. Returns the post when visible and null otherwise, so callers cannot
+ * accidentally treat "not found" and "not permitted" differently and leak
+ * whether an id exists.
+ */
+async function visiblePost(postId: string, userId: string) {
+  const post = await prisma.partycrewPost.findUnique({
+    where: { id: postId },
+    select: { id: true, creator_id: true },
+  });
+  if (!post) return null;
+  if (post.creator_id === userId) return post;
+
+  const connected = await prisma.connection.findFirst({
+    where: { follower_id: userId, following_id: post.creator_id },
+    select: { id: true },
+  });
+  return connected ? post : null;
+}
+
+/** POST /api/feed/posts/:id/like — idempotent like. */
+router.post('/posts/:id/like', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const post = await visiblePost(req.params.id, userId);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+
+    const existing = await prisma.postLike.findFirst({
+      where: { post_id: post.id, user_id: userId },
+      select: { id: true },
+    });
+    // Idempotent: a double tap, or a retry after a dropped response, must not
+    // inflate the counter. Report the current state rather than erroring.
+    if (existing) {
+      const current = await prisma.partycrewPost.findUnique({
+        where: { id: post.id }, select: { likes_count: true },
+      });
+      return res.json({ liked: true, likes_count: current?.likes_count ?? 0 });
+    }
+
+    const [, updated] = await prisma.$transaction([
+      prisma.postLike.create({ data: { post_id: post.id, user_id: userId } }),
+      prisma.partycrewPost.update({
+        where: { id: post.id },
+        data: { likes_count: { increment: 1 } },
+        select: { likes_count: true },
+      }),
+    ]);
+    res.status(201).json({ liked: true, likes_count: updated.likes_count });
+  } catch (err) {
+    console.error('Like post error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/** DELETE /api/feed/posts/:id/like — idempotent unlike. */
+router.delete('/posts/:id/like', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const post = await visiblePost(req.params.id, userId);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+
+    const existing = await prisma.postLike.findFirst({
+      where: { post_id: post.id, user_id: userId }, select: { id: true },
+    });
+    if (!existing) {
+      const current = await prisma.partycrewPost.findUnique({
+        where: { id: post.id }, select: { likes_count: true },
+      });
+      return res.json({ liked: false, likes_count: current?.likes_count ?? 0 });
+    }
+
+    const [, updated] = await prisma.$transaction([
+      prisma.postLike.delete({ where: { id: existing.id } }),
+      prisma.partycrewPost.update({
+        where: { id: post.id },
+        // Floor at zero. A counter that drifted negative would render as
+        // "-1 likes" forever, and no repair path exists.
+        data: { likes_count: { decrement: 1 } },
+        select: { likes_count: true },
+      }),
+    ]);
+    res.json({ liked: false, likes_count: Math.max(updated.likes_count, 0) });
+  } catch (err) {
+    console.error('Unlike post error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/** GET /api/feed/posts/:id/comments — oldest first, cursor paginated. */
+router.get('/posts/:id/comments', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const post = await visiblePost(req.params.id, req.user!.id);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+
+    const parsed = parseInt((req.query.limit as string) || '20', 10);
+    const limit = Math.min(Math.max(Number.isNaN(parsed) ? 20 : parsed, 1), 50);
+    const cursor = req.query.cursor as string | undefined;
+
+    const comments = await prisma.postComment.findMany({
+      where: { post_id: post.id },
+      orderBy: { created_at: 'asc' },
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: {
+        id: true, body: true, parent_comment_id: true, created_at: true,
+        user: { select: { id: true, username: true, display_name: true, avatar_url: true } },
+      },
+    });
+
+    const hasMore = comments.length > limit;
+    const page = hasMore ? comments.slice(0, limit) : comments;
+    res.json({ comments: page, next_cursor: hasMore ? page[page.length - 1].id : null });
+  } catch (err) {
+    console.error('List comments error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/** POST /api/feed/posts/:id/comments — add a comment or a reply. */
+router.post('/posts/:id/comments', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const post = await visiblePost(req.params.id, userId);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+
+    const { body, parent_comment_id: parentId } = req.body ?? {};
+    if (typeof body !== 'string' || body.trim() === '') {
+      return res.status(400).json({ error: 'Comment body is required' });
+    }
+    // Bounded at a trust boundary (GAP-IOS-19). Without this a single request
+    // can write an arbitrarily large row.
+    if (body.length > 2000) {
+      return res.status(400).json({ error: 'Comment is limited to 2000 characters' });
+    }
+
+    // A reply must attach to a comment on this same post, or threads could be
+    // grafted across posts by supplying any comment id.
+    if (parentId !== undefined && parentId !== null) {
+      if (typeof parentId !== 'string') {
+        return res.status(400).json({ error: 'parent_comment_id must be a string' });
+      }
+      const parent = await prisma.postComment.findFirst({
+        where: { id: parentId, post_id: post.id }, select: { id: true },
+      });
+      if (!parent) return res.status(400).json({ error: 'Parent comment does not belong to this post' });
+    }
+
+    const [comment, updated] = await prisma.$transaction([
+      prisma.postComment.create({
+        data: {
+          post_id: post.id,
+          user_id: userId,
+          body: body.trim(),
+          parent_comment_id: parentId ?? null,
+        },
+        select: {
+          id: true, body: true, parent_comment_id: true, created_at: true,
+          user: { select: { id: true, username: true, display_name: true, avatar_url: true } },
+        },
+      }),
+      prisma.partycrewPost.update({
+        where: { id: post.id },
+        data: { comments_count: { increment: 1 } },
+        select: { comments_count: true },
+      }),
+    ]);
+    res.status(201).json({ comment, comments_count: updated.comments_count });
+  } catch (err) {
+    console.error('Create comment error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/** POST /api/feed/posts/:id/share — record a share. */
+router.post('/posts/:id/share', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const post = await visiblePost(req.params.id, userId);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+
+    // schema.prisma PostShare.shared_to CHECK vocabulary.
+    const VALID_TARGETS = ['feed', 'external', 'message'];
+    const target = (req.body?.shared_to as string | undefined) ?? 'external';
+    if (!VALID_TARGETS.includes(target)) {
+      return res.status(400).json({
+        error: `shared_to must be one of: ${VALID_TARGETS.join(', ')}`,
+      });
+    }
+
+    // Shares are not deduplicated. Unlike a like, sharing the same post twice
+    // is two real events and both are worth counting.
+    const [, updated] = await prisma.$transaction([
+      prisma.postShare.create({ data: { post_id: post.id, user_id: userId, shared_to: target } }),
+      prisma.partycrewPost.update({
+        where: { id: post.id },
+        data: { shares_count: { increment: 1 } },
+        select: { shares_count: true },
+      }),
+    ]);
+    res.status(201).json({ shared: true, shares_count: updated.shares_count });
+  } catch (err) {
+    console.error('Share post error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

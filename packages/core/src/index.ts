@@ -30,6 +30,9 @@ export type {
   StorageResource, EmailResource, EmailLogsResource,
   GuestCreateInput, GuestUpdateInput, EmailLog, EmailLogInput,
   CrewStatus, CrewConnection, CrewRequest, CrewToggleResult, CrewMembersPage, CrewingWithPage, CrewRequestsPage,
+  PostComment,
+  PostCommentAuthor,
+  PostCommentPage,
 } from './resources';
 
 export * from './types';
