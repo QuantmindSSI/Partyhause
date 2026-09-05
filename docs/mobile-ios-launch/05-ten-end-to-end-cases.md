@@ -57,7 +57,7 @@ SYS-01 -> AUTH-01 -> AUTH-03 -> AUTH-04 -> SYS-02 -> AUTH-05
 | Verification resend | Submitted email is sent explicitly; rate-limit state is visible |
 | Expired verification link | Verify Email Result offers a valid resend path |
 | Malformed verification link | No token data is exposed and the user can request a fresh message |
-| Reused verification link | Verify Email Result reports that the account is already verified and routes safely to Sign In |
+| Reused verification link | Verify Email Result uses the same privacy-safe invalid/expired/already-used state and offers a fresh message |
 | Verification on another device | The result is clear on that device and the original device can continue after sign-in |
 | Contacts denied | `OS-02` returns to Initial Guest Setup and manual add remains available |
 | Blank event | Template Details is skipped and review remains valid |
@@ -90,6 +90,7 @@ Prove session restoration, server-backed draft recovery, event editing, lifecycl
 | Secondary actor | Co-host whose edit permission can be revoked |
 | Draft | Server draft at Template Details with a newer local recovery copy |
 | Published event | Seeded with guests, invitations, timeline, and a co-host |
+| Cancellation event | Separate published event that can be cancelled |
 | Terminal event | Separate completed event available for archive and restore |
 | Disposable event | Separate published event with deletable dependencies |
 | Test clock | Can cross the start and end boundaries for the published event |
@@ -198,13 +199,17 @@ EVT-11 -> GST-01 -> GST-02 -> INV-01 -> INV-02 -> INV-03
 | Unsafe invitation markup | Save is rejected or content is converted to the supported safe structure |
 | Unresolved variable | Continue is blocked and the missing variable is identified |
 | Artwork cancelled | Composition remains valid with no photo permission requirement |
+| Unsafe invitation artwork | Media remains unexposed and enters the documented rejection or moderation path |
 | Provider unavailable | Campaign remains retryable and no recipient is labeled sent |
 | Send rate limit | Campaign remains intact and displays the server-provided next eligible retry time |
 | Duplicate send tap | Idempotency key prevents another campaign |
 | Partial batch failure | Successful and failed recipients are named separately |
 | Bounce retry | Permanent bounce remains suppressed |
 | Revoked token | New preview and RSVP attempts resolve through `SYS-04` |
-| Unsafe event or invitation copy | Content is rejected or quarantined before another user can view it and remains privately correctable |
+| Expired token | Preview and RSVP reject it without incrementing usage |
+| Maximum uses reached | A later use is rejected transactionally and the count cannot exceed ten |
+| Email allow-list mismatch | Join is rejected without revealing allowed addresses |
+| Unsafe event or invitation copy | `OPS-01` rejects or quarantines it before another user can view it and keeps it privately correctable |
 | Guest removal retry | Repeating a confirmed removal is idempotent and does not affect another guest |
 | Guest removal impact | Confirmation names invitation, pass, poll, cost, and check-in consequences before the record is removed |
 | Co-host without guest permission | Guest mutations are absent in UI and rejected by the API |
@@ -272,7 +277,7 @@ Failure destinations: SYS-03 and SYS-04
 | Wrong allowed email | RSVP is rejected without revealing the allowed address list |
 | Plus-one exceeds capacity | The transaction is rejected and neither guest nor companion count changes |
 | Expired or exhausted token | `SYS-04` offers host contact or safe return |
-| Abusive event or invitation copy | Invitation Landing opens `MOD-01` or signed-out support, records the token-scoped target, and returns without consuming the invite |
+| Abusive event or invitation copy | Invitation Landing opens token-scoped `MOD-01`, records the target with rate limiting, and returns without consuming the invite |
 | Malformed or wrong-event QR | Scanner rejects it without showing another guest's details |
 | Raw guest ID submitted as QR | Scanner and server reject it because only the signed versioned credential is valid |
 | Unauthorized scanner | Check-in endpoint rejects the action and records no attendance change |
@@ -285,7 +290,7 @@ Failure destinations: SYS-03 and SYS-04
 - Guest sees only permitted event and timeline data.
 - The pass is event-scoped and works from encrypted cache.
 - Check-in persists exactly once.
-- `FL-R01`, `FL-C01`, `FL-Y01`, and relevant `FL-Y02` branches pass.
+- `FL-R01`, `FL-C01`, `FL-Y01`, the approval/capacity branches of `FL-GST01`, and relevant `FL-Y02` branches pass.
 
 ## `C05`: Co-host And Guests Plan Together
 
@@ -297,7 +302,7 @@ Prove timeline editing, participant polling, persistent PartyBoard collaboration
 
 | Item | Requirement |
 |---|---|
-| Primary actor | Co-host with timeline and moderation permission |
+| Primary actor | Co-host with `manage_timeline` and `moderate_event_content` |
 | Participants | Host and three accepted guests |
 | Timeline | Two visible entries and one host-only entry |
 | Polls | Support single and multiple choice; ranking is absent |
@@ -320,7 +325,7 @@ EVT-11 -> TIM-01 -> TIM-02 -> POL-01 -> POL-02 -> POL-03
 4. Create a single-choice poll, vote as three participants, revise one vote, and close as the creator.
 5. Repeat valid semantics for multiple choice.
 6. Confirm ranking is absent and exercise the documented quorum formula with both below-quorum and at-quorum votes.
-7. Attempt an unauthorized close as a guest who did not create the poll.
+7. Attempt an unauthorized close as a guest who did not create the poll, then report an unsafe poll through `MOD-01`.
 8. Open PartyBoard, add a safe note and idea through `OVL-04`, edit and move one, vote on one, delete an authorized disposable item, then switch to list mode and confirm equivalent actions.
 9. Attempt unsafe text and verify `OPS-01` blocks exposure while retaining editable copy.
 10. Trigger separate concurrent timeline and board edits and resolve each without silent overwrite.
@@ -460,7 +465,7 @@ Event origin: EVT-11 -> GAM-01 -> GAM-02 -> GAM-04 -> GAM-05 -> EVT-11
 
 ### Objective
 
-Prove discovery, public follow, private requests, request resolution, profile editing, connection privacy, relationship actions, blocking, and unblocking.
+Prove discovery, public PartyCrew joining, private requests, request resolution, profile editing, connection privacy, relationship actions, blocking, and unblocking.
 
 ### Actors and setup
 
@@ -481,8 +486,8 @@ SOC-04 -> SOC-05 -> SOC-08 -> SOC-05
 ### Main steps
 
 1. Open Discover People and inspect why each suggestion appears.
-2. Open the public profile, join PartyCrew, configure its relationship actions through `OVL-08`, then unfollow.
-3. Open the private profile and send a request; verify pending state rather than following state.
+2. Open the public profile, join PartyCrew, configure its relationship actions through `OVL-08`, then leave PartyCrew.
+3. Open the private profile and send a request; verify Requested state rather than joined state.
 4. Open Crew Requests, cancel one sent request, accept one received request, and decline another fixture.
 5. Return to Profile and verify updated relationship state.
 6. Edit the current user's profile, choose an avatar through `OS-04`, and save text and image.
@@ -496,13 +501,14 @@ SOC-04 -> SOC-05 -> SOC-08 -> SOC-05
 | Branch | Expected result |
 |---|---|
 | Duplicate join or request | Operation is idempotent and state remains correct |
-| Self-follow | Action is rejected and no relationship is created |
+| Self-join | Action is rejected and no relationship is created |
 | Already processed request | Current state replaces stale controls |
 | Blocked request participant | Request disappears and cannot be accepted, declined, or recreated while blocked |
 | Deleted request participant | Request resolves unavailable without exposing retained private profile data |
 | Invalid website | Profile text is retained and the field receives focus |
 | Unsafe profile text | The profile remains unchanged publicly and the member receives editable policy feedback |
 | Image upload failure | Existing image remains; safe text changes are not falsely reported as all-or-nothing success |
+| Unsafe avatar or cover | `OPS-01` keeps media unexposed and enters the documented rejection or moderation path |
 | Account blocks member | Profile resolves through `SYS-04` and no private relationship data leaks |
 | Pagination retry | Segment and scroll position are retained |
 
@@ -512,7 +518,7 @@ SOC-04 -> SOC-05 -> SOC-08 -> SOC-05
 - Block is server-enforced across every social read and mutation.
 - Unblock does not recreate connections or pending requests.
 - Profile privacy applies to every page of connection results.
-- `FL-S01`, `FL-S02`, and `FL-S04` pass.
+- `FL-S01`, `FL-S02`, `FL-S04`, and the block/unblock branch of `FL-M01` pass.
 
 ## `C09`: Member Publishes Content, Receives A Notification, And Reports Abuse
 
@@ -544,11 +550,11 @@ SOC-01 -> SOC-03 -> SOC-02 -> SOC-05 -> MOD-01
 3. Open Post Detail, like, comment, reply, and use `OVL-07` to share.
 4. Simulate a failed like request and verify optimistic rollback.
 5. Open the abusive author's Profile, use `OVL-08`, and start Report Content Or User.
-6. Select a reason, enter concise evidence, hide the content immediately, and block the author.
+6. Report the post, repeat from one of its comments, select specific reasons, enter concise evidence, hide the content immediately, and block the author.
 7. Confirm `OPS-02` receives an immutable snapshot and `OPS-03` removes cross-surface exposure.
 8. As operator, merge a duplicate report, issue an action, notify the reporter safely, and retain audit history.
 9. Open Notification Center, mark one item read, then mark all read.
-10. Open Notification Preferences on one installation, grant `OS-01`, register a token, rotate the token, and verify the server retains only the current association.
+10. Open Notification Preferences, independently change in-app, push, email, event reminder, PartyCrew post, and request categories; on one installation grant `OS-01`, register a token, rotate it, and verify the server retains only the current association.
 11. On a clean second installation, enable event reminder push, read the rationale, deny `OS-01`, then open iOS Settings through `OS-09`.
 12. Confirm in-app notifications remain enabled and sign-out de-associates the granted installation's token.
 13. Open the deleted-target notification and verify `SYS-02` resolves it through `SYS-04`.
@@ -609,7 +615,7 @@ SYS-01 -> AUTH-01 -> AUTH-02 -> AUTH-06 -> SYS-02 -> AUTH-07
 2. Repeat with an unknown email and compare acknowledgements.
 3. Open the reset Universal Link and set a valid new password.
 4. Open Settings, inspect verified email and session state in Account And Security.
-5. Change Privacy And Visibility and verify the effect on public profile and connections.
+5. Change Privacy And Visibility and verify the effect on profile, discovery, feed, event-attendance display, and every page of connection results.
 6. Open Help And Support, search, and read a Help Article.
 7. Disconnect and verify bundled help, Community Guidelines, Terms, and Privacy remain readable.
 8. Restore connectivity, open Contact Support, preview optional diagnostics, submit, and receive a stable ticket reference.
@@ -632,6 +638,8 @@ SYS-01 -> AUTH-01 -> AUTH-02 -> AUTH-06 -> SYS-02 -> AUTH-07
 | Privacy save failure | Optimistic state rolls back and current audience remains clear |
 | Support retry | Idempotency prevents a duplicate ticket |
 | Account-access support | Operator response does not disclose whether a different email address has an account |
+| Signed-out account help | Help and Contact Support remain reachable without a session and reveal no account existence |
+| Support category routing | Security, privacy, billing, abuse, account access, and deletion fixtures reach their assigned operational queues |
 | Offline support submit | Content is preserved for deliberate retry; no false ticket reference appears |
 | Wrong deletion credentials | Account remains active and the impact review is retained |
 | Deletion worker failure | Account access stays revoked, request remains pending, and operations receive an alert |
@@ -644,7 +652,7 @@ SYS-01 -> AUTH-01 -> AUTH-02 -> AUTH-06 -> SYS-02 -> AUTH-07
 - Account deletion is easy to find and begins entirely in app.
 - Deactivation is not presented as deletion.
 - Completion covers personal data, UGC, blobs, relationships, and credentials.
-- `FL-A03`, `FL-ST01`, `FL-SP01`, `FL-D01`, `FL-O02`, and `FL-O03` pass.
+- `FL-A03`, `FL-ST01`, `FL-SP01`, `FL-D01`, `FL-O02`, `FL-O03`, and the cached legal/help branch of `FL-Y02` pass.
 
 ## Case Coverage Summary
 

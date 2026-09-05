@@ -145,7 +145,7 @@ Every screen also needs:
 ### Status chip
 
 - Uses a semantic icon, label, and color.
-- Supports accepted, maybe, declined, pending, checked in, sent, delivered, failed, draft, published, active, completed, cancelled, and archived.
+- Supports RSVP invited, maybe, accepted, declined, and withdrawn; approval not required, pending, approved, and rejected; invitation accepted by provider, delivered, opened, clicked, bounced, and failed; cost pending, sent, disputed, confirmed, cancelled, refunded, and overdue; event draft, published, active, completed, cancelled, and archived.
 - Has a VoiceOver label that includes the object and status.
 
 ### Skeleton and progress
@@ -170,7 +170,7 @@ Every screen also needs:
 | `AUTH-02` | Login errors do not disclose whether an unrelated account exists; destination is preserved |
 | `AUTH-03` | Terms and Privacy are linked before consent; password rules are visible before failure |
 | `AUTH-04` | Shows the submitted address in masked form; resend is rate-limited and accepts email explicitly |
-| `AUTH-05` | Distinguishes valid, expired, reused, malformed, and network outcomes without exposing token data |
+| `AUTH-05` | Distinguishes success and network failure from one privacy-safe invalid, expired, malformed, or already-used outcome without exposing token data |
 | `AUTH-06` | Always gives the same acknowledgement for known and unknown addresses |
 | `AUTH-07` | Requires password confirmation, invalidates the reset token, and produces a usable session |
 | `AUTH-08` | Required and optional fields are clear; photo selection is optional; completion is resumable |
@@ -252,7 +252,7 @@ Every screen also needs:
 | `SOC-06` | URL validation, selected-photo upload, progress, retry, and old-image cleanup are handled |
 | `SOC-07` | Privacy applies to every page of the result; pagination preserves section and scroll position |
 | `SOC-08` | Received and sent states are distinct; accept, decline, and cancel are idempotent |
-| `SOC-09` | Unblock explains restored visibility and does not silently recreate a prior relationship |
+| `SOC-09` | Unblock explains restored visibility and does not silently recreate a prior PartyCrew relationship |
 
 ### Notifications, settings, support, moderation, and account
 

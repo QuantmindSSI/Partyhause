@@ -1,3 +1,16 @@
+<!-- DOC-STATUS: STALE -->
+
+> [!WARNING]
+> **This document is STALE. Do not follow its instructions.**
+>
+> Classified on 2026-09-04. It describes Supabase, Netlify or Vercel as live infrastructure.
+> This project moved to Azure Container Apps, Prisma and a self-hosted Express API in July 2026.
+> Commands, file paths, table definitions, environment variables and URLs below are likely wrong.
+>
+> Current engineering reference: [`AGENTS.md`](../../AGENTS.md).
+> Documentation index: [`docs/README.md`](../README.md).
+
+
 # Collaborative Collaboration Roadmap
 
 PartyHause is more than an RSVP tool; it is a hybrid event OS that blends **smart planning**, **interactive party games**, and **memory capture** across web and mobile. The collaborative layer should reinforce three product pillars:

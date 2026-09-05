@@ -59,10 +59,10 @@ The Plan section links to Timeline, Polls, PartyBoard, and Costs. Invitations, i
 | `AUTH-02` | Sign In | `/auth/sign-in`, push | V | Email/password login, verification recovery, retained destination | `HARDEN` |
 | `AUTH-03` | Create Account | `/auth/sign-up`, push | V | Name, email, password, age eligibility, terms and privacy consent | `HARDEN` |
 | `AUTH-04` | Check Your Email | `/auth/check-email`, replacement | V | Verification explanation, resend, change email, open Mail | `PORT` |
-| `AUTH-05` | Verify Email Result | `/auth/verify-email`, Universal Link | V | Verifying, verified, expired, reused, and resend outcomes | `HARDEN` |
+| `AUTH-05` | Verify Email Result | `/auth/verify-email`, Universal Link | V | Verifying, verified, and one privacy-safe invalid/expired/already-used outcome with resend | `HARDEN` |
 | `AUTH-06` | Forgot Password | `/auth/forgot-password`, push | V | Enumeration-safe reset request | `PORT` |
 | `AUTH-07` | Reset Password | `/auth/reset-password`, Universal Link | V | Link validation, new password, session establishment | `HARDEN` |
-| `AUTH-08` | Complete Profile | `/onboarding/profile`, full screen | M | Required display name; optional bio, location, avatar, and cover | `PORT` |
+| `AUTH-08` | Complete Profile | `/onboarding/profile`, full screen | M | Required display name; optional bio, location, avatar, and cover | `HARDEN` |
 
 ## Events And Creation: 15 Screens
 
@@ -78,7 +78,7 @@ The Plan section links to Timeline, Polls, PartyBoard, and Costs. Invitations, i
 | `EVT-08` | Initial Timeline Setup | `/events/create/timeline`, wizard | M | Seed activities, visibility, duration, location, assignment, reminders | `HARDEN` |
 | `EVT-09` | Review And Publish | `/events/create/review`, wizard | M | Review, save draft, or atomically publish | `HARDEN` |
 | `EVT-10` | Event Created | `/events/[eventId]/created`, replacement | H | Confirm server state and route to invitations or event workspace | `BUILD` |
-| `EVT-11` | Event Overview | `/events/[eventId]`, push | H/C/G | Role-aware facts, RSVP, stats, playlist, map, calendar, and report entry for another host's content | `HARDEN` |
+| `EVT-11` | Event Overview | `/events/[eventId]`, push | H/C/G-auth/G-token | Credential-scoped facts, RSVP, stats, playlist, map, calendar, and report entry for another host's content | `HARDEN` |
 | `EVT-12` | Edit Event | `/events/[eventId]/edit`, push | H/C with `edit_event` | Edit core and event-type details with conflict-safe saving | `HARDEN` |
 | `EVT-13` | Event Access And Lifecycle | `/events/[eventId]/settings`, push | H | Privacy, capacity, publish, cancel, archive, restore, and delete | `HARDEN` |
 | `EVT-14` | Co-hosts And Permissions | `/events/[eventId]/cohosts`, push | H | Add, permission, revoke, and remove co-hosts | `BUILD` |
@@ -98,36 +98,36 @@ The Plan section links to Timeline, Polls, PartyBoard, and Costs. Invitations, i
 | `RSVP-02` | RSVP And Guest Details | `/join/[token]/rsvp`, push | V/M | Accept, maybe, decline, plus-ones, phone, dietary and access needs | `BUILD` |
 | `RSVP-03` | RSVP Confirmation | `/join/[token]/confirmed`, replacement | V/G | Invited, maybe, accepted, declined, withdrawn, pending, approved, or rejected outcome with valid next actions | `BUILD` |
 | `GST-01` | Guest List | `/events/[eventId]/guests`, push | H/C with `manage_guests` | Search, RSVP filter, totals, invite state, and check-in state | `HARDEN` |
-| `GST-02` | Guest Detail And Edit | `/events/[eventId]/guests/[guestId]`, push | H/C with `manage_guests`, or G-self | Guest data, RSVP, needs, email history, and authorized actions | `PORT` |
-| `CHK-01` | Check-In Hub | `/events/[eventId]/check-in`, push | H/C with `check_in_guests` | Arrival totals, search, manual check-in, and scanner entry | `PORT` |
+| `GST-02` | Guest Detail And Edit | `/events/[eventId]/guests/[guestId]`, push | H/C with `manage_guests`, G-auth self, or G-token self | Guest data, RSVP, needs, email history, and authorized actions | `HARDEN` |
+| `CHK-01` | Check-In Hub | `/events/[eventId]/check-in`, push | H/C with `check_in_guests` | Arrival totals, search, manual check-in, and scanner entry | `HARDEN` |
 | `CHK-02` | Camera Scanner | `/events/[eventId]/check-in/scan`, full screen | H/C with `check_in_guests` | Validate an event-scoped QR and perform idempotent check-in | `BUILD` |
-| `CHK-03` | Guest Entry Pass | `/events/[eventId]/pass`, push | G | Offline-capable QR, guest identity, event facts, and check-in state | `HARDEN` |
+| `CHK-03` | Guest Entry Pass | `/events/[eventId]/pass`, push | G-auth/G-token | Offline-capable QR, guest identity, event facts, and check-in state | `HARDEN` |
 
 ## Timeline, Polls, Costs, And PartyBoard: 11 Screens
 
 | ID | Screen | Route and presentation | Actor | Primary responsibility | Status |
 |---|---|---|---|---|---|
-| `TIM-01` | Event Timeline | `/events/[eventId]/timeline`, push | H/C/G | Chronological schedule filtered by guest visibility | `HARDEN` |
+| `TIM-01` | Event Timeline | `/events/[eventId]/timeline`, push | H/C/G-auth/G-token | Chronological schedule filtered by guest visibility | `HARDEN` |
 | `TIM-02` | Timeline Editor | `/events/[eventId]/timeline/edit`, push | H/C with `manage_timeline` | Add, edit, reorder, hide, remind, assign, and delete entries | `HARDEN` |
-| `POL-01` | Event Polls | `/events/[eventId]/polls`, push | H/C/G | Active and closed lists with creator and deadline metadata | `PORT` |
-| `POL-02` | Poll Composer | `/events/[eventId]/polls/new`, full screen | H/C/G | Single or multiple choice, options, selection bounds, deadline, quorum, and consensus | `HARDEN` |
-| `POL-03` | Poll Detail And Results | `/events/[eventId]/polls/[pollId]`, push | H/C/G | Vote, revise, results, and authorized close | `HARDEN` |
-| `COST-01` | Cost Split Summary | `/events/[eventId]/costs`, push | H | Pending, sent, disputed, confirmed, cancelled, refunded, derived overdue, and per-guest totals | `PORT` |
-| `COST-02` | Create Cost Split | `/events/[eventId]/costs/new`, full screen | H | Description, currency, due date, and equal or custom reimbursement records for accepted guests | `PORT` |
-| `COST-03` | Cost Share Detail | `/events/[eventId]/costs/[splitId]`, push | H/G-owner | Request state, note, external reference, confirm, dispute, cancel | `HARDEN` |
-| `COST-04` | My Cost Shares | `/(tabs)/events/costs`, push | G | Current member's outstanding and resolved shares | `BUILD` |
-| `BRD-01` | PartyBoard | `/events/[eventId]/board`, canvas or list | H/C/G | Persistent notes and ideas, categories, votes, movement, accessible list | `BUILD` |
-| `BRD-02` | Board Item Detail And Edit | `/events/[eventId]/board/items/[itemId]`, push | H/C/G | Read, edit own, vote, categorize, report, and authorized delete | `BUILD` |
+| `POL-01` | Event Polls | `/events/[eventId]/polls`, push | H/C/G-auth | Active and closed lists with creator and deadline metadata | `PORT` |
+| `POL-02` | Poll Composer | `/events/[eventId]/polls/new`, full screen | H/C/G-auth | Single or multiple choice, options, selection bounds, deadline, quorum, and consensus | `HARDEN` |
+| `POL-03` | Poll Detail And Results | `/events/[eventId]/polls/[pollId]`, push | H/C/G-auth | Vote, revise, results, and authorized close | `HARDEN` |
+| `COST-01` | Cost Split Summary | `/events/[eventId]/costs`, push | H | Pending, sent, disputed, confirmed, cancelled, refunded, derived overdue, and per-guest totals | `HARDEN` |
+| `COST-02` | Create Cost Split | `/events/[eventId]/costs/new`, full screen | H | Description, currency, due date, and equal or custom reimbursement records for accepted guests | `HARDEN` |
+| `COST-03` | Cost Share Detail | `/events/[eventId]/costs/[splitId]`, push | H/G-auth owner | Request state, note, external reference, confirm, dispute, cancel | `HARDEN` |
+| `COST-04` | My Cost Shares | `/(tabs)/events/costs`, push | G-auth | Current member's outstanding and resolved shares | `BUILD` |
+| `BRD-01` | PartyBoard | `/events/[eventId]/board`, canvas or list | H/C/G-auth | Persistent notes and ideas, categories, votes, movement, accessible list | `BUILD` |
+| `BRD-02` | Board Item Detail And Edit | `/events/[eventId]/board/items/[itemId]`, push | H/C/G-auth | Read, edit own, vote, categorize, report, and authorized delete | `BUILD` |
 
 ## Games: 5 Screens
 
 | ID | Screen | Route and presentation | Actor | Primary responsibility | Status |
 |---|---|---|---|---|---|
-| `GAM-01` | Game Library | `/(tabs)/games`, tab root | M/G | Show only launch-playable games with optional event context | `HARDEN` |
-| `GAM-02` | Game Setup | `/games/[gameId]/setup`, push | M/G | Instructions, duration, local player names, and start validation | `HARDEN` |
-| `GAM-03` | Trivia Play | `/games/run/[runId]/trivia`, full screen | M/G | Timed questions, answer feedback, score, pause, and resume | `HARDEN` |
-| `GAM-04` | Getting To Know You Play | `/games/run/[runId]/getting-to-know-you`, full screen | M/G | Prompt, sharing timer, follow-up, skip, pause, and next round | `HARDEN` |
-| `GAM-05` | Game Results | `/games/run/[runId]/results`, replacement | M/G | Results, replay, switch game, share, and return | `HARDEN` |
+| `GAM-01` | Game Library | `/(tabs)/games`, tab root | M/G-auth | Show only launch-playable games with optional event context | `HARDEN` |
+| `GAM-02` | Game Setup | `/games/[gameId]/setup`, push | M/G-auth | Instructions, duration, local player names, and start validation | `HARDEN` |
+| `GAM-03` | Trivia Play | `/games/run/[runId]/trivia`, full screen | M/G-auth | Timed questions, answer feedback, score, pause, and resume | `HARDEN` |
+| `GAM-04` | Getting To Know You Play | `/games/run/[runId]/getting-to-know-you`, full screen | M/G-auth | Prompt, sharing timer, follow-up, skip, pause, and next round | `HARDEN` |
+| `GAM-05` | Game Results | `/games/run/[runId]/results`, replacement | M/G-auth | Results, replay, switch game, share, and return | `HARDEN` |
 
 ## PartyCrew, Feed, And Profiles: 9 Screens
 
@@ -138,7 +138,7 @@ The Plan section links to Timeline, Polls, PartyBoard, and Costs. Invitations, i
 | `SOC-03` | Compose Or Edit Post | `/crew/posts/compose`, full screen | M | Supported post type, event link, audience, preview, filtered publish | `BUILD` |
 | `SOC-04` | Discover People | `/crew/discover`, push | M | Suggestions, reasons, profile navigation, join or request state | `HARDEN` |
 | `SOC-05` | Profile | `/profile/[userId]`; own profile uses `/(tabs)/me` | ALL | Privacy-aware profile, stats, relationship, website, report, block | `HARDEN` |
-| `SOC-06` | Edit Profile | `/profile/edit`, push | M | Display name, bio, location, website, avatar, and cover | `PORT` |
+| `SOC-06` | Edit Profile | `/profile/edit`, push | M | Display name, bio, location, website, avatar, and cover | `HARDEN` |
 | `SOC-07` | Connections | `/profile/[userId]/connections`, push | M | Members, Crewing, and Mutual lists with privacy and pagination | `PORT` |
 | `SOC-08` | Crew Requests | `/crew/requests`, push | M | Received and sent requests; accept, decline, and cancel | `HARDEN` |
 | `SOC-09` | Blocked Accounts | `/settings/blocked`, push | M | List, explain suppression, and unblock | `BUILD` |
@@ -212,7 +212,7 @@ These surfaces are controlled by iOS or another installed application and are no
 | `OVL-05` | Destructive confirmation | Event, guest, poll, cost, board, block, draft, game-abandon, and account actions |
 | `OVL-06` | Invitation send or resend confirmation and result | `INV-04`, `INV-05` |
 | `OVL-07` | Native share sheet | Event link, invitation, post, and game result |
-| `OVL-08` | Crew relationship actions | Notification toggle, unfollow, cancel request, report, and block |
+| `OVL-08` | Crew relationship actions | Notification toggle, Leave PartyCrew, cancel request, report, and block |
 | `OVL-09` | Offline, reconnecting, and stale-data banner | Any server-backed screen |
 
 ## Operational Workflows

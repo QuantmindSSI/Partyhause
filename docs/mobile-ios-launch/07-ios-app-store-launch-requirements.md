@@ -70,7 +70,7 @@ Apple's support matrix listed Xcode 26.6 as the latest production release at the
 
 - `apps/mobile/app.config.ts` already names `PartyHause`, version `1.0.0`, and bundle ID `com.partyhause.mobile`.
 - `apps/mobile/eas.json` contains non-production App Store submit values and cannot submit until secure account-level values are configured.
-- The app config declares `supportsTablet: true`, so the launch includes iPad quality, screenshots, and review coverage unless that setting is deliberately removed before the app record is finalized.
+- The app config declares `supportsTablet: true`, and this specification fixes iPad quality, screenshots, and review coverage as part of 1.0. Removing iPad requires the directory-wide scope change process.
 - The app config has a custom scheme but no Associated Domains configuration.
 - The mobile package has no push-notification package or APNs registration implementation.
 - The release must be built with the current accepted Xcode and SDK even if Expo's remote build image requires an SDK or image upgrade.
@@ -266,7 +266,7 @@ Analytics alone does not always constitute Apple's defined tracking. It still be
 
 ### Current app-config correction
 
-`apps/mobile/app.config.ts` currently declares Contacts, Photo Library, Photo Library Add, Camera, and Microphone usage descriptions. The launch target needs Contacts and Camera only if their implementations ship. It should use the system photo picker where possible, remove add-to-library access unless saving ships, and remove Microphone because recording is outside 1.0.
+`apps/mobile/app.config.ts` currently declares Contacts, Photo Library, Photo Library Add, Camera, and Microphone usage descriptions. The fixed launch scope includes explicit contact selection and QR camera scanning. It should use the system photo picker where possible, remove add-to-library access, remove Microphone, and make the camera purpose string specific to check-in. Any scope removal requires the directory-wide change process.
 
 ## 11. Security And Data Protection
 
@@ -517,4 +517,4 @@ Submission is blocked if any of these conditions is true:
 - The build does not satisfy the current Xcode and SDK minimum.
 - Review credentials or required test artifacts fail from a clean install.
 - Required metadata, age rating, export, DSA, agreement, or storefront fields are incomplete.
-- The release candidate fails any critical acceptance case in document 05 or gate in document 09.
+- The release candidate fails any required acceptance case in document 05 or gate in document 09.

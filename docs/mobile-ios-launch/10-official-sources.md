@@ -15,6 +15,7 @@ Only official Apple sources are used for Apple requirements in this directory. R
 | [Xcode 26 SDK requirement](https://developer.apple.com/news/?id=ueeok6yw) | April 28, 2026 Xcode 26 and iOS/iPadOS 26 SDK minimum | Published February 3, 2026 |
 | [Xcode support](https://developer.apple.com/support/xcode/) | Production Xcode and SDK compatibility matrix | Live page without a fixed publication date |
 | [Software releases](https://developer.apple.com/news/releases/) | Current production and beta Apple tool releases | Rolling release feed |
+| [Supporting IPv6 DNS64/NAT64 networks](https://developer.apple.com/support/ipv6/) | IPv6-only network compatibility guidance | Live support page |
 | [Add a new app](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-a-new-app/) | App Store Connect record fields and agreement prerequisites | Live help page |
 | [Upload builds](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/) | Build upload process | Live help page |
 | [Submit an app](https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/submit-an-app/) | App Review submission sequence | Live help page |

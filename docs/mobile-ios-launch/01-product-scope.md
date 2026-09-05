@@ -28,13 +28,15 @@ The first App Store release is credible, supportable, measurable, and compliant.
 |---|---|---|
 | `V` | Visitor | Signed-out person, including an anonymous invitation recipient |
 | `M` | Member | Signed-in, verified PartyHause account |
-| `G` | Guest | Member or invitation identity attached to an event guest record |
+| `G` | Guest | Event guest identity attached to a guest record |
+| `G-auth` | Authenticated guest | Verified member session linked to an accepted and, where required, approved guest record |
+| `G-token` | Token-scoped guest | Signed-out invitee holding a valid scoped credential for RSVP, permitted event details, timeline, and pass only |
 | `H` | Host | Event owner with full event administration |
 | `C` | Co-host | Member with explicit event-level permissions |
 | `O` | Operator | Internal support or moderation staff using protected operational tooling outside the consumer app |
 | `ALL` | Any applicable actor | Surface can be used signed in or signed out, subject to its data scope |
 
-One person may be `M`, `G`, `H`, and `C` across different events. The app must derive event actions from that relationship rather than from a client-only account role.
+One person may be `M`, `G-auth`, `H`, and `C` across different events. `G-token` never enters authenticated tabs, PartyCrew, polls, PartyBoard, costs, or games. The app and API derive every event action from the current relationship and credential rather than a client-only account role.
 
 ## Core Product Principles
 
@@ -187,9 +189,21 @@ Allowed transitions are:
 ### PartyCrew
 
 - Feed, post detail, supported post creation, comments, likes, and native sharing.
-- Discover people, public follow, private request, request inbox, unfollow, and cancel request.
+- Discover people, public PartyCrew join, private request, request inbox, leave PartyCrew, and cancel request.
 - Profiles, profile editing, connection lists, privacy enforcement, reporting, blocking, and unblocking.
 - User-generated content cannot launch until moderation operations are live.
+
+Canonical relationship terms:
+
+| Concept | User-facing term |
+|---|---|
+| Create a public outgoing relationship | Join PartyCrew |
+| Request a private outgoing relationship | Request to Join |
+| Pending outgoing relationship | Requested |
+| Remove an outgoing relationship | Leave PartyCrew |
+| People connected to this profile | Members |
+| Profiles the current member joined | Crewing With |
+| Relationship in both directions | Mutual |
 
 ### Notifications
 

@@ -1,3 +1,16 @@
+<!-- DOC-STATUS: STALE -->
+
+> [!WARNING]
+> **This document is STALE. Do not follow its instructions.**
+>
+> Classified on 2026-09-04. It describes Supabase, Netlify or Vercel as live infrastructure.
+> This project moved to Azure Container Apps, Prisma and a self-hosted Express API in July 2026.
+> Commands, file paths, table definitions, environment variables and URLs below are likely wrong.
+>
+> Current engineering reference: [`AGENTS.md`](../../AGENTS.md).
+> Documentation index: [`docs/README.md`](../../docs/README.md).
+
+
 # PartyHause Mobile (Expo)
 
 This workspace houses the new React Native / Expo client for PartyHause. The goal is to prioritize mobile-first collaboration flows while the existing Vite web app remains in maintenance mode.

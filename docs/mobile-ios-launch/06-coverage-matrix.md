@@ -110,7 +110,7 @@ A registered item is covered only when an end-to-end case names it and defines a
 | `SUP-01` | `C10` |
 | `SUP-02` | `C10` |
 | `SUP-03` | `C10` |
-| `MOD-01` | `C05`, `C09` |
+| `MOD-01` | `C04`, `C05`, `C09` |
 | `LEG-01` | `C10` |
 | `LEG-02` | `C10` |
 | `LEG-03` | `C10` |
@@ -139,8 +139,8 @@ A registered item is covered only when an end-to-end case names it and defines a
 | `FL-E04` | `C02` |
 | `FL-I01` | `C03` |
 | `FL-I02` | `C03` |
-| `FL-I03` | `C03`, `C04` |
-| `FL-GST01` | `C03` |
+| `FL-I03` | `C03` |
+| `FL-GST01` | `C03`, `C04` |
 | `FL-R01` | `C04` |
 | `FL-C01` | `C04` |
 | `FL-T01` | `C05` |
@@ -158,10 +158,10 @@ A registered item is covered only when an end-to-end case names it and defines a
 | `FL-N02` | `C09` |
 | `FL-ST01` | `C10` |
 | `FL-SP01` | `C10` |
-| `FL-M01` | `C09` |
+| `FL-M01` | `C08`, `C09` |
 | `FL-D01` | `C10` |
 | `FL-Y01` | `C01`, `C04` |
-| `FL-Y02` | `C02`, `C04`, `C05` |
+| `FL-Y02` | `C02`, `C04`, `C05`, `C10` |
 | `FL-O01` | `C09` |
 | `FL-O02` | `C10` |
 | `FL-O03` | `C10` |
@@ -188,7 +188,7 @@ A registered item is covered only when an end-to-end case names it and defines a
 | `OVL-02` Guest edit | `C01`, `C03` |
 | `OVL-03` Timeline edit | `C01`, `C05` |
 | `OVL-04` PartyBoard compose/actions | `C05` |
-| `OVL-05` Destructive confirmation | `C02`, `C03`, `C06`, `C08`, `C10` |
+| `OVL-05` Destructive confirmation | `C02`, `C03`, `C06`, `C07`, `C08`, `C10` |
 | `OVL-06` Invitation send result | `C03` |
 | `OVL-07` Native share | `C03`, `C07`, `C09` |
 | `OVL-08` Crew relationship actions | `C08`, `C09` |
@@ -198,7 +198,7 @@ A registered item is covered only when an end-to-end case names it and defines a
 
 | Operation | Cases |
 |---|---|
-| `OPS-01` UGC filtering | `C05`, `C09` |
+| `OPS-01` UGC filtering | `C03`, `C05`, `C08`, `C09` |
 | `OPS-02` Moderation triage | `C09` |
 | `OPS-03` Block enforcement | `C08`, `C09` |
 | `OPS-04` Support handling | `C10` |

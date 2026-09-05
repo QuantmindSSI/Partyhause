@@ -167,11 +167,11 @@ Navigation tests must cover tab stack preservation, tab reselection, back behavi
 
 ### 5. End-to-end product cases
 
-All cases in [05-ten-end-to-end-cases.md](./05-ten-end-to-end-cases.md) are required:
+All cases in [05-ten-end-to-end-cases.md](./05-ten-end-to-end-cases.md) are required. Each case passes on a current physical iPhone and current physical iPad. Minimum-OS and small-screen runs are distributed across the matrix but must include every primary domain.
 
 | Case | Required result |
 |---|---|
-| `C01` | Pass on iPhone and iPad; repeat contacts-denied and partial-create branches |
+| `C01` | Repeat contacts-denied and partial-create branches |
 | `C02` | Pass session, conflict, permission-revocation, offline, maintenance, and update branches |
 | `C03` | Pass guest CRUD, real-recipient send, every supported delivery status, rate limit, idempotent retry, and token revocation |
 | `C04` | Pass anonymous and signed-in RSVP, offline pass, camera denial, manual and duplicate check-in |
@@ -251,6 +251,8 @@ Run every common task listed in document 03 under the following modes:
 - Bold Text.
 - Hardware keyboard on iPad.
 - Pointer on iPad.
+
+VoiceOver receives a complete `C01` through `C10` pass on both a physical iPhone and iPad. Voice Control, largest accessibility text, Reduce Motion, Increase Contrast, Differentiate Without Color, Bold Text, keyboard, and pointer each cover every common task from document 03 across the device matrix; they do not all need to be multiplied across every device and OS combination.
 
 Pass criteria:
 

@@ -16,7 +16,7 @@ Success: A verified member session exists and the retained destination opens.
 Required branches:
 
 - Duplicate email returns a safe sign-in or reset option.
-- Weak or compromised password preserves all nonsensitive fields.
+- Weak password preserves all nonsensitive fields.
 - Delayed email supports a bounded resend using the submitted email.
 - Invalid, expired, or reused verification links provide a safe recovery path.
 - A verification link opened on another device still produces a clear result.
@@ -94,6 +94,7 @@ Required branches:
 - A co-host with `edit_event` may use `EVT-12`; a co-host without it sees no edit action. `EVT-13` remains host-only and `EVT-15` requires host or `view_insights`.
 - Invalid dates, capacity, lifecycle transition, or privacy combination is rejected.
 - Archive uses `archived_at` only for completed or cancelled events and restores the same terminal status.
+- `OPS-07` moves published to active and active to completed once at the event boundaries, records the transition, retries at most five times, and alerts after exhaustion.
 - Delete accounts for dependent guests, links, polls, board data, costs, and notifications.
 - Concurrent edits never silently overwrite newer state.
 
@@ -178,7 +179,7 @@ Required branches:
 
 ### `FL-R01`: Preview Invitation And RSVP
 
-Actor: `V/M/G`  
+Actor: `V/M/G-auth/G-token`  
 Entry: Universal Link or QR invitation  
 Path: `SYS-02 -> RSVP-01 -> RSVP-02 -> RSVP-03 -> EVT-11 or CHK-03`  
 Success: One guest identity has the selected RSVP state and permitted details.
@@ -195,7 +196,7 @@ Required branches:
 
 ### `FL-C01`: Present Pass And Check In
 
-Actors: `G` and `H/C` with check-in permission  
+Actors: `G-auth/G-token` and `H/C` with `check_in_guests`  
 Entry: Guest Entry Pass and Check-In Hub  
 Path: `CHK-03`; host side `CHK-01 -> CHK-02 or manual search -> dedicated check-in command -> confirmation`  
 Success: The correct guest is checked into the correct event exactly once.
@@ -213,7 +214,7 @@ Required branches:
 
 ### `FL-T01`: Build And Consume Timeline
 
-Actors: `H/C/G`  
+Actors: `H/C/G-auth/G-token`; only `H/C` with `manage_timeline` can edit  
 Entry: Event Plan or guest Schedule  
 Path: Host or `manage_timeline` co-host uses `TIM-01 -> TIM-02 -> TIM-01`; guest uses `TIM-01 -> reminder destination`  
 Success: One canonical ordered timeline persists and guests receive only visible entries.
@@ -228,7 +229,7 @@ Required branches:
 
 ### `FL-P01`: Create, Vote, Revise, And Close Poll
 
-Actors: `H/C/G` event participants  
+Actors: `H/C/G-auth` event participants  
 Entry: Event Plan or Participate  
 Path: `POL-01 -> POL-02 -> POL-03 -> vote/revise -> results -> close`  
 Success: Valid votes and results persist with correct close permissions.
@@ -258,7 +259,7 @@ Required branches:
 
 ### `FL-CS02`: Review Own Cost Share
 
-Actor: `G`  
+Actor: `G-auth`  
 Entry: Events Home, event, or notification  
 Path: `COST-04 -> COST-03 -> mark sent or add dispute note -> host confirmation`  
 Success: The guest can manage only their own record without PartyHause processing money.
@@ -272,7 +273,7 @@ Required branches:
 
 ### `FL-B01`: Collaborate On PartyBoard
 
-Actors: `H/C/G` according to event permissions  
+Actors: `H`, `C`, and accepted `G-auth`; participants create, edit, and delete their own items and vote, while host or `moderate_event_content` may remove another participant's item  
 Entry: Event Plan  
 Path: `BRD-01 -> OVL-04 -> BRD-02 -> move/edit/vote/report/delete -> BRD-01`  
 Success: A persistent moderated note or idea has consistent state in canvas and list modes.
@@ -289,7 +290,7 @@ Required branches:
 
 ### `FL-G01`: Play General Trivia
 
-Actor: `M/G`  
+Actor: `M/G-auth`  
 Entry: Games tab or event  
 Path: `GAM-01 -> GAM-02 -> GAM-03 -> GAM-05`  
 Success: A local shared-device run completes with deterministic scores and replay.
@@ -303,7 +304,7 @@ Required branches:
 
 ### `FL-G02`: Play Getting To Know You
 
-Actor: `M/G`  
+Actor: `M/G-auth`  
 Entry: Games tab or event  
 Path: `GAM-01 -> GAM-02 -> GAM-04 -> GAM-05`  
 Success: Prompt and follow-up rounds complete with replay.
@@ -326,9 +327,9 @@ Success: Relationship state is accurate for public and private profiles.
 
 Required branches:
 
-- Public profile joins immediately.
-- Private profile creates a pending request rather than a following state.
-- Self-follow and duplicate operations are rejected or idempotent.
+- Public profile joins PartyCrew immediately.
+- Private profile creates a pending request rather than a joined state.
+- Self-join and duplicate operations are rejected or idempotent.
 - Block in either direction resolves through `SYS-04`.
 
 ### `FL-S02`: Resolve Private Crew Request
@@ -437,7 +438,7 @@ Required branches:
 
 Actors: `ALL/O`; signed-out reporting is limited to content authorized by an invitation or public context  
 Entry: Profile, event or invitation copy, post, comment, poll, or PartyBoard item  
-Path: `MOD-01 -> local hide -> optional block -> OPS-02 -> operator decision -> status notification`; unblock via `SOC-09`  
+Path: `MOD-01 -> local hide -> optional signed-in block -> OPS-02 -> operator decision -> status notification`; unblock via `SOC-09`  
 Success: Evidence is retained, unsafe exposure is reduced immediately, and action is auditable.
 
 Required branches:
