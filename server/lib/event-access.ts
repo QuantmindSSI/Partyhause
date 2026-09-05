@@ -115,11 +115,37 @@ export function canReadEvent(a: EventAccess): boolean {
   return a.exists && (a.isPublic || a.isHost || a.isCoHost || a.isGuest);
 }
 
+/**
+ * Read one granular co-host permission.
+ *
+ * `EventCoHost.permissions` is a Json column whose schema default is
+ * `{"can_edit": true, "can_invite": true, "can_moderate": true}`, so the value
+ * arrives from Prisma as a JavaScript boolean.
+ *
+ * The checks below previously compared it to the STRING `'true'`. A boolean
+ * `true` is never equal to `'true'`, so both comparisons were permanently
+ * false and every co-host silently held no permissions at all, including the
+ * ones the schema had just granted them by default. Nothing surfaced, because
+ * the failure mode is a co-host being told they may not edit an event they
+ * were explicitly given edit rights to.
+ *
+ * A string is still accepted, because rows may have been written that way by
+ * earlier code paths and a migration has not run. Anything else, including a
+ * missing key, is false: an unrecognised permission value must not grant
+ * access.
+ */
+function hasCoHostPermission(a: EventAccess, key: string): boolean {
+  const raw = a.coHostPermissions?.[key];
+  if (raw === true) return true;
+  if (typeof raw === 'string') return raw.toLowerCase() === 'true';
+  return false;
+}
+
 /** RLS: UPDATE on events — host, or co-host with can_edit. */
 export function canEditEvent(a: EventAccess): boolean {
   if (!a.exists) return false;
   if (a.isHost) return true;
-  return a.isCoHost && a.coHostPermissions?.['can_edit'] === 'true';
+  return a.isCoHost && hasCoHostPermission(a, 'can_edit');
 }
 
 /** RLS: DELETE on events — host only. */
@@ -136,7 +162,14 @@ export function canManageGuests(a: EventAccess): boolean {
 export function canInviteGuests(a: EventAccess): boolean {
   if (!a.exists) return false;
   if (a.isHost) return true;
-  return a.isCoHost && a.coHostPermissions?.['can_invite'] === 'true';
+  return a.isCoHost && hasCoHostPermission(a, 'can_invite');
+}
+
+/** RLS: moderation — host, or co-host with can_moderate. */
+export function canModerate(a: EventAccess): boolean {
+  if (!a.exists) return false;
+  if (a.isHost) return true;
+  return a.isCoHost && hasCoHostPermission(a, 'can_moderate');
 }
 
 /** RLS: timeline WRITE — host or co-host. */
@@ -153,6 +186,7 @@ export default {
   getEventAccess,
   canReadEvent,
   canEditEvent,
+  canModerate,
   canDeleteEvent,
   canManageGuests,
   canInviteGuests,
