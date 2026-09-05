@@ -5,6 +5,7 @@ import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { broadcastEvent } from '../lib/pubsub';
+import { serialiseEvent, serialiseEventList } from '../lib/event-dto';
 import {
   getEventAccess,
   canReadEvent,
@@ -69,7 +70,24 @@ router.get('/:id?', async (req: AuthenticatedRequest, res) => {
         media_count: mediaCount,
       };
 
-      return res.status(200).json({ event, stats });
+      // Serialise for this viewer rather than returning the raw row.
+      //
+      // The row previously went out whole, which handed every column to
+      // whoever could read the event, including `timeline_blocks`. That JSON
+      // column cannot express `guest_visible` or separate `host_notes`, so a
+      // guest reading an event received host-only timeline content that
+      // /api/timeline would have correctly withheld (GAP-PLAN-02).
+      //
+      // Stats are host-oriented. How many people declined is a disclosure to a
+      // fellow guest, not a feature, so they are gated on the same capability
+      // the DTO reports (GAP-EVT-13).
+      const serialised = serialiseEvent(event as never, access);
+      return res.status(200).json({
+        event: serialised,
+        // Host-oriented. How many people declined is a disclosure to a fellow
+        // guest, not a feature (GAP-EVT-13).
+        stats: serialised.capabilities.can_view_insights ? stats : undefined,
+      });
     }
 
     // List user's events (hosted + co-hosting + invited)
@@ -109,7 +127,22 @@ router.get('/:id?', async (req: AuthenticatedRequest, res) => {
       orderBy: { start_date: 'asc' },
     });
 
-    return res.status(200).json({ events: events || [] });
+    // Each row's relationship is already known from the query that produced
+    // it: hosted rows are host, everything else came from the co-host or guest
+    // id sets. Resolving access per row here would be N+1 for a fact the query
+    // already established.
+    const coHostSet = new Set(coHostEventIds);
+    const guestSet = new Set(guestEventIds);
+    const serialised = serialiseEventList(events || [], (row) => ({
+      exists: true,
+      isHost: row.host_id === userId,
+      isCoHost: coHostSet.has(row.id as string),
+      coHostPermissions: null,
+      isGuest: guestSet.has(row.id as string),
+      isPublic: row.privacy === 'public',
+      hostId: row.host_id as string,
+    }));
+    return res.status(200).json({ events: serialised });
   } catch (error: unknown) {
     console.error('Events API error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
