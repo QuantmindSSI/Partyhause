@@ -56,37 +56,69 @@ export default function GuestsScreen() {
     setGuests(guests.filter(g => g.id !== id));
   };
 
-  // Import from contacts
+  /**
+   * Add one guest from the system contact picker.
+   *
+   * This replaces a bulk read. The previous implementation called
+   * `requestPermissionsAsync()` for the whole address book, then
+   * `getContactsAsync()` with no filter, then staged `data.slice(0, 50)` as
+   * guests automatically. Three separate problems, which together are
+   * GAP-IOS-01:
+   *
+   *   it read every contact the user has, to use at most fifty
+   *   it chose which fifty by array order, which is not a choice the user made
+   *   it added them as guests without anyone confirming a single one
+   *
+   * `presentContactPickerAsync` hands the selection to the operating system.
+   * The app receives exactly one record, the one the user tapped, and never
+   * sees the rest of the address book. On iOS this is also the path that does
+   * not require NSContactsUsageDescription at all, because nothing is read
+   * without an explicit per-contact choice.
+   *
+   * Picking one at a time is deliberately slower than importing fifty. Adding
+   * fifty people to an invitation list without looking at them is not a feature.
+   */
   const importFromContacts = async () => {
     try {
-      const { status } = await Contacts.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Cannot access contacts');
+      const contact = await Contacts.presentContactPickerAsync();
+
+      // Null means the user dismissed the picker. That is a normal outcome and
+      // not an error, so it passes silently.
+      if (!contact) return;
+
+      const email = contact.emails?.[0]?.email?.trim() ?? '';
+      const phone = contact.phoneNumbers?.[0]?.number?.trim() ?? '';
+
+      if (!email && !phone) {
+        Alert.alert(
+          'No contact details',
+          `${contact.name || 'That contact'} has no email address or phone number saved, so there is no way to send them an invitation.`,
+        );
         return;
       }
 
-      const { data } = await Contacts.getContactsAsync({
-        fields: [Contacts.Fields.Emails, Contacts.Fields.PhoneNumbers],
-      });
-
-      if (data.length === 0) {
-        Alert.alert('No Contacts', 'No contacts found');
+      // Refuse a duplicate rather than silently creating a second row that
+      // would later produce two invitations to the same address.
+      const alreadyAdded = guests.some(
+        (g) => (email && g.email.toLowerCase() === email.toLowerCase()) || (phone && g.phone === phone),
+      );
+      if (alreadyAdded) {
+        Alert.alert('Already on the list', `${contact.name || 'That contact'} is already a guest.`);
         return;
       }
 
-      // Convert contacts to guests
-      const importedGuests: Guest[] = data.slice(0, 50).map((contact) => ({
-        id: contact.id || Date.now().toString() + Math.random(),
-        name: contact.name || 'Unknown',
-        email: contact.emails?.[0]?.email || '',
-        phone: contact.phoneNumbers?.[0]?.number || '',
-        plus_ones: 0,
-      }));
-
-      setGuests([...guests, ...importedGuests]);
-      Alert.alert('Success', `Imported ${importedGuests.length} contacts`);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to import contacts');
+      setGuests([
+        ...guests,
+        {
+          id: contact.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          name: contact.name?.trim() || email || phone,
+          email,
+          phone,
+          plus_ones: 0,
+        },
+      ]);
+    } catch {
+      Alert.alert('Could not open contacts', 'Add this guest manually instead.');
     }
   };
 

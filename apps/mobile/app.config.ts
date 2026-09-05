@@ -20,11 +20,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       bundleIdentifier: "com.partyhause.mobile",
       buildNumber: "1.0.0",
       infoPlist: {
-        NSContactsUsageDescription: "PartyHause needs access to your contacts to help you easily invite friends and family to your events.",
-        NSPhotoLibraryUsageDescription: "PartyHause needs access to your photo library to let you share event photos and create lasting memories with your guests.",
-        NSPhotoLibraryAddUsageDescription: "PartyHause needs permission to save photos from your events to your photo library.",
-        NSCameraUsageDescription: "PartyHause needs camera access to let you capture and share special moments during your events.",
-        NSMicrophoneUsageDescription: "PartyHause needs microphone access to record videos during your events.",
+        NSContactsUsageDescription: "PartyHause opens your contact picker so you can choose one person at a time to invite. It never reads your address book.",
       }
     },
     android: {

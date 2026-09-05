@@ -724,20 +724,7 @@ export default function EventDetailsScreen() {
             <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push(`/events/${id}/planning/partyhub` as any)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.actionIconContainer}>
-              <Ionicons name="people-circle" size={24} color="#8B5CF6" />
-            </View>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>PartyHub</Text>
-              <Text style={styles.actionSubtitle}>Collaborative planning board</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
-          </TouchableOpacity>
+          
         </View>
 
         {/* Danger Zone. Guarded on 'archived', the schema's terminal state;
