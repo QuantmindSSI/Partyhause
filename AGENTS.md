@@ -68,7 +68,7 @@ npm workspaces are `apps/*` and `packages/*` (`package.json:10-13`).
 | `prisma/` | `schema.prisma` (1144 lines, 36 models) and `seed.ts` |
 | `infra/` | Bicep. `main.bicep` (subscription scope), `resources.bicep`, `modules/` (5) |
 | `scripts/` | 28 operational scripts, mixed languages. Four are wired to npm scripts; the rest are ad hoc |
-| `docs/` | 185 markdown files. Most are stale. Read [`docs/README.md`](./docs/README.md) first |
+| `docs/` | 88 markdown files, all current, historical or non-technical. 97 stale ones were deleted on 2026-09-04. Index at [`docs/README.md`](./docs/README.md) |
 
 **`packages/core` is consumed by mobile only.** `rg "@partyhause/core" src/` returns nothing. The
 web app runs a separate client at `src/lib/api-client.ts`. This is a real cost: the same contract
@@ -431,23 +431,24 @@ Ranked by consequence.
 
 ## Documentation map
 
-**Do not trust `docs/` by default.** A full audit on 2026-09-04 classified all 187 markdown files:
+All 187 markdown files were audited against the code on 2026-09-04 and **97 were deleted**: 79 that
+presented Supabase, Netlify or Vercel as live infrastructure, and 18 that a newer document already
+covered. 91 remain.
 
-| Class | Count | Meaning |
+| Class | Count | How to read it |
 |---|---|---|
-| CURRENT | 17 | Accurate against the present stack |
-| STALE | 79 | Describes Supabase, Netlify or Vercel as live |
-| HISTORICAL | 41 | Dated records of past events. Correct as history, not as instruction |
-| SUPERSEDED | 18 | A newer document covers the topic better |
-| NON-TECHNICAL | 32 | Marketing, brand, competitive, GTM |
+| CURRENT | 17 | Accurate. Use it |
+| HISTORICAL | 41 | Accurate as a record of its date. Never as instruction |
+| NON-TECHNICAL | 32 | Marketing, brand, GTM. Not engineering material |
 
-Two traps specifically:
+The historical set is deliberately unedited. Several describe Supabase or MailerSend, because that
+is what ran at the time; rewriting a record to match today falsifies it. Read the date written
+inside the document, not the one git reports: a repo-wide `PartyHaus` to `PartyHause` spelling
+replacement stamped 2026-08-30 onto files it never read.
 
-- **27 files carry a git date of 2026-08-30 that means nothing.** That commit was a repo-wide
-  `PartyHaus` to `PartyHause` string replacement. It touched content without updating it, so those
-  files look fresh and are not.
-- **`docs/features/` is 54 files and almost entirely pre-migration plans.** Several contain
-  hand-written `CREATE TABLE` DDL that contradicts `prisma/schema.prisma`.
+Deletion was preferred to rewriting. 97 replacement documents that could not be grounded in code
+would have been a larger version of the same problem. Anything worth keeping was restated here from
+the source.
 
 [`docs/README.md`](./docs/README.md) carries the per-file classification. Trust these, in order:
 this file, then `docs/mobile-ios-launch/`, then `docs/BRAND.md`, `docs/SHARED_API_CLIENT.md`,

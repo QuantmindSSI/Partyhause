@@ -381,9 +381,9 @@ The X (Twitter) handle is resolved, and the answer is that **neither spelling be
 
 Four candidate handles were free at the time of checking: `@partyhausapp`, `@partyhauseapp`, `@getpartyhause` and `@partyhausehq`. Register one and restore the tag. Note that the marketing and setup documents still list `@partyhause` as the social handle in about a dozen places; those are aspirational copy, not shipped metadata, and should be corrected when a handle is actually secured. Email addresses on `@partyhause.com` are unaffected: that domain is owned and its use is correct throughout.
 
-Separately, seven lines in the archived Vercel and mobile documentation now contradict themselves, because they were written to explain that the old deployment hostname deliberately had no `e`. They are listed at the end of this section and are best deleted along with the obsolete Vercel docs rather than edited.
+Separately, seven lines in the archived Vercel and mobile documentation contradicted themselves, because they were written to explain that the old deployment hostname deliberately had no `e`. The recommendation here was to delete them along with the obsolete Vercel docs rather than edit them. That was done on 2026-09-04: `docs/mobile/MOBILE_API_CONFIG.md`, `docs/mobile/MOBILE_EVENT_PUBLISHING_READY.md` and `docs/TESTING_GUIDE_NATIVE_VS_WEB.md` were removed with the other 94 documents describing retired infrastructure.
 
-Contradictory lines: `docs/EVENT_LOADING_FIX_NOV_1.md:51,171,198`, `docs/mobile/MOBILE_API_CONFIG.md:42`, `docs/mobile/MOBILE_EVENT_PUBLISHING_READY.md:13,185`, `docs/TESTING_GUIDE_NATIVE_VS_WEB.md:142`.
+Three of those lines survive in `docs/EVENT_LOADING_FIX_NOV_1.md:51,171,198`, which is a dated incident record and is deliberately left unedited. Rewriting a record falsifies it. Read the date before the body.
 
 Dark mode has a full palette defined here but no implementation. `neutral-950` is specified as the inverse surface and `coral-300` measures 9.77:1 against it, so the values are ready when the work is scheduled.
 

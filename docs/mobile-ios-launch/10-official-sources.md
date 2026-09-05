@@ -181,11 +181,15 @@ Only official Apple sources are used for Apple requirements in this directory. R
 
 ### Existing documents treated as historical evidence
 
-- `docs/WEB_MOBILE_PARITY_ASSESSMENT.md`.
 - `docs/mobile/MOBILE_PRODUCTION_DEPLOY.md`.
-- `docs/FEATURE_ROADMAP_COMPREHENSIVE.md`.
-- `docs/project/PARTYHAUSE_ESSENCE_COMPREHENSIVE.md`.
 - `AGENTS.md` for the current Azure migration status and deployment architecture.
+
+Three sources cited by the September 3, 2026 audit were deleted on September 4, 2026:
+`docs/WEB_MOBILE_PARITY_ASSESSMENT.md`, `docs/FEATURE_ROADMAP_COMPREHENSIVE.md` and
+`docs/project/PARTYHAUSE_ESSENCE_COMPREHENSIVE.md`. All three described Supabase, Netlify or Vercel
+as live infrastructure. They were removed along with 94 other documents in the same class, because
+a document that states retired infrastructure as fact is worse than no document. They remain in git
+history if the original wording is ever needed.
 
 Historical documents contain obsolete infrastructure and readiness statements. Current runtime code, current deployment configuration, verified tests, and current Apple documentation control when they conflict.
 
