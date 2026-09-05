@@ -15,8 +15,94 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Route imports
+import sanitizeHtml from 'sanitize-html';
 import { assertJwtSecretConfigured } from './lib/jwt-secret';
 import { sendEmail, emailTransportStatus } from './lib/email';
+import { prisma } from './lib/prisma';
+import { requireAuth, type AuthenticatedRequest } from './middleware/auth';
+import { getEventAccess, canReadEvent, canInviteGuests } from './lib/event-access';
+
+/** Upper bound on a single send. Bulk invitations page through this. */
+const MAX_EMAIL_RECIPIENTS = 100;
+
+/**
+ * Tags permitted in a caller-composed invitation body.
+ *
+ * Table-based layout only, because that is what Gmail and Outlook render. No
+ * script, no iframe, no object, no form: an invitation is a document, not an
+ * application, and the body arrives from a client we do not control.
+ */
+const EMAIL_ALLOWED_TAGS = [
+  'a', 'b', 'blockquote', 'br', 'div', 'em', 'h1', 'h2', 'h3', 'h4', 'hr', 'i',
+  'img', 'li', 'ol', 'p', 'span', 'strong', 'table', 'tbody', 'td', 'tfoot',
+  'th', 'thead', 'tr', 'u', 'ul',
+];
+
+/**
+ * Any inline style value that does not invoke `url()` or `expression()`.
+ *
+ * `url()` is the tracking-pixel and data:-payload vector; `expression()` is
+ * legacy IE script execution. Everything else is layout, which email clients
+ * need because they ignore stylesheets.
+ */
+const SAFE_STYLE_VALUE = [/^(?!.*(?:url\s*\(|expression\s*\())[^;{}]*$/i];
+
+/**
+ * Inline CSS permitted in an invitation body, by property.
+ *
+ * sanitize-html keys `allowedStyles` by tag and then by CSS property name. An
+ * earlier version used '*' as the property key, which matches no property, so
+ * every style was silently stripped and the layout collapsed. The test suite
+ * caught it. Properties are therefore enumerated explicitly.
+ */
+const EMAIL_ALLOWED_STYLES: sanitizeHtml.IOptions['allowedStyles'] = {
+  '*': {
+    color: SAFE_STYLE_VALUE,
+    'background-color': SAFE_STYLE_VALUE,
+    background: SAFE_STYLE_VALUE,
+    'font-family': SAFE_STYLE_VALUE,
+    'font-size': SAFE_STYLE_VALUE,
+    'font-weight': SAFE_STYLE_VALUE,
+    'font-style': SAFE_STYLE_VALUE,
+    'line-height': SAFE_STYLE_VALUE,
+    'letter-spacing': SAFE_STYLE_VALUE,
+    'text-align': SAFE_STYLE_VALUE,
+    'text-decoration': SAFE_STYLE_VALUE,
+    'text-transform': SAFE_STYLE_VALUE,
+    padding: SAFE_STYLE_VALUE,
+    'padding-top': SAFE_STYLE_VALUE,
+    'padding-right': SAFE_STYLE_VALUE,
+    'padding-bottom': SAFE_STYLE_VALUE,
+    'padding-left': SAFE_STYLE_VALUE,
+    margin: SAFE_STYLE_VALUE,
+    'margin-top': SAFE_STYLE_VALUE,
+    'margin-right': SAFE_STYLE_VALUE,
+    'margin-bottom': SAFE_STYLE_VALUE,
+    'margin-left': SAFE_STYLE_VALUE,
+    border: SAFE_STYLE_VALUE,
+    'border-top': SAFE_STYLE_VALUE,
+    'border-bottom': SAFE_STYLE_VALUE,
+    'border-color': SAFE_STYLE_VALUE,
+    'border-radius': SAFE_STYLE_VALUE,
+    'border-collapse': SAFE_STYLE_VALUE,
+    width: SAFE_STYLE_VALUE,
+    'max-width': SAFE_STYLE_VALUE,
+    'min-width': SAFE_STYLE_VALUE,
+    height: SAFE_STYLE_VALUE,
+    display: SAFE_STYLE_VALUE,
+    'vertical-align': SAFE_STYLE_VALUE,
+  },
+};
+
+const EMAIL_ALLOWED_ATTRIBUTES: sanitizeHtml.IOptions['allowedAttributes'] = {
+  a: ['href', 'target', 'rel', 'style'],
+  img: ['src', 'alt', 'width', 'height', 'style'],
+  table: ['width', 'cellpadding', 'cellspacing', 'border', 'align', 'style', 'role'],
+  td: ['colspan', 'rowspan', 'align', 'valign', 'width', 'height', 'style'],
+  th: ['colspan', 'rowspan', 'align', 'valign', 'width', 'height', 'style'],
+  tr: ['align', 'valign', 'style'],
+  '*': ['style', 'class'],
+};
 import authRouter from './routes/auth';
 import eventsRouter from './routes/events';
 import guestsRouter from './routes/guests';
@@ -84,6 +170,27 @@ const apiLimiter = rateLimit({
   message: { error: 'Too many requests. Slow down.' },
 });
 
+/**
+ * Dedicated bound on outbound mail.
+ *
+ * /api/send-email is registered before apiLimiter so that a mail send cannot be
+ * starved by ordinary API traffic, which also meant it previously had no limit
+ * at all. Keyed on the authenticated user rather than IP: the cost being
+ * controlled is provider spend and domain reputation, both of which follow the
+ * account, not the network path.
+ *
+ * 20 sends per 5 minutes at up to 100 recipients each is 2,000 invitations,
+ * comfortably above any real event and far below anything useful for abuse.
+ */
+const emailLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => (req as AuthenticatedRequest).user?.id ?? req.ip ?? 'unknown',
+  message: { error: 'Too many email sends. Try again shortly.' },
+});
+
 // Email transport lives in ./lib/email. Provider selection, credential
 // resolution and client caching all happen there, so this file no longer
 // constructs a provider client of its own.
@@ -140,11 +247,21 @@ app.get('/api/health', (_req, res) => {
 // by the verified domain, so the previous ALLOW_FROM_OVERRIDE path is gone:
 // an arbitrary caller-supplied From is spoofing, and ACS rejects unverified
 // senders regardless.
-app.post('/api/send-email', async (req, res) => {
-  const { to, subject, html } = req.body ?? {};
+app.post('/api/send-email', emailLimiter, requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { to, subject, html, event_id: eventId } = req.body ?? {};
 
-  if (!to || (Array.isArray(to) && to.length === 0)) {
+  const recipients = (Array.isArray(to) ? to : [to]).filter(
+    (r: unknown): r is string => typeof r === 'string' && r.trim() !== '',
+  );
+
+  if (recipients.length === 0) {
     return res.status(400).json({ success: false, error: 'Recipient "to" is required' });
+  }
+  if (recipients.length > MAX_EMAIL_RECIPIENTS) {
+    return res.status(400).json({
+      success: false,
+      error: `A single send is limited to ${MAX_EMAIL_RECIPIENTS} recipients`,
+    });
   }
   if (typeof subject !== 'string' || subject.trim() === '') {
     return res.status(400).json({ success: false, error: 'Subject is required' });
@@ -152,8 +269,53 @@ app.post('/api/send-email', async (req, res) => {
   if (typeof html !== 'string' || html.trim() === '') {
     return res.status(400).json({ success: false, error: 'HTML body is required' });
   }
+  if (typeof eventId !== 'string' || eventId.trim() === '') {
+    return res.status(400).json({ success: false, error: '"event_id" is required' });
+  }
 
-  const result = await sendEmail({ to, subject, html });
+  // The caller must be allowed to invite for this event. Host or a co-host
+  // holding the invite permission; anyone else is refused before a provider is
+  // ever contacted.
+  const access = await getEventAccess(eventId, req.user!.id);
+  if (!canReadEvent(access)) {
+    // 404 rather than 403: a caller with no relationship to this event should
+    // not learn whether the id exists.
+    return res.status(404).json({ success: false, error: 'Event not found' });
+  }
+  if (!canInviteGuests(access)) {
+    return res.status(403).json({ success: false, error: 'You cannot send invitations for this event' });
+  }
+
+  // Every recipient must already be a guest of that event. This is the control
+  // that turns an open relay into a scoped command: the caller chooses which of
+  // their own guests to mail, never an arbitrary address.
+  const normalised = recipients.map((r) => r.trim().toLowerCase());
+  const guests = await prisma.guest.findMany({
+    where: { event_id: eventId, email: { in: normalised, mode: 'insensitive' } },
+    select: { email: true },
+  });
+  const known = new Set(guests.map((g) => g.email.toLowerCase()));
+  const strangers = normalised.filter((r) => !known.has(r));
+  if (strangers.length > 0) {
+    return res.status(403).json({
+      success: false,
+      error: 'Every recipient must be a guest of this event',
+      // Echo only the count. Listing them back would confirm which addresses
+      // are absent from a guest list the caller may be probing.
+      rejected_count: strangers.length,
+    });
+  }
+
+  // Bodies are composed client-side, so they are untrusted input that ends up
+  // rendered in someone else's mail client. Strip anything that is not layout.
+  const safeHtml = sanitizeHtml(html, {
+    allowedTags: EMAIL_ALLOWED_TAGS,
+    allowedAttributes: EMAIL_ALLOWED_ATTRIBUTES,
+    allowedSchemes: ['http', 'https', 'mailto'],
+    allowedStyles: EMAIL_ALLOWED_STYLES,
+  });
+
+  const result = await sendEmail({ to: recipients, subject, html: safeHtml });
 
   if (!result.ok) {
     // 502: the request was well formed, an upstream provider refused it.
