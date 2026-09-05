@@ -14,6 +14,67 @@ export default {
     },
     extend: {
       colors: {
+        // PartyHause brand palette. Values live in src/index.css :root and are
+        // specified in docs/BRAND.md section 4. Exposed here so components can
+        // write `bg-coral-700` / `text-neutral-700` instead of reaching for a
+        // raw hex, which is how three competing palettes accumulated before.
+        coral: {
+          50: "hsl(var(--coral-50))",
+          100: "hsl(var(--coral-100))",
+          200: "hsl(var(--coral-200))",
+          300: "hsl(var(--coral-300))",
+          400: "hsl(var(--coral-400))",
+          500: "hsl(var(--coral-500))",
+          600: "hsl(var(--coral-600))",
+          700: "hsl(var(--coral-700))",
+          800: "hsl(var(--coral-800))",
+          900: "hsl(var(--coral-900))",
+          950: "hsl(var(--coral-950))",
+        },
+        magenta: {
+          50: "hsl(var(--magenta-50))",
+          100: "hsl(var(--magenta-100))",
+          200: "hsl(var(--magenta-200))",
+          300: "hsl(var(--magenta-300))",
+          400: "hsl(var(--magenta-400))",
+          500: "hsl(var(--magenta-500))",
+          600: "hsl(var(--magenta-600))",
+          700: "hsl(var(--magenta-700))",
+          800: "hsl(var(--magenta-800))",
+          900: "hsl(var(--magenta-900))",
+          950: "hsl(var(--magenta-950))",
+        },
+        neutral: {
+          0: "hsl(var(--neutral-0))",
+          50: "hsl(var(--neutral-50))",
+          100: "hsl(var(--neutral-100))",
+          200: "hsl(var(--neutral-200))",
+          300: "hsl(var(--neutral-300))",
+          400: "hsl(var(--neutral-400))",
+          500: "hsl(var(--neutral-500))",
+          600: "hsl(var(--neutral-600))",
+          700: "hsl(var(--neutral-700))",
+          800: "hsl(var(--neutral-800))",
+          900: "hsl(var(--neutral-900))",
+          950: "hsl(var(--neutral-950))",
+        },
+        brand: "hsl(var(--brand))",
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          surface: "hsl(var(--success-surface))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          surface: "hsl(var(--warning-surface))",
+        },
+        danger: {
+          DEFAULT: "hsl(var(--danger))",
+          surface: "hsl(var(--danger-surface))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          surface: "hsl(var(--info-surface))",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -62,16 +123,20 @@ export default {
           800: "hsl(var(--orange-800))",
           900: "hsl(var(--orange-900))",
         },
-        // Status Colors
-        success: "hsl(var(--success-green))",
-        warning: "hsl(var(--warning-amber))",
-        error: "hsl(var(--error-red))",
-        info: "hsl(var(--info-blue))",
+        // Legacy status alias. `error` is kept because existing components
+        // reference it, but it now resolves to --danger rather than
+        // --error-red, which was byte-identical to the primary brand colour.
+        // Prefer `danger` in new code; success/warning/info are defined once,
+        // above, with their surface variants.
+        error: "hsl(var(--danger))",
       },
       backgroundImage: {
         'gradient-primary': 'var(--gradient-primary)',
         'gradient-card': 'var(--gradient-card)',
         'gradient-hero': 'var(--gradient-hero)',
+        // docs/BRAND.md s4.7. Iso-lightness coral to magenta, both endpoints at
+        // L=60%, so it holds constant perceived weight and cannot band.
+        'gradient-brand': 'var(--gradient-brand)',
       },
       borderRadius: {
         lg: "var(--radius)",

@@ -24,7 +24,7 @@ export default defineConfig({
         name: 'PartyHause',
         short_name: 'PartyHause',
         description: 'Create unforgettable events with friends. Manage guest lists, send invitations, track RSVPs, and create lasting memories.',
-        theme_color: '#6366F1',
+        theme_color: '#FF5233', // coral-500, the brand anchor. Was #6366F1 indigo, which matched nothing in the app.
         background_color: '#FFFFFF',
         display: 'standalone',
         scope: '/',

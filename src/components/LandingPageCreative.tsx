@@ -121,6 +121,15 @@ export const LandingPageCreative = ({ onStartAuth }: LandingPageCreativeProps) =
         className="fixed inset-0 w-full h-full z-0"
         style={{ scale: videoScale, opacity: videoOpacity }}
       >
+        {/*
+          object-position is 50% 35%, not the browser default of 50% 50%.
+
+          The source is 1280x720. `object-cover` on a phone in portrait, say
+          390x844, has to scale it to cover 844px of height, which renders it
+          ~1500px wide and crops away roughly three quarters of the frame. A
+          centre crop takes the middle band, which on this footage is the floor.
+          Biasing upward keeps faces and the horizon in frame instead.
+        */}
         <video
           ref={videoRef}
           autoPlay
@@ -128,22 +137,34 @@ export const LandingPageCreative = ({ onStartAuth }: LandingPageCreativeProps) =
           loop
           playsInline
           preload="metadata"
-          className="w-full h-full object-cover"
+          aria-hidden="true"
+          className="w-full h-full object-cover [object-position:50%_35%]"
           poster="/images/video-poster-1.jpg"
           style={{
             filter: 'brightness(0.7) contrast(1.1) saturate(1.2)',
-            transform: 'scale(1.05)' // Slight zoom to avoid edge artifacts
           }}
         >
           {videoSources.map((source, index) => (
             <source key={index} src={source.src} type={source.type} />
           ))}
         </video>
-        
-        {/* Enhanced Video Overlay for Perfect Blending */}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/50 to-black/70" />
-        <div className="absolute inset-0 bg-gradient-to-r from-orange-600/15 via-transparent to-purple-600/15" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+
+        {/*
+          Two overlays, not three. The stack used to be a b/30-50-70 wash, a
+          horizontal orange/purple tint, and a second bottom-up black/60, then
+          the hero section added its own black/20 with a backdrop-blur on top.
+          Five layers over a video already at brightness(0.7) left roughly 28%
+          of the original luminance: the footage was paid for and then hidden.
+
+          What remains is one vertical wash sized for text contrast, and the
+          brand gradient at low opacity carrying coral to magenta rather than
+          the orange/purple that matched nothing in the palette.
+        */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-black/35 to-black/65" />
+        <div
+          className="absolute inset-0 opacity-20 mix-blend-overlay"
+          style={{ backgroundImage: 'var(--gradient-brand)' }}
+        />
         {/* Subtle noise overlay for texture */}
         <div className="absolute inset-0 opacity-10" 
              style={{
@@ -202,8 +223,14 @@ export const LandingPageCreative = ({ onStartAuth }: LandingPageCreativeProps) =
 
       {/* Hero Section */}
       <section className="relative z-10 min-h-screen flex items-center justify-center">
-        {/* Additional content overlay for better text readability */}
-        <div className="absolute inset-0 bg-black/20 backdrop-blur-sm"></div>
+        {/*
+          The fifth overlay layer used to live here: bg-black/20 with a
+          backdrop-blur-sm across the whole section. It was removed for two
+          reasons. It was redundant once the wash above was sized for contrast,
+          and backdrop-blur over a playing video forces the compositor to
+          re-blur every frame across the full viewport, which is the most
+          expensive thing on this page and buys nothing legibility already has.
+        */}
         
         <div className="container mx-auto px-6 text-center relative z-20">
           <motion.div
@@ -218,9 +245,20 @@ export const LandingPageCreative = ({ onStartAuth }: LandingPageCreativeProps) =
               transition={{ duration: 1.2, delay: 0.8 }}
               className="mb-8"
             >
+              {/*
+                The brand gradient, coral-400 to magenta-400, replacing
+                `from-orange-400 to-pink-400`. The old pair was Tailwind's stock
+                palette and matched nothing in docs/BRAND.md.
+
+                The 400 steps rather than the specified 500s because this text
+                sits on a darkened video, not on white. At display size WCAG
+                needs 3:1, and coral-400 clears it against the wash while
+                coral-500 is marginal. The 500 pair remains correct wherever the
+                gradient is a surface rather than type.
+              */}
               <h1 className="text-6xl md:text-8xl font-light text-white mb-6 leading-tight drop-shadow-2xl">
                 Your Personal
-                <span className="block bg-gradient-to-r from-orange-400 to-pink-400 bg-clip-text text-transparent font-bold">
+                <span className="block bg-gradient-to-r from-coral-400 to-magenta-400 bg-clip-text text-transparent font-bold">
                   Experience Curator
                 </span>
               </h1>
@@ -262,23 +300,39 @@ export const LandingPageCreative = ({ onStartAuth }: LandingPageCreativeProps) =
               </Button>
             </motion.div>
           </motion.div>
-
-          {/* Scroll Indicator */}
-          <motion.div 
-            className="absolute bottom-8 left-1/2 transform -translate-x-1/2"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 2, duration: 1 }}
-          >
-            <motion.div
-              animate={{ y: [0, 10, 0] }}
-              transition={{ duration: 2, repeat: Infinity }}
-              className="text-white/60 cursor-pointer"
-            >
-              <ChevronDown className="w-6 h-6" />
-            </motion.div>
-          </motion.div>
         </div>
+
+        {/*
+          Scroll indicator, moved out of the container and anchored to the
+          section.
+
+          It previously sat inside `container mx-auto ... relative z-20`, whose
+          only positioned ancestor is itself. That container is a flex child
+          under `items-center`, so it is content-height, not section-height.
+          `bottom-8` therefore measured eight units from the bottom of the text
+          block, parking the chevron just under the buttons in the middle of the
+          viewport rather than at the foot of the hero.
+
+          The section is `relative min-h-screen`, so anchoring here puts it
+          where it was always meant to be, at every viewport height.
+        */}
+        <motion.div
+          className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 2, duration: 1 }}
+        >
+          <motion.button
+            type="button"
+            aria-label="Scroll to next section"
+            onClick={() => scrollToSection('experience-archetypes')}
+            animate={{ y: [0, 10, 0] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="text-white/60 hover:text-white transition-colors cursor-pointer rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+          >
+            <ChevronDown className="w-6 h-6" />
+          </motion.button>
+        </motion.div>
       </section>
 
       {/* Content Sections */}

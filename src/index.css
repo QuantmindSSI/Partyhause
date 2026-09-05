@@ -7,6 +7,80 @@
 @layer base {
   :root {
     /* ============================================ */
+    /* PARTYHAUSE BRAND PALETTE (docs/BRAND.md s4) */
+    /* ============================================ */
+    /*
+      The authoritative palette. Every value is taken from docs/BRAND.md, which
+      solved each step for a contrast target rather than picking it by eye.
+
+      The rule that matters: #FF5233 is the BRAND colour, not a button colour.
+      White on it measures 3.23:1 and WCAG AA needs 4.5:1, so the anchor is
+      split by role. Use --brand for logo, decorative fill and large display
+      type. Use --primary (coral-700) wherever white text sits on top.
+
+      Hue drifts 10 -> 6 as lightness falls, deliberately. Dark oranges read as
+      muddy brown unless they shift toward red.
+    */
+    --coral-50: 10 100% 97%;
+    --coral-100: 10 100% 94%;
+    --coral-200: 10 100% 88%;
+    --coral-300: 10 100% 79%;
+    --coral-400: 9 100% 70%;
+    --coral-500: 9 100% 60%;   /* #FF5233 brand anchor, 3.23:1 on white */
+    --coral-600: 8 83% 51%;    /* #EA361A focus ring, passes 1.4.11 everywhere */
+    --coral-700: 7 79% 42%;    /* #C02A16 solid button + white label, 5.86:1 AA */
+    --coral-800: 6 74% 34%;    /* #972317 link/body text, 8.18:1 AAA */
+    --coral-900: 6 68% 28%;
+    --coral-950: 6 72% 16%;
+
+    /* Secondary. Exists because from-orange-500 to-pink-500 was already the one
+       consistent visual signal in the codebase, used 23 times in src/. */
+    --magenta-50: 330 100% 97%;
+    --magenta-100: 330 100% 94%;
+    --magenta-200: 330 96% 88%;
+    --magenta-300: 330 92% 80%;
+    --magenta-400: 330 86% 70%;
+    --magenta-500: 330 81% 60%;  /* #EC4699, 3.56:1 on white. Same rule as coral. */
+    --magenta-600: 331 74% 51%;
+    --magenta-700: 332 70% 42%;  /* use this when text sits on it */
+    --magenta-800: 333 66% 34%;
+    --magenta-900: 333 62% 28%;
+    --magenta-950: 333 66% 16%;
+
+    /* Warm-tinted at hue 20 so neutrals sit with coral instead of fighting it.
+       A pure grey next to #FF5233 reads blue. */
+    --neutral-0: 0 0% 100%;
+    --neutral-50: 20 20% 98%;
+    --neutral-100: 20 16% 96%;
+    --neutral-200: 20 13% 91%;
+    --neutral-300: 20 11% 83%;
+    --neutral-400: 20 9% 64%;    /* 2.55:1. Disabled controls only, never readable text. */
+    --neutral-500: 20 8% 48%;
+    --neutral-600: 20 9% 38%;    /* secondary text, 6.26:1 */
+    --neutral-700: 20 10% 29%;   /* body text, 9.0:1 */
+    --neutral-800: 20 12% 20%;
+    --neutral-900: 20 14% 13%;   /* primary text, 16.07:1. Logo body. */
+    --neutral-950: 20 18% 8%;
+
+    /* Each solved to the lightest tone that still passes 4.5:1 with white, so
+       every one works as both a fill and a text colour. danger sits at hue 358,
+       clearly separated from coral at hue 9. */
+    --success: 160 84% 28%;      /* #0B835B, 4.76:1 */
+    --warning: 38 92% 33%;       /* #A26907, 4.61:1 */
+    --danger: 358 75% 53%;       /* #E12D33, 4.54:1 */
+    --info: 213 80% 49%;         /* #1973E1, 4.58:1 */
+    --success-surface: 165 71% 96%;
+    --warning-surface: 36 83% 96%;
+    --danger-surface: 356 71% 96%;
+    --info-surface: 213 71% 96%;
+
+    /* Both endpoints sit at exactly L=60%, so the gradient is iso-lightness and
+       holds constant perceived weight without banding or a dark middle.
+       Icon, social card, hero surfaces, celebration moments. Never body text,
+       never buttons: a varying background makes label contrast unverifiable. */
+    --gradient-brand: linear-gradient(135deg, hsl(var(--coral-500)) 0%, hsl(var(--magenta-500)) 100%);
+
+    /* ============================================ */
     /* LIQUID METAL DESIGN SYSTEM - PHASE 1       */
     /* ============================================ */
     
@@ -64,9 +138,16 @@
     --card-foreground: var(--text-primary);
     --popover: var(--bg-primary);
     --popover-foreground: var(--text-primary);
-    --primary: var(--orange-500);
+    /* coral-700, not coral-500. --primary always carries a white label, and
+       white on #FF5233 is 3.23:1 against an AA requirement of 4.5:1. That was a
+       live defect on every button in the app, not a theoretical one.
+       coral-700 #C02A16 measures 5.86:1. Use --brand for the anchor colour. */
+    --primary: var(--coral-700);
     --primary-foreground: 0 0% 100%;
-    --primary-glow: var(--orange-200);
+    --primary-glow: var(--coral-200);
+    /* The anchor. Logo, decorative fill, large display type. Never behind
+       body-size white text. */
+    --brand: var(--coral-500);
     --secondary: var(--bg-tertiary);
     --secondary-foreground: var(--text-primary);
     --muted: var(--bg-tertiary);
@@ -74,11 +155,17 @@
     --accent: var(--orange-400);
     --accent-foreground: 0 0% 100%;
     --accent-glow: var(--orange-100);
-    --destructive: var(--error-red);
+    /* Was var(--error-red), which is 9 100% 60%: byte-identical to --orange-500.
+       The same colour signalled "primary action" and "destructive". --danger is
+       hue 358, visibly separated from coral at hue 9, and passes 4.5:1 white. */
+    --destructive: var(--danger);
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 90%;
+    --border: var(--neutral-200);
     --input: var(--bg-primary);
-    --ring: var(--orange-500);
+    /* coral-600, not coral-500. A coral-500 ring measures 2.94:1 on neutral-100
+       and 2.63:1 on neutral-200, both failing 1.4.11. coral-600 passes on every
+       surface the app defines. */
+    --ring: var(--coral-600);
     --radius: 0.75rem; /* Softer radius */
 
     /* Gradient tokens consumed by tailwind.config.ts backgroundImage
