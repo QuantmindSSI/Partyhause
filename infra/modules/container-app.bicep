@@ -37,6 +37,25 @@ param manageAcrPullAssignment bool = false
 @description('Secrets exposed to the container app. Each item: { name: string, value: string }. Referenced from envVars via secretRef.')
 param secrets array = []
 
+@description('''Minimum replicas. Zero lets the app scale to nothing and
+cold-start on the next request, which was measured at ~21s to first byte on
+both tiers: far past the point a browser gives up, and the documented cause of
+the Safari "cannot open page" reports 428afe1 tried to fix.
+
+That fix was applied with `az containerapp update` and never written here, so
+every `az deployment sub create` in deploy.yml silently reset it. Keep any
+change to this value in the template, not on the live app.
+
+Defaults to 1 so an unattended provision cannot reintroduce the cold start.
+Pass 0 deliberately for non-production environments where idle cost matters
+more than first-byte latency.''')
+@minValue(0)
+param minReplicas int = 1
+
+@description('Maximum replicas.')
+@minValue(1)
+param maxReplicas int = 3
+
 // --- Container App ---
 resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: appName
@@ -78,8 +97,8 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
       scale: {
-        minReplicas: 0
-        maxReplicas: 3
+        minReplicas: minReplicas
+        maxReplicas: maxReplicas
       }
     }
   }
