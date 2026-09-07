@@ -6,7 +6,7 @@
 
 import { Router } from 'express';
 import type { Response } from 'express';
-import { rateLimit } from 'express-rate-limit';
+import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import { requireAuth } from '../middleware/auth';
 import type { AuthenticatedRequest } from '../middleware/auth';
 import { extractEventDetails } from '../lib/event-extraction';
@@ -24,7 +24,18 @@ const aiLimiter = rateLimit({
   limit: 30,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  keyGenerator: (req) => (req as AuthenticatedRequest).user?.id ?? req.ip ?? 'unknown',
+  keyGenerator: (req) =>
+    // `req.ip` alone is an IPv6 bypass: a caller holding a /64 has 2^64
+    // addresses and each one is a fresh bucket, so the limit never binds.
+    // `ipKeyGenerator` collapses an IPv6 address to its /64 prefix, which is
+    // the unit actually allocated to a subscriber, and passes IPv4 through
+    // unchanged.
+    //
+    // express-rate-limit v8 raises ERR_ERL_KEY_GEN_IPV6 for the naive form,
+    // but only when NODE_ENV is not 'production'. The deployed API therefore
+    // started cleanly while the bypass was live, and nothing surfaced it until
+    // the server was finally run locally.
+    (req as AuthenticatedRequest).user?.id ?? ipKeyGenerator(req.ip ?? '') ?? 'unknown',
   message: { error: 'Too many AI requests. Try again in a few minutes.' },
 });
 
