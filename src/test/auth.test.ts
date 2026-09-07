@@ -20,6 +20,8 @@ vi.mock('@/lib/auth', () => ({
   authService: {
     signIn: vi.fn(),
     signUp: vi.fn(),
+    resetPassword: vi.fn(),
+    resendVerification: vi.fn(),
   },
 }));
 
@@ -88,7 +90,53 @@ describe('useAuth hook', () => {
     });
 
     expect(authService.signIn).toHaveBeenCalledWith('signin@example.com', 'secret');
-    expect(response).toEqual({ user: mockUser, error: null });
+    // `needsEmailVerification` is part of the contract now. The hook used to
+    // return only `{ user, error }`, which discarded the one thing that tells
+    // the UI whether to offer a resend or a reset.
+    expect(response).toEqual({ user: mockUser, error: null, needsEmailVerification: false });
+  });
+
+  it('forwards needsEmailVerification so the UI can offer a resend', async () => {
+    // A correct password on an unconfirmed address. authService separates this
+    // from a 401 on purpose; the hook dropped the distinction, so AuthScreen
+    // showed the same alert for both and the user had no way forward.
+    (authService.signIn as any).mockResolvedValue({
+      success: false,
+      needsEmailVerification: true,
+      error: 'Please confirm your email address before signing in.',
+    });
+
+    const { result } = renderHook(() => useAuth());
+
+    let response: any;
+    await act(async () => {
+      response = await result.current.signIn('unconfirmed@example.com', 'correct-password');
+    });
+
+    expect(response.needsEmailVerification).toBe(true);
+    expect(response.user).toBeFalsy();
+    expect(response.error).toBeInstanceOf(Error);
+  });
+
+  it('exposes the two recovery actions the login screen needs', async () => {
+    // Both endpoints were live and neither had a caller, which is why an
+    // unconfirmed account had no route back in.
+    (authService.resetPassword as any).mockResolvedValue({ success: true });
+    (authService.resendVerification as any).mockResolvedValue({ success: true });
+
+    const { result } = renderHook(() => useAuth());
+
+    let reset: any;
+    let resend: any;
+    await act(async () => {
+      reset = await result.current.requestPasswordReset('locked-out@example.com');
+      resend = await result.current.resendVerification('locked-out@example.com');
+    });
+
+    expect(authService.resetPassword).toHaveBeenCalledWith('locked-out@example.com');
+    expect(authService.resendVerification).toHaveBeenCalledWith('locked-out@example.com');
+    expect(reset).toEqual({ success: true, error: null });
+    expect(resend).toEqual({ success: true, error: null });
   });
 
   it('resets the store on sign out', async () => {

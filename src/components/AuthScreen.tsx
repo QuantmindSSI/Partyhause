@@ -45,9 +45,27 @@ export const AuthScreen = ({
     const [showPassword, setShowPassword] = useState(false);
     const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
     const [isFormValid, setIsFormValid] = useState(false);
-    
+
+    /**
+     * Account-recovery state.
+     *
+     * Everything below existed on the server and had no way to reach it.
+     * `POST /api/auth/forgot-password` and `POST /api/auth/resend-verification`
+     * were both live, `authService.resetPassword` was written, and no component
+     * called either. A user who forgot their password, or who signed up and
+     * never clicked the confirmation link, had no route back into the account
+     * at all: the only page that can resend, VerifyEmailPage, is reached from
+     * the confirmation email they do not have.
+     */
+    const [recoveryMode, setRecoveryMode] = useState<'none' | 'reset'>('none');
+    /** Set when login returns 403 EMAIL_NOT_VERIFIED, so we offer a resend rather than a reset. */
+    const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+    const [recoveryBusy, setRecoveryBusy] = useState(false);
+    const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
+    const [recoveryError, setRecoveryError] = useState<string | null>(null);
+
     const { setUser, setLoading, isLoading } = usePartyStore();
-    const { signIn, signUp } = useAuth();
+    const { signIn, signUp, requestPasswordReset, resendVerification } = useAuth();
     const { setCurrentPage } = usePartyStore();
 
     // Diagnostic: run once on mount to detect missing imports in test env without violating hooks rules
@@ -112,11 +130,22 @@ export const AuthScreen = ({
     const handleAuth = async (e: React.FormEvent) => {
       e.preventDefault();
       setLoading(true);
+      setRecoveryNotice(null);
+      setRecoveryError(null);
       try {
         validateForm();
 
         if (isLogin) {
-          const { user, error } = await signIn(email, password);
+          const { error, needsEmailVerification } = await signIn(email, password);
+          // An unconfirmed address is not a credential failure, and must not
+          // be presented as one. The remedy is a resend, not a reset, and the
+          // user cannot be expected to work that out from "sign-in failed".
+          if (needsEmailVerification) {
+            setUnverifiedEmail(email);
+            setRecoveryMode('none');
+            return;
+          }
+          setUnverifiedEmail(null);
           if (error) throw error;
         } else {
           const { user, error } = await signUp(email, password, name);
@@ -132,6 +161,63 @@ export const AuthScreen = ({
       } finally {
         setLoading(false);
       }
+    };
+
+    /**
+     * Send a password-reset link.
+     *
+     * This is also how an account whose address was never confirmed gets
+     * unstuck: `POST /api/auth/reset-password` sets `email_verified: true` on
+     * success, because clicking a single-use link delivered to the mailbox is
+     * the same proof of control the verification link provides. So one journey
+     * recovers both the password and the confirmation.
+     *
+     * The success message is deliberately conditional-sounding. The server
+     * answers identically whether or not the address is registered, and saying
+     * "we sent it" outright would leak that difference.
+     */
+    const handleRequestReset = async () => {
+      setRecoveryNotice(null);
+      setRecoveryError(null);
+
+      if (!EMAIL_RE.test(email)) {
+        setRecoveryError('Enter the email address on your account first.');
+        return;
+      }
+
+      setRecoveryBusy(true);
+      const { success, error } = await requestPasswordReset(email);
+      setRecoveryBusy(false);
+
+      if (!success) {
+        setRecoveryError(error || 'The reset link could not be sent. Try again shortly.');
+        return;
+      }
+      setRecoveryNotice(
+        `If an account exists for ${email}, a reset link is on its way. It expires in one hour, and using it also confirms your email address.`,
+      );
+    };
+
+    /** Re-send the confirmation email. Anonymous by design: a locked-out user has no session. */
+    const handleResendVerification = async () => {
+      const target = unverifiedEmail ?? email;
+      setRecoveryNotice(null);
+      setRecoveryError(null);
+
+      if (!EMAIL_RE.test(target)) {
+        setRecoveryError('Enter the email address on your account first.');
+        return;
+      }
+
+      setRecoveryBusy(true);
+      const { success, error } = await resendVerification(target);
+      setRecoveryBusy(false);
+
+      if (!success) {
+        setRecoveryError(error || 'The confirmation email could not be sent. Try again shortly.');
+        return;
+      }
+      setRecoveryNotice(`Confirmation email sent to ${target}. Check your inbox and spam folder.`);
     };
 
     const getWelcomeMessage = () => {
@@ -507,6 +593,115 @@ export const AuthScreen = ({
                         </div>
                       )}
                     </Button>
+
+                    {/* Account recovery. Login only: neither action makes sense
+                        while creating an account. */}
+                    {isLogin && (
+                      <div className="space-y-3">
+                        {!unverifiedEmail && recoveryMode === 'none' && (
+                          <div className="text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRecoveryMode('reset');
+                                setRecoveryNotice(null);
+                                setRecoveryError(null);
+                              }}
+                              className="text-sm text-gray-500 hover:text-orange-600 transition-colors"
+                            >
+                              Forgot your password?
+                            </button>
+                          </div>
+                        )}
+
+                        {recoveryMode === 'reset' && !unverifiedEmail && (
+                          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                            <p className="text-sm text-gray-700">
+                              We will email a reset link to <span className="font-medium">{email || 'your address'}</span>.
+                              If you never confirmed your email, using that link confirms it as well.
+                            </p>
+                            <div className="flex gap-2">
+                              <Button
+                                type="button"
+                                onClick={handleRequestReset}
+                                disabled={recoveryBusy}
+                                className="flex-1 btn-floating text-white"
+                              >
+                                {recoveryBusy ? 'Sending…' : 'Send reset link'}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => {
+                                  setRecoveryMode('none');
+                                  setRecoveryNotice(null);
+                                  setRecoveryError(null);
+                                }}
+                                disabled={recoveryBusy}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {unverifiedEmail && (
+                          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3">
+                            <div className="flex items-start gap-2">
+                              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+                              <p className="text-sm text-amber-900">
+                                Your password was correct, but{' '}
+                                <span className="font-medium">{unverifiedEmail}</span> has not been
+                                confirmed yet. Confirm it to sign in.
+                              </p>
+                            </div>
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <Button
+                                type="button"
+                                onClick={handleResendVerification}
+                                disabled={recoveryBusy}
+                                className="flex-1 btn-floating text-white"
+                              >
+                                {recoveryBusy ? 'Sending…' : 'Resend confirmation email'}
+                              </Button>
+                              {/* The second way out, and the one that works when
+                                  the confirmation mail never arrives at all: a
+                                  reset link proves the same control of the
+                                  mailbox and confirms the address on use. */}
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={handleRequestReset}
+                                disabled={recoveryBusy}
+                                className="flex-1"
+                              >
+                                Email me a reset link instead
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {recoveryNotice && (
+                          <p
+                            role="status"
+                            className="flex items-start gap-2 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800"
+                          >
+                            <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                            {recoveryNotice}
+                          </p>
+                        )}
+
+                        {recoveryError && (
+                          <p
+                            role="alert"
+                            className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"
+                          >
+                            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                            {recoveryError}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </form>
 
                   {/* Benefits Preview */}

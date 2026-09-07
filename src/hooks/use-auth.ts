@@ -109,11 +109,46 @@ export const useAuth = () => {
         };
         await usePartyStore.getState().setUser(normalizedUser);
       }
-      return { user: result.user, error: result.error ? new Error(result.error) : null };
+      // `needsEmailVerification` is forwarded, not dropped.
+      //
+      // authService.signIn goes to deliberate trouble to separate 403
+      // EMAIL_NOT_VERIFIED from a 401 bad password, because the two need
+      // opposite remedies: one wants a resend, the other a reset. This hook
+      // returned only `{ user, error }`, so the distinction died here and
+      // AuthScreen showed the same alert for both. An unconfirmed user was
+      // told their sign-in failed with no indication of why or what to do.
+      return {
+        user: result.user,
+        error: result.error ? new Error(result.error) : null,
+        needsEmailVerification: result.needsEmailVerification === true,
+      };
     } catch (error) {
       usePartyStore.getState().setLoading(false);
-      return { user: null, error };
+      return { user: null, error, needsEmailVerification: false };
     }
+  };
+
+  /**
+   * Request a password-reset link.
+   *
+   * Also the recovery path for an account whose address was never confirmed.
+   * `POST /api/auth/reset-password` sets `email_verified: true` on success,
+   * because completing a reset proves control of the mailbox in exactly the
+   * way the verification link does. A user who signed up, never clicked
+   * confirm, and has since forgotten their password gets out through here.
+   *
+   * The response is uniform whether or not the address is registered, so this
+   * cannot be used to enumerate accounts.
+   */
+  const requestPasswordReset = async (email: string) => {
+    const result = await authService.resetPassword(email);
+    return { success: result.success, error: result.error ?? null };
+  };
+
+  /** Re-send the confirmation email. Anonymous: a locked-out user has no session. */
+  const resendVerification = async (email: string) => {
+    const result = await authService.resendVerification(email);
+    return { success: result.success, error: result.error ?? null };
   };
 
   const signUp = async (email: string, password: string, name?: string) => {
@@ -168,6 +203,8 @@ export const useAuth = () => {
     signIn,
     signUp,
     signOut,
+    requestPasswordReset,
+    resendVerification,
     isLoading,
   };
 };

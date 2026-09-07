@@ -24,6 +24,18 @@ export interface ApiError {
   message: string;
   /** Absent when the request never reached the server. */
   status?: number;
+  /**
+   * Machine-readable error code, when the route sends one.
+   *
+   * Only `POST /api/auth/login` sets one today: `EMAIL_NOT_VERIFIED`, on a 403
+   * that is deliberately distinct from the 401 for bad credentials. The
+   * distinction matters because the two need opposite remedies, a resend
+   * versus a reset, and the client cannot tell them apart from the message
+   * text. It was being discarded here, so mobile had to infer intent from the
+   * status code, which is fragile the moment a second 403 appears on that
+   * route.
+   */
+  code?: string;
 }
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -84,6 +96,17 @@ function messageFromBody(parsed: unknown, status: number): string {
   }
   if (typeof parsed === 'string' && parsed.length > 0) return parsed;
   return `HTTP error! status: ${status}`;
+}
+
+/**
+ * Extract a machine-readable `code` from a parsed error body.
+ *
+ * @returns the code, or undefined when the route did not send one.
+ */
+function codeFromBody(parsed: unknown): string | undefined {
+  if (!parsed || typeof parsed !== 'object') return undefined;
+  const code = (parsed as Record<string, unknown>).code;
+  return typeof code === 'string' && code ? code : undefined;
 }
 
 function now(): number {
@@ -243,8 +266,12 @@ export function createTransport(config: ApiClientConfig): Transport {
 
     if (!response.ok) {
       const message = messageFromBody(parsed, response.status);
+      const code = codeFromBody(parsed);
       finish(response.status, false, message);
-      return { data: null, error: { message, status: response.status } };
+      return {
+        data: null,
+        error: code ? { message, status: response.status, code } : { message, status: response.status },
+      };
     }
 
     finish(response.status, true, null);

@@ -7,6 +7,9 @@ interface AuthScreenProps {
   onAuthSuccess: () => void;
 }
 
+/** Matches the server's rule (server/routes/auth.ts). */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -14,6 +17,78 @@ export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) 
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  /**
+   * Account-recovery state.
+   *
+   * Mobile had no recovery path of any kind. `api.auth.forgotPassword` and
+   * `api.auth.resendVerification` both existed in @partyhause/core and neither
+   * had a call site, so a user who forgot their password, or who signed up and
+   * never clicked the confirmation link, was permanently locked out of the app
+   * with no control anywhere on this screen to do anything about it.
+   */
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  /** Set when login answers 403 EMAIL_NOT_VERIFIED, so we offer a resend first. */
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+
+  /**
+   * Request a password-reset link.
+   *
+   * Also the way out for an account whose address was never confirmed:
+   * POST /api/auth/reset-password sets email_verified on success, because a
+   * single-use link delivered to the mailbox proves the same control the
+   * confirmation link does.
+   *
+   * The wording stays conditional because the server answers identically for a
+   * registered and an unregistered address, and stating "we sent it" would
+   * leak the difference.
+   */
+  const handleForgotPassword = async () => {
+    const target = (unverifiedEmail ?? email).trim();
+    if (!EMAIL_RE.test(target)) {
+      setMessage({ type: 'error', text: 'Enter the email address on your account first.' });
+      return;
+    }
+
+    setRecoveryBusy(true);
+    setMessage(null);
+    const { error } = await api.auth.forgotPassword(target);
+    setRecoveryBusy(false);
+
+    if (error) {
+      setMessage({ type: 'error', text: error.message });
+      return;
+    }
+    setRecoveryOpen(false);
+    setMessage({
+      type: 'success',
+      text: `If an account exists for ${target}, a reset link is on its way. It expires in an hour, and using it also confirms your email address.`,
+    });
+  };
+
+  /** Re-send the confirmation email. Anonymous: a locked-out user has no session. */
+  const handleResendVerification = async () => {
+    const target = (unverifiedEmail ?? email).trim();
+    if (!EMAIL_RE.test(target)) {
+      setMessage({ type: 'error', text: 'Enter the email address on your account first.' });
+      return;
+    }
+
+    setRecoveryBusy(true);
+    setMessage(null);
+    const { error } = await api.auth.resendVerification(target);
+    setRecoveryBusy(false);
+
+    if (error) {
+      setMessage({ type: 'error', text: error.message });
+      return;
+    }
+    setMessage({
+      type: 'success',
+      text: `Confirmation email sent to ${target}. Check your inbox and spam folder.`,
+    });
+  };
 
   const handleAuth = async () => {
     if (!email.trim() || !password.trim()) {
@@ -44,6 +119,20 @@ export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) 
           );
 
       if (result.error) {
+        // A correct password on an unconfirmed address is not a credential
+        // failure and must not be shown as one: the remedy is a resend, not a
+        // retry. The server marks it explicitly rather than leaving the client
+        // to guess from a status code.
+        if (result.error.code === 'EMAIL_NOT_VERIFIED') {
+          setUnverifiedEmail(email.trim());
+          setRecoveryOpen(false);
+          setMessage({
+            type: 'error',
+            text: 'Your password was correct, but this email has not been confirmed yet.',
+          });
+          return;
+        }
+        setUnverifiedEmail(null);
         setMessage({ type: 'error', text: result.error.message });
         return;
       }
@@ -148,11 +237,88 @@ export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) 
             )}
           </TouchableOpacity>
 
+          {/* Account recovery. Login only: neither action means anything while
+              creating an account. */}
+          {isLogin && unverifiedEmail && (
+            <View style={styles.recoveryBox}>
+              <Text style={styles.recoveryTitle}>Confirm your email to sign in</Text>
+              <Text style={styles.recoveryBody}>
+                {unverifiedEmail} has not been confirmed yet.
+              </Text>
+              <TouchableOpacity
+                style={[styles.recoveryPrimary, recoveryBusy && styles.buttonDisabled]}
+                onPress={handleResendVerification}
+                disabled={recoveryBusy || loading}
+              >
+                {recoveryBusy ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>Resend confirmation email</Text>
+                )}
+              </TouchableOpacity>
+              {/* The second way out, and the one that works when the
+                  confirmation email never arrives: a reset link proves the same
+                  control of the mailbox and confirms the address on use. */}
+              <TouchableOpacity
+                style={styles.recoverySecondary}
+                onPress={handleForgotPassword}
+                disabled={recoveryBusy || loading}
+              >
+                <Text style={styles.recoverySecondaryText}>Email me a reset link instead</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {isLogin && !unverifiedEmail && !recoveryOpen && (
+            <TouchableOpacity
+              style={styles.linkButton}
+              onPress={() => {
+                setRecoveryOpen(true);
+                setMessage(null);
+              }}
+              disabled={loading}
+            >
+              <Text style={styles.linkText}>Forgot your password?</Text>
+            </TouchableOpacity>
+          )}
+
+          {isLogin && !unverifiedEmail && recoveryOpen && (
+            <View style={styles.recoveryBox}>
+              <Text style={styles.recoveryBody}>
+                We will email a reset link to {email.trim() || 'your address'}. If you never
+                confirmed your email, using that link confirms it too.
+              </Text>
+              <TouchableOpacity
+                style={[styles.recoveryPrimary, recoveryBusy && styles.buttonDisabled]}
+                onPress={handleForgotPassword}
+                disabled={recoveryBusy || loading}
+              >
+                {recoveryBusy ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>Send reset link</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.recoverySecondary}
+                onPress={() => {
+                  setRecoveryOpen(false);
+                  setMessage(null);
+                }}
+                disabled={recoveryBusy}
+              >
+                <Text style={styles.recoverySecondaryText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           <TouchableOpacity
             style={styles.switchButton}
             onPress={() => {
               setIsLogin(!isLogin);
               setMessage(null);
+              setUnverifiedEmail(null);
+              setRecoveryOpen(false);
             }}
             disabled={loading}
           >
@@ -282,6 +448,50 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  linkButton: {
+    marginTop: 14,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  linkText: {
+    color: '#a8a8b3',
+    fontSize: 14,
+    textDecorationLine: 'underline',
+  },
+  recoveryBox: {
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#3a3a4a',
+    backgroundColor: '#22222e',
+    gap: 12,
+  },
+  recoveryTitle: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  recoveryBody: {
+    color: '#a8a8b3',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  recoveryPrimary: {
+    backgroundColor: '#6C63FF',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  recoverySecondary: {
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  recoverySecondaryText: {
+    color: '#6C63FF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   switchButton: {
     marginTop: 16,
