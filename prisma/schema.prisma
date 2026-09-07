@@ -95,6 +95,9 @@ model User {
   guest_crew_conversions2 GuestCrewConversion[] @relation("ConversionByUser")
   polls                   Poll[]
   poll_votes              PollVote[]
+  partyboard_stickies     PartyBoardSticky[]     @relation("PartyBoardStickyCreator")
+  partyboard_sticky_votes PartyBoardStickyVote[] @relation("PartyBoardStickyVoter")
+  partyboard_tasks        PartyBoardTask[]       @relation("PartyBoardTaskCreator")
 
   @@map("users")
 }
@@ -201,6 +204,8 @@ model Event {
   guest_crew_conversions GuestCrewConversion[]
   event_cost_summary     EventCostSummary?
   polls                  Poll[]
+  partyboard_stickies    PartyBoardSticky[]
+  partyboard_tasks       PartyBoardTask[]
 
   @@index([host_id])
   @@index([status])
@@ -960,6 +965,88 @@ model PollVote {
   @@index([user_id])
   @@index([option_id])
   @@map("poll_votes")
+}
+
+// ============================================================================
+// PARTYBOARD — collaborative planning canvas
+// ============================================================================
+//
+// The web canvas (src/features/partyboard, 1,320 lines) shipped against
+// /api/partyboard/stickies, which was never written. Every fetch 404'd, so
+// every sticky a user dragged onto the board vanished on the next poll. These
+// three tables are that endpoint's storage.
+//
+// Votes are a table rather than a counter column because the canvas renders
+// `user_has_voted` per viewer. A counter cannot answer "did I vote", and the
+// unique constraint below is what makes a second click idempotent instead of
+// a second vote.
+
+model PartyBoardSticky {
+  id         String   @id @default(dbgenerated("gen_random_uuid()"))
+  event_id   String
+  session_id String? // optional brainstorm session grouping
+  type       String // CHECK: IN ('note', 'idea') — the two the canvas creates
+  position_x Int      @default(0)
+  position_y Int      @default(0)
+  width      Int      @default(200)
+  height     Int      @default(200)
+  rotation   Int?
+  z_index    Int      @default(0)
+  category   String? // CHECK: IN ('venue','entertainment','food','activities','decor','other')
+  data       Json     @default("{}") // NoteStickyData | IdeaStickyData
+  created_by String // references users(id)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now()) @updatedAt
+
+  // Relations
+  event   Event                  @relation(fields: [event_id], references: [id])
+  creator User                   @relation("PartyBoardStickyCreator", fields: [created_by], references: [id])
+  votes   PartyBoardStickyVote[]
+  task    PartyBoardTask?
+
+  @@index([event_id])
+  @@index([event_id, session_id])
+  @@index([created_by])
+  @@map("partyboard_stickies")
+}
+
+model PartyBoardStickyVote {
+  id         String   @id @default(dbgenerated("gen_random_uuid()"))
+  sticky_id  String
+  user_id    String // references users(id)
+  created_at DateTime @default(now())
+
+  // Relations
+  sticky PartyBoardSticky @relation(fields: [sticky_id], references: [id])
+  user   User             @relation("PartyBoardStickyVoter", fields: [user_id], references: [id])
+
+  @@unique([sticky_id, user_id])
+  @@index([sticky_id])
+  @@index([user_id])
+  @@map("partyboard_sticky_votes")
+}
+
+// An idea promoted to committed work. One per sticky, enforced by the unique
+// sticky_id, so "convert to task" is idempotent rather than a duplicate factory.
+model PartyBoardTask {
+  id             String    @id @default(dbgenerated("gen_random_uuid()"))
+  event_id       String
+  sticky_id      String    @unique
+  title          String
+  estimated_cost Decimal?  @db.Decimal(10, 2)
+  status         String    @default("open") // CHECK: IN ('open', 'done')
+  created_by     String // references users(id)
+  created_at     DateTime  @default(now())
+  completed_at   DateTime?
+
+  // Relations
+  event   Event            @relation(fields: [event_id], references: [id])
+  sticky  PartyBoardSticky @relation(fields: [sticky_id], references: [id])
+  creator User             @relation("PartyBoardTaskCreator", fields: [created_by], references: [id])
+
+  @@index([event_id])
+  @@index([status])
+  @@map("partyboard_tasks")
 }
 
 // ============================================================================

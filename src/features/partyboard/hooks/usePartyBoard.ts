@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
-import { StickyItem, CreateNoteData, CreateIdeaData, UpdateStickyPosition, CanvasStats } from '../types';
-import { DEFAULT_STICKY_SIZE, STICKY_COLORS } from '../constants';
-import { getApiBaseUrl } from '@/lib/apiBase';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { StickyItem, CreateNoteData, CreateIdeaData, IdeaStickyData, CanvasStats } from '../types';
+import { DEFAULT_STICKY_SIZE } from '../constants';
+import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api-client';
 
 interface UsePartyBoardOptions {
   eventId: string;
@@ -9,299 +9,261 @@ interface UsePartyBoardOptions {
   autoRefresh?: boolean;
 }
 
+/** Board poll interval. Matches the ten seconds the canvas was written against. */
+const REFRESH_INTERVAL_MS = 10_000;
+
+/**
+ * Data layer for the collaborative planning canvas.
+ *
+ * Every call goes through `@/lib/api-client`, not bare `fetch`. The previous
+ * implementation constructed its own requests with `Content-Type` as the only
+ * header, so no Authorization was ever sent. Now that /api/partyboard exists
+ * and requires auth, bare fetch would have turned a 404 into a 401 without
+ * fixing anything. The shared client also brings the 15s timeout, the single
+ * GET retry on 502/503/504, and the 401 redirect.
+ */
 export const usePartyBoard = ({ eventId, sessionId, autoRefresh = false }: UsePartyBoardOptions) => {
   const [stickies, setStickies] = useState<StickyItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const API_BASE = getApiBaseUrl();
+  // The auto-refresh interval must not resurrect state for a board the user
+  // has navigated away from, and must not clobber a local optimistic update
+  // with a response that was already in flight when it happened.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
-  // Fetch stickies for the event/session
   const fetchStickies = useCallback(async () => {
     setLoading(true);
     setError(null);
 
-    try {
-      const params = new URLSearchParams({ event_id: eventId });
-      if (sessionId) {
-        params.append('session_id', sessionId);
-      }
+    const params = new URLSearchParams({ event_id: eventId });
+    if (sessionId) params.append('session_id', sessionId);
 
-      const response = await fetch(`${API_BASE}/api/partyboard/stickies?${params}`, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+    const { data, error: apiError } = await apiGet<{ stickies: StickyItem[] }>(
+      `/api/partyboard/stickies?${params.toString()}`,
+    );
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch stickies');
-      }
+    if (!mountedRef.current) return;
 
-      const data = await response.json();
-      setStickies(data.stickies || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch stickies');
-    } finally {
-      setLoading(false);
+    if (apiError) {
+      setError(apiError.message);
+    } else {
+      setStickies(data?.stickies ?? []);
     }
+    setLoading(false);
   }, [eventId, sessionId]);
 
-  // Create a new note sticky
   const createNote = async (noteData: CreateNoteData): Promise<StickyItem | null> => {
     setLoading(true);
     setError(null);
 
-    try {
-      const response = await fetch(`${API_BASE}/api/partyboard/stickies`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+    const { data, error: apiError } = await apiPost<{ sticky: StickyItem }>(
+      '/api/partyboard/stickies',
+      {
+        event_id: eventId,
+        session_id: sessionId,
+        type: 'note',
+        position: noteData.position || { x: 100, y: 100 },
+        size: DEFAULT_STICKY_SIZE,
+        category: noteData.category,
+        data: {
+          content: noteData.content,
+          color: noteData.color,
+          font_size: 14,
         },
-        body: JSON.stringify({
-          event_id: eventId,
-          session_id: sessionId,
-          type: 'note',
-          position: noteData.position || { x: 100, y: 100 },
-          size: DEFAULT_STICKY_SIZE,
-          category: noteData.category,
-          data: {
-            content: noteData.content,
-            color: noteData.color,
-            font_size: 14,
-          },
-        }),
-      });
+      },
+    );
 
-      if (!response.ok) {
-        throw new Error('Failed to create note');
-      }
+    if (!mountedRef.current) return null;
+    setLoading(false);
 
-      const data = await response.json();
-      const newSticky = data.sticky;
-
-      // Add to local state
-      setStickies((prev) => [...prev, newSticky]);
-
-      return newSticky;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create note');
+    if (apiError || !data?.sticky) {
+      setError(apiError?.message ?? 'Failed to create note');
       return null;
-    } finally {
-      setLoading(false);
     }
+
+    setStickies((prev) => [...prev, data.sticky]);
+    return data.sticky;
   };
 
-  // Create a new idea sticky
   const createIdea = async (ideaData: CreateIdeaData): Promise<StickyItem | null> => {
     setLoading(true);
     setError(null);
 
-    try {
-      const response = await fetch(`${API_BASE}/api/partyboard/stickies`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          event_id: eventId,
-          session_id: sessionId,
-          type: 'idea',
-          position: ideaData.position || { x: 100, y: 100 },
-          size: DEFAULT_STICKY_SIZE,
+    const { data, error: apiError } = await apiPost<{ sticky: StickyItem }>(
+      '/api/partyboard/stickies',
+      {
+        event_id: eventId,
+        session_id: sessionId,
+        type: 'idea',
+        position: ideaData.position || { x: 100, y: 100 },
+        size: DEFAULT_STICKY_SIZE,
+        category: ideaData.category,
+        data: {
+          content: ideaData.content,
           category: ideaData.category,
-          data: {
-            content: ideaData.content,
-            category: ideaData.category,
-            estimated_cost: ideaData.estimated_cost,
-            votes: 0,
-            user_has_voted: false,
-            reactions: 0,
-            converted_to_task: false,
-          },
-        }),
-      });
+          estimated_cost: ideaData.estimated_cost,
+        },
+      },
+    );
 
-      if (!response.ok) {
-        throw new Error('Failed to create idea');
-      }
+    if (!mountedRef.current) return null;
+    setLoading(false);
 
-      const data = await response.json();
-      const newSticky = data.sticky;
-
-      // Add to local state
-      setStickies((prev) => [...prev, newSticky]);
-
-      return newSticky;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create idea');
+    if (apiError || !data?.sticky) {
+      setError(apiError?.message ?? 'Failed to create idea');
       return null;
-    } finally {
-      setLoading(false);
     }
+
+    setStickies((prev) => [...prev, data.sticky]);
+    return data.sticky;
   };
 
-  // Vote on an idea
+  /**
+   * Toggle the current user's vote on an idea.
+   *
+   * The server owns the count, so the response is applied verbatim rather than
+   * incremented locally. A local `votes + 1` would drift from the truth the
+   * moment a second person voted between two refreshes.
+   */
   const voteOnIdea = async (stickyId: string): Promise<boolean> => {
-    try {
-      const response = await fetch(`${API_BASE}/api/partyboard/stickies/${stickyId}/vote`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+    const { data, error: apiError } = await apiPatch<{ votes: number; user_has_voted: boolean }>(
+      `/api/partyboard/stickies/${stickyId}/vote`,
+    );
 
-      if (!response.ok) {
-        throw new Error('Failed to vote on idea');
-      }
-
-      const data = await response.json();
-
-      // Update local state with optimistic update
-      setStickies((prev) =>
-        prev.map((sticky) =>
-          sticky.id === stickyId
-            ? {
-                ...sticky,
-                data: {
-                  ...sticky.data,
-                  votes: data.votes,
-                  user_has_voted: data.user_has_voted,
-                } as any,
-              }
-            : sticky
-        )
-      );
-
-      return true;
-    } catch (err) {
-      console.error('Failed to vote on idea:', err);
+    if (apiError || !data) {
+      setError(apiError?.message ?? 'Failed to vote on idea');
       return false;
     }
+
+    setStickies((prev) =>
+      prev.map((sticky) =>
+        sticky.id === stickyId
+          ? {
+              ...sticky,
+              reaction_count: data.votes,
+              data: {
+                ...(sticky.data as IdeaStickyData),
+                votes: data.votes,
+                user_has_voted: data.user_has_voted,
+              },
+            }
+          : sticky,
+      ),
+    );
+
+    return true;
   };
 
-  // Convert idea to task
   const convertToTask = async (stickyId: string): Promise<boolean> => {
-    try {
-      const response = await fetch(`${API_BASE}/api/partyboard/stickies/${stickyId}/convert-to-task`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+    const { data, error: apiError } = await apiPost<{ task_id: string; status: string }>(
+      `/api/partyboard/stickies/${stickyId}/convert-to-task`,
+    );
 
-      if (!response.ok) {
-        throw new Error('Failed to convert to task');
-      }
-
-      const data = await response.json();
-
-      // Update local state
-      setStickies((prev) =>
-        prev.map((sticky) =>
-          sticky.id === stickyId
-            ? {
-                ...sticky,
-                data: {
-                  ...sticky.data,
-                  converted_to_task: true,
-                  task_id: data.task_id,
-                } as any,
-              }
-            : sticky
-        )
-      );
-
-      return true;
-    } catch (err) {
-      console.error('Failed to convert to task:', err);
+    if (apiError || !data) {
+      setError(apiError?.message ?? 'Failed to convert to task');
       return false;
     }
+
+    setStickies((prev) =>
+      prev.map((sticky) =>
+        sticky.id === stickyId
+          ? {
+              ...sticky,
+              data: {
+                ...(sticky.data as IdeaStickyData),
+                converted_to_task: true,
+                task_id: data.task_id,
+              },
+            }
+          : sticky,
+      ),
+    );
+
+    return true;
   };
 
-  // Update sticky position
-  const updateStickyPosition = async (stickyId: string, position: { x: number; y: number }): Promise<boolean> => {
-    try {
-      const response = await fetch(`${API_BASE}/api/partyboard/stickies/${stickyId}/position`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ position }),
-      });
+  /**
+   * Persist a drag.
+   *
+   * Position is written optimistically before the request so the sticky does
+   * not snap back under the cursor, and rolled back to its previous coordinates
+   * if the server rejects it.
+   */
+  const updateStickyPosition = async (
+    stickyId: string,
+    position: { x: number; y: number },
+  ): Promise<boolean> => {
+    const previous = stickies.find((sticky) => sticky.id === stickyId)?.position;
 
-      if (!response.ok) {
-        throw new Error('Failed to update position');
+    setStickies((prev) =>
+      prev.map((sticky) => (sticky.id === stickyId ? { ...sticky, position } : sticky)),
+    );
+
+    const { error: apiError } = await apiPatch(`/api/partyboard/stickies/${stickyId}/position`, {
+      position,
+    });
+
+    if (apiError) {
+      if (previous) {
+        setStickies((prev) =>
+          prev.map((sticky) =>
+            sticky.id === stickyId ? { ...sticky, position: previous } : sticky,
+          ),
+        );
       }
-
-      // Update local state
-      setStickies((prev) =>
-        prev.map((sticky) =>
-          sticky.id === stickyId ? { ...sticky, position } : sticky
-        )
-      );
-
-      return true;
-    } catch (err) {
-      console.error('Failed to update sticky position:', err);
+      setError(apiError.message);
       return false;
     }
+
+    return true;
   };
 
-  // Delete a sticky
   const deleteSticky = async (stickyId: string): Promise<boolean> => {
-    try {
-      const response = await fetch(`${API_BASE}/api/partyboard/stickies/${stickyId}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+    const { error: apiError } = await apiDelete(`/api/partyboard/stickies/${stickyId}`);
 
-      if (!response.ok) {
-        throw new Error('Failed to delete sticky');
-      }
-
-      // Remove from local state
-      setStickies((prev) => prev.filter((sticky) => sticky.id !== stickyId));
-
-      return true;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete sticky');
+    if (apiError) {
+      setError(apiError.message);
       return false;
     }
+
+    setStickies((prev) => prev.filter((sticky) => sticky.id !== stickyId));
+    return true;
   };
 
-  // Calculate canvas stats
+  /** Board summary for the section header. Complexity: O(n) in sticky count. */
   const getStats = useCallback((): CanvasStats => {
-    const ideas = stickies.filter((s) => s.type === 'idea').length;
-    const tasks = stickies.filter((s) => s.type === 'idea' && (s.data as any).converted_to_task).length;
-    const votes = stickies.reduce((sum, s) => sum + s.reaction_count, 0);
+    let ideas = 0;
+    let tasks = 0;
+    let votes = 0;
 
-    return {
-      ideas,
-      tasks,
-      votes,
-      stickies: stickies.length,
-    };
+    for (const sticky of stickies) {
+      votes += sticky.reaction_count;
+      if (sticky.type !== 'idea') continue;
+      ideas += 1;
+      if ((sticky.data as IdeaStickyData).converted_to_task) tasks += 1;
+    }
+
+    return { ideas, tasks, votes, stickies: stickies.length };
   }, [stickies]);
 
-  // Auto-refresh
   useEffect(() => {
-    if (autoRefresh && eventId) {
-      const interval = setInterval(() => {
-        fetchStickies();
-      }, 10000); // Refresh every 10 seconds
-
-      return () => clearInterval(interval);
-    }
+    if (!autoRefresh || !eventId) return;
+    const interval = setInterval(() => {
+      void fetchStickies();
+    }, REFRESH_INTERVAL_MS);
+    return () => clearInterval(interval);
   }, [autoRefresh, eventId, fetchStickies]);
 
-  // Initial fetch
   useEffect(() => {
-    if (eventId) {
-      fetchStickies();
-    }
-  }, [eventId, sessionId, fetchStickies]);
+    if (eventId) void fetchStickies();
+  }, [eventId, fetchStickies]);
 
   return {
     stickies,

@@ -91,6 +91,8 @@ export interface IdeaStickyData {
   reactions: number;
   converted_to_task: boolean;
   task_id?: string;
+  /** 'open' | 'done', mirrored from partyboard_tasks.status by the API. */
+  task_status?: string;
 }
 
 // Image Sticky Data

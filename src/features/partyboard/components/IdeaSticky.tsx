@@ -16,14 +16,16 @@ import {
   UtensilsCrossed,
   Music,
   MapPin,
-  Car
+  Palette
 } from 'lucide-react';
 import { IdeaStickyData, StickyItem } from '../types';
 import { cn } from '@/lib/utils';
 
 interface IdeaStickyProps {
   sticky: StickyItem & { data: IdeaStickyData };
-  currentUserId: string;
+  // No currentUserId prop: `user_has_voted` is resolved server-side against the
+  // authenticated caller. The prop existed, was required, was passed as '' at
+  // both call sites with a TODO, and was never read.
   onVote?: (stickyId: string) => void;
   onReact?: (stickyId: string) => void;
   onConvertToTask?: (stickyId: string) => void;
@@ -34,7 +36,6 @@ interface IdeaStickyProps {
 
 export const IdeaSticky: React.FC<IdeaStickyProps> = ({
   sticky,
-  currentUserId,
   onVote,
   onReact,
   onConvertToTask,
@@ -58,13 +59,19 @@ export const IdeaSticky: React.FC<IdeaStickyProps> = ({
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const taskStatus = sticky.data.task_status;
+
+  // These switches previously matched 'activity' and 'logistics', which are not
+  // in the category set. CATEGORIES (../constants) defines venue,
+  // entertainment, food, activities, decor and other, so two arms were dead and
+  // two real categories fell through to the grey default.
   const getCategoryColor = (category?: string): string => {
     switch (category) {
-      case 'activity': return 'bg-blue-500';
+      case 'activities': return 'bg-blue-500';
       case 'food': return 'bg-red-500';
       case 'entertainment': return 'bg-purple-500';
       case 'venue': return 'bg-green-500';
-      case 'logistics': return 'bg-amber-500';
+      case 'decor': return 'bg-pink-500';
       default: return 'bg-gray-500';
     }
   };
@@ -72,11 +79,11 @@ export const IdeaSticky: React.FC<IdeaStickyProps> = ({
   const getCategoryIcon = (category?: string) => {
     const iconProps = { size: 12, className: 'text-current' };
     switch (category) {
-      case 'activity': return <Bike {...iconProps} />;
+      case 'activities': return <Bike {...iconProps} />;
       case 'food': return <UtensilsCrossed {...iconProps} />;
       case 'entertainment': return <Music {...iconProps} />;
       case 'venue': return <MapPin {...iconProps} />;
-      case 'logistics': return <Car {...iconProps} />;
+      case 'decor': return <Palette {...iconProps} />;
       default: return <Lightbulb {...iconProps} />;
     }
   };
@@ -190,14 +197,16 @@ export const IdeaSticky: React.FC<IdeaStickyProps> = ({
               <span className="flex-1 text-[11px] text-green-700 font-semibold">
                 Converted to task
               </span>
-              {sticky.data.task_id && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="px-2 py-1 h-auto bg-white rounded-md text-[10px] font-semibold text-green-600"
-                >
-                  View
-                </Button>
+              {/*
+                A "View" button used to sit here with no onClick and nowhere to
+                navigate to. The task's status is real data from
+                GET /api/partyboard/tasks, so it is shown instead of a control
+                that does nothing.
+              */}
+              {taskStatus && (
+                <span className="px-2 py-1 bg-white rounded-md text-[10px] font-semibold text-green-600 uppercase tracking-wide">
+                  {taskStatus}
+                </span>
               )}
             </div>
           ) : (

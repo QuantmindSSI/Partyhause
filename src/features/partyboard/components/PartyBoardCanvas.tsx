@@ -217,7 +217,6 @@ export const PartyBoardCanvas: React.FC<PartyBoardCanvasProps> = ({
                     <IdeaSticky
                       key={sticky.id}
                       sticky={sticky as StickyItem & { data: IdeaStickyData }}
-                      currentUserId={''} // TODO: Get from auth context
                       isSelected={selectedStickyId === sticky.id}
                       onVote={onVoteOnIdea}
                       onConvertToTask={onConvertToTask}
@@ -246,7 +245,6 @@ export const PartyBoardCanvas: React.FC<PartyBoardCanvasProps> = ({
               {activeDragSticky.type === 'idea' && (
                 <IdeaSticky 
                   sticky={activeDragSticky as StickyItem & { data: IdeaStickyData }}
-                  currentUserId={''}
                   onVote={onVoteOnIdea}
                   onConvertToTask={onConvertToTask}
                 />

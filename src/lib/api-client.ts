@@ -185,6 +185,10 @@ export async function apiPut<T = unknown>(path: string, body?: unknown): Promise
   return request<T>(path, { method: 'PUT', body });
 }
 
+export async function apiPatch<T = unknown>(path: string, body?: unknown): Promise<ApiResponse<T>> {
+  return request<T>(path, { method: 'PATCH', body });
+}
+
 export async function apiDelete<T = unknown>(path: string): Promise<ApiResponse<T>> {
   return request<T>(path, { method: 'DELETE' });
 }
