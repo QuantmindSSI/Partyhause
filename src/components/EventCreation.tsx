@@ -662,6 +662,19 @@ export const EventCreation = () => {
                 if (data.location) {
                   setFormData(prev => ({ ...prev, location: data.location! }));
                 }
+                // The date and time were dropped here for as long as this
+                // handler existed. It went unnoticed because the old local
+                // extractor never produced either field. /api/ai/chat parses
+                // both with chrono-node and emits ISO 'YYYY-MM-DD' and 24h
+                // 'HH:MM', which are exactly what the date and time inputs
+                // bind to, so discarding them made the user retype a date the
+                // planner had already understood.
+                if (data.eventDate) {
+                  setFormData(prev => ({ ...prev, start_date: data.eventDate! }));
+                }
+                if (data.eventTime) {
+                  setFormData(prev => ({ ...prev, start_time: data.eventTime! }));
+                }
                 if (data.formData) {
                   setTemplateData(data.formData);
                 }

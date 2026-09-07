@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from '@/components/ui/label';
 import { Plus, UserCheck, UserX, Mail, Copy, Check } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
-import { sendEmailWithTracking, sendEmail, emailTemplates } from '@/lib/email-tracking';
+import { sendEmailWithTracking, emailTemplates } from '@/lib/email-tracking';
 import { useToast } from '@/hooks/use-toast';
 import format from 'date-fns/format';
 import { Trash } from 'lucide-react';
@@ -222,53 +222,22 @@ export const GuestList = ({ eventId }: GuestListProps) => {
     }
   };
 
-  const sendTestEmail = async () => {
-    if (!currentEvent) return;
-    
-    try {
-      await sendEmail({
-        to: 'thecommodore30@gmail.com', // Your verified email for testing
-  subject: `✅ Test Email from ${currentEvent.name} - PartyHause Working!`,
-        html: `
-          <div style="font-family: system-ui, sans-serif; padding: 20px;">
-            <h1 style="color: #6C63FF;">Test Email ✅</h1>
-            <p>This is a test email from PartyHause!</p>
-            <p><strong>Event:</strong> ${currentEvent.name}</p>
-            <p><strong>Date:</strong> ${currentEvent.start_date ? format(new Date(currentEvent.start_date), 'PPP') : format(new Date(currentEvent.date!), 'PPP')}</p>
-            <p><strong>Location:</strong> ${currentEvent.location}</p>
-            <p>If you received this email, the PartyHause email system is working perfectly! 🎉</p>
-          </div>
-        `,
-      });
-      
-      toast({
-        title: "Test email sent! ✅",
-        description: "Check your inbox - the email system is working!",
-      });
-      
-    } catch (error) {
-      console.error('Test email failed:', error);
-      toast({
-        title: "Test email failed ❌",
-        description: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        variant: "destructive",
-      });
-    }
-  };
+  // A "Test Email" button used to sit in this header. It called sendEmail with
+  // `to: 'thecommodore30@gmail.com'` hardcoded in the source, commented "Your
+  // verified email for testing", and it shipped to every user of the
+  // production Guest List.
+  //
+  // It is deleted rather than parameterised for two reasons. It was a
+  // developer's personal address in a customer-facing control, and it can no
+  // longer work at all: /api/send-email now requires authentication and
+  // restricts recipients to the addresses already on that event's guest list,
+  // so the button's only possible outcome today is a 403 and an error toast.
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-medium">Guest List</h3>
         <div className="flex gap-2">
-          <Button 
-            onClick={sendTestEmail}
-            variant="outline"
-            size="sm"
-          >
-            <Mail className="mr-2 h-4 w-4" />
-            Test Email
-          </Button>
           <Button onClick={() => setIsAddingGuest(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Guest

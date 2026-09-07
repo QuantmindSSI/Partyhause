@@ -15,10 +15,23 @@ import {
   Edit3,
   ChevronRight,
   ArrowLeft,
-  Loader2
+  Loader2,
+  AlertTriangle
 } from 'lucide-react';
+import { apiPost } from '@/lib/api-client';
 
 const generateId = () => crypto.randomUUID();
+
+/**
+ * Server limits, mirrored from server/lib/event-chat.ts.
+ *
+ * Duplicated deliberately. Importing them would pull a server module into the
+ * client bundle, and the alternative, letting the server reject an oversized
+ * conversation with a 400, turns a recoverable UI state into a dead end mid
+ * planning session.
+ */
+const MAX_MESSAGES = 40;
+const MAX_MESSAGE_CHARS = 4000;
 
 interface Message {
   id: string;
@@ -27,6 +40,10 @@ interface Message {
   timestamp: Date;
 }
 
+/**
+ * The extraction contract, mirroring ExtractedEventData in
+ * server/lib/event-extraction.ts.
+ */
 interface ExtractedEventData {
   templateId?: string;
   eventName?: string;
@@ -39,6 +56,15 @@ interface ExtractedEventData {
   theme?: string;
   specialRequests?: string;
   formData?: Record<string, any>;
+}
+
+/** The body of a 200 from POST /api/ai/chat (server/routes/ai.ts:60). */
+interface ChatTurnResult {
+  reply: string;
+  extracted: ExtractedEventData;
+  /** True once the planner has the core fields; this is what opens the review step. */
+  complete: boolean;
+  source: 'llm' | 'heuristic';
 }
 
 interface AIEventAssistantProps {
@@ -74,6 +100,7 @@ export default function AIEventAssistant({
   ]);
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [extractedData, setExtractedData] = useState<ExtractedEventData | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -85,125 +112,84 @@ export default function AIEventAssistant({
     }
   }, [messages]);
 
+  /**
+   * Send the conversation to the planner and append its reply.
+   *
+   * This used to be `setTimeout(1500)` around a local function that matched
+   * keywords with `String.includes` and pulled numbers out with two regexes.
+   * It never made a network call. The word "AI" on the button was decoration,
+   * and the extraction it produced was wrong often enough to be worse than an
+   * empty form: `/\$?(\d+,?\d*)/` matched the "30" in "30th birthday" and
+   * called it a $30 budget.
+   *
+   * `/api/ai/chat` has existed the whole time, complete with an Azure OpenAI
+   * layer, a chrono-node date parser, a weighted template lexicon and a
+   * deterministic fallback for when no LLM is configured. It had zero callers.
+   */
   const handleSend = async () => {
-    if (!input.trim() || isProcessing) return;
+    const trimmed = input.trim();
+    if (!trimmed || isProcessing) return;
+
+    if (trimmed.length > MAX_MESSAGE_CHARS) {
+      setError(`That message is too long. Keep it under ${MAX_MESSAGE_CHARS.toLocaleString()} characters.`);
+      return;
+    }
 
     const userMessage: Message = {
       id: generateId(),
       role: 'user',
-      content: input,
-      timestamp: new Date()
+      content: trimmed,
+      timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    const history = [...messages, userMessage];
+
+    // The server accepts at most MAX_MESSAGES entries and rejects the whole
+    // request otherwise. Trimming the oldest turns here keeps a long planning
+    // session working instead of failing it with a 400 at turn 41.
+    const wireMessages = history
+      .slice(-MAX_MESSAGES)
+      .map(({ role, content }) => ({ role, content }));
+
+    setMessages(history);
     setInput('');
+    setError(null);
     setIsProcessing(true);
 
-    // Simulate AI processing
-    setTimeout(() => {
-      const aiResponse = generateAIResponse(input, messages.length);
-      const assistantMessage: Message = {
-        id: generateId(),
-        role: 'assistant',
-        content: aiResponse.message,
-        timestamp: new Date()
-      };
+    const { data, error: apiError } = await apiPost<{ success: boolean; data: ChatTurnResult }>(
+      '/api/ai/chat',
+      { messages: wireMessages },
+    );
 
-      setMessages(prev => [...prev, assistantMessage]);
-      
-      if (aiResponse.extractedData) {
-        setExtractedData(aiResponse.extractedData);
-        setShowPreview(true);
-      }
-      
-      setIsProcessing(false);
-    }, 1500);
-  };
+    setIsProcessing(false);
 
-  const generateAIResponse = (userInput: string, messageCount: number): { message: string; extractedData?: ExtractedEventData } => {
-    const lowerInput = userInput.toLowerCase();
-    
-    // Simple extraction logic (in production, this would call an AI API)
-    let extractedData: ExtractedEventData | undefined;
-    
-    if (messageCount >= 2 || (lowerInput.includes('budget') && lowerInput.includes('guest'))) {
-      // Try to extract event details
-      let templateId = 'birthday';
-      if (lowerInput.includes('wedding')) templateId = 'wedding';
-      else if (lowerInput.includes('conference') || lowerInput.includes('meeting')) templateId = 'conference';
-      else if (lowerInput.includes('product') || lowerInput.includes('launch')) templateId = 'product-launch';
-      else if (lowerInput.includes('fundraiser') || lowerInput.includes('charity')) templateId = 'fundraiser';
-      else if (lowerInput.includes('festival') || lowerInput.includes('concert')) templateId = 'festival';
-      else if (lowerInput.includes('travel') || lowerInput.includes('trip')) templateId = 'travel';
-      else if (lowerInput.includes('block party') || lowerInput.includes('neighborhood')) templateId = 'block-party';
-      else if (lowerInput.includes('workshop') || lowerInput.includes('class')) templateId = 'workshop';
-      else if (lowerInput.includes('hackathon')) templateId = 'hackathon';
-      else if (lowerInput.includes('kid') || lowerInput.includes('child')) templateId = 'kids-birthday';
-      
-      // Extract guest count
-      const guestMatch = userInput.match(/(\d+)\s*(people|guests|attendees|friends|family)/i);
-      const expectedGuests = guestMatch ? parseInt(guestMatch[1]) : undefined;
-      
-      // Extract budget
-      const budgetMatch = userInput.match(/\$?(\d+,?\d*)\s*(budget|dollars)?/i);
-      const budget = budgetMatch ? parseInt(budgetMatch[1].replace(',', '')) : undefined;
-      
-      // Extract event name if provided
-      const namePatterns = [
-        /planning\s+(?:a|an)\s+(.+?)\s+(?:party|event|celebration|gathering)/i,
-        /(.+?)\s+(?:party|event|celebration|gathering)/i,
-        /for\s+(.+?)(?:'s|'s\s+birthday)/i,
-      ];
-      let eventName;
-      for (const pattern of namePatterns) {
-        const match = userInput.match(pattern);
-        if (match) {
-          eventName = match[1].charAt(0).toUpperCase() + match[1].slice(1);
-          break;
-        }
-      }
-      
-      extractedData = {
-        templateId: initialTemplate || templateId,
-        eventName,
-        description: userInput,
-        expectedGuests,
-        budget,
-        specialRequests: userInput,
-        formData: {
-          expected_guest_count: expectedGuests,
-          budget_estimate: budget,
-        }
-      };
-      
-      return {
-        message: `Perfect! I've gathered the key details. Let me show you what I understood, and you can review and adjust before we continue.`,
-        extractedData
-      };
+    if (apiError || !data?.data) {
+      // Every failure path is named. A silent catch here would leave the user
+      // watching a spinner that already stopped.
+      setError(
+        apiError?.status === 429
+          ? 'The planner is rate limited right now. Wait a few minutes, or skip ahead and fill the form in yourself.'
+          : apiError?.message || 'The planner could not be reached. You can skip ahead and fill the form in yourself.',
+      );
+      return;
     }
-    
-    // Continue conversation
-    if (lowerInput.includes('birthday')) {
-      return {
-        message: `Great! A birthday celebration! 🎉\n\nTell me more:\n• Who is the celebration for and what age?\n• How many guests are you expecting?\n• Any specific venue preference (home, restaurant, outdoor)?\n• What's your approximate budget?`
-      };
+
+    const turn = data.data;
+
+    setMessages((prev) => [
+      ...prev,
+      { id: generateId(), role: 'assistant', content: turn.reply, timestamp: new Date() },
+    ]);
+
+    if (turn.complete && turn.extracted) {
+      // initialTemplate is an explicit choice the user already made on the
+      // previous step, so it outranks whatever the planner inferred.
+      setExtractedData({
+        ...turn.extracted,
+        templateId: initialTemplate || turn.extracted.templateId,
+      });
+      setShowPreview(true);
     }
-    
-    if (lowerInput.includes('wedding')) {
-      return {
-        message: `Congratulations! 💍 Planning a wedding is exciting!\n\nHelp me understand:\n• What's the wedding style you're envisioning?\n• Roughly how many guests?\n• Any specific date or season in mind?\n• Indoor, outdoor, or destination?`
-      };
-    }
-    
-    if (lowerInput.includes('corporate') || lowerInput.includes('team') || lowerInput.includes('work')) {
-      return {
-        message: `Sounds like a professional event! 📊\n\nA few questions:\n• Is this a meeting, conference, team building, or celebration?\n• How many people from your team?\n• Half-day, full-day, or multi-day?\n• Any specific goals for this event?`
-      };
-    }
-    
-    return {
-      message: `Interesting! Tell me more about this event:\n\n• What's the occasion?\n• How many people are coming?\n• Any specific date or time of year?\n• Do you have a budget in mind?\n• Any special requirements or themes?`
-    };
   };
 
   const handleEditData = () => {
@@ -430,6 +416,18 @@ export default function AIEventAssistant({
           </div>
         </ScrollArea>
       </Card>
+
+      {/* A failed turn has to be visible. Without this the spinner simply stops
+          and the user retypes the same message into the same failure. */}
+      {error && (
+        <div
+          role="alert"
+          className="mb-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+          <p className="text-sm text-amber-800">{error}</p>
+        </div>
+      )}
 
       {/* Input */}
       <div className="flex gap-2">

@@ -1,15 +1,44 @@
 import { usePartyStore } from '@/store/usePartyStore';
-import { Briefcase, Star, MessageSquare, DollarSign, ClipboardList, ArrowRight, TrendingUp } from 'lucide-react';
+import { Briefcase, ArrowLeftRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { PageShell, UserMenu } from '@/components/layout/PageShell';
 
+/**
+ * Vendor portal.
+ *
+ * WHAT THIS USED TO BE
+ *   A complete-looking dashboard with four stat cards reading '0', '$0', '0'
+ *   and '0', a "0 active" services badge, a "Recent Bookings" section and six
+ *   quick-action buttons for Bookings, Earnings, Reviews, Analytics, Profile
+ *   Setup and Services.
+ *
+ *   None of it was connected to anything. The page made zero API calls; every
+ *   number was a string literal in the source. All six buttons called
+ *   setCurrentPage with a key that App.tsx maps straight back to this same
+ *   component, so each one re-rendered the page the user was already on.
+ *
+ *   The backend agrees: `Vendor` and `VendorTask` exist in schema.prisma and
+ *   have no routes, no controllers and no UI anywhere else. There is no
+ *   marketplace, no booking flow, no payments and no reviews.
+ *
+ * WHY IT IS THIS INSTEAD
+ *   RoleSelection offers "Vendor" as a real choice, so real people land here.
+ *   A dashboard reporting $0 revenue tells them their business account is live
+ *   and has no customers. That is a different and much worse statement than
+ *   "we have not built this yet", and it is the one they acted on when they
+ *   picked the role.
+ *
+ *   Rebuilding it as a working portal is a marketplace, not a fix: services,
+ *   bookings, payouts, reviews and messaging, none of which have an API or a
+ *   product decision behind them. Until they do, the honest page is this one,
+ *   and the only control on it is the one that actually works.
+ */
 export default function VendorDashboard() {
   const user = usePartyStore((s) => s.user);
   const setCurrentPage = usePartyStore((s) => s.setCurrentPage);
 
-  const name = user?.name || user?.email || 'Vendor';
+  const name = user?.name || user?.email || 'there';
 
   return (
     <PageShell
@@ -18,98 +47,76 @@ export default function VendorDashboard() {
       maxWidth="xl"
       actions={<UserMenu showSettingsButton />}
     >
-        {/* Welcome */}
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-foreground">Welcome, {name.split(' ')[0]}</h2>
-            <p className="text-muted-foreground text-sm mt-1">Manage your services and bookings</p>
+      <div>
+        <h2 className="text-2xl font-bold text-foreground">Hi {name.split(' ')[0]}</h2>
+        <p className="text-muted-foreground text-sm mt-1">
+          Your vendor account is registered. The marketplace is not open yet.
+        </p>
+      </div>
+
+      <Card>
+        <CardContent className="p-8 text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-50 text-purple-600">
+            <Briefcase className="h-6 w-6" />
           </div>
-          <Button className="gap-2 shadow-md" onClick={() => setCurrentPage('vendor-profile-setup')}>
-            <Briefcase className="h-4 w-4" /> My Profile
-          </Button>
-        </div>
+          <p className="font-medium text-foreground">The vendor marketplace is still being built</p>
+          <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+            Service listings, bookings, payouts and reviews are not available yet. Rather than show
+            you an empty dashboard that looks live, we would rather say so. Your role is saved, and
+            this page will fill in when the marketplace opens.
+          </p>
+        </CardContent>
+      </Card>
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: 'Active Bookings', value: '0', icon: ClipboardList, color: 'text-blue-600 bg-blue-50' },
-            { label: 'Revenue', value: '$0', icon: DollarSign, color: 'text-green-600 bg-green-50' },
-            { label: 'Reviews', value: '0', icon: Star, color: 'text-yellow-600 bg-yellow-50' },
-            { label: 'Messages', value: '0', icon: MessageSquare, color: 'text-purple-600 bg-purple-50' },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <Card key={label}>
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className={`p-2 rounded-xl ${color}`}>
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-xl font-bold text-foreground">{value}</p>
-                  <p className="text-xs text-muted-foreground">{label}</p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Quick Actions */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { icon: ClipboardList, label: 'Bookings', page: 'vendor-bookings', color: 'bg-blue-50 text-blue-600' },
-            { icon: DollarSign, label: 'Earnings', page: 'vendor-earnings', color: 'bg-green-50 text-green-600' },
-            { icon: Star, label: 'Reviews', page: 'vendor-reviews', color: 'bg-yellow-50 text-yellow-600' },
-            { icon: TrendingUp, label: 'Analytics', page: 'vendor-analytics', color: 'bg-purple-50 text-purple-600' },
-          ].map(({ icon: Icon, label, page, color }) => (
-            <button
-              key={page}
-              onClick={() => setCurrentPage(page)}
-              className="flex flex-col items-center gap-2 p-4 rounded-2xl border bg-card hover:shadow-md transition-all"
-            >
-              <div className={`p-3 rounded-xl ${color}`}>
-                <Icon className="h-5 w-5" />
-              </div>
-              <span className="text-xs font-medium text-foreground">{label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Bookings */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-foreground">Recent Bookings</h3>
-            <button
-              onClick={() => setCurrentPage('vendor-bookings')}
-              className="text-xs text-orange-500 font-medium flex items-center gap-1 hover:underline"
-            >
-              View all <ArrowRight className="h-3 w-3" />
-            </button>
-          </div>
+      <section>
+        <h3 className="mb-3 font-semibold text-foreground">In the meantime</h3>
+        <div className="grid gap-3 sm:grid-cols-2">
           <Card>
-            <CardContent className="p-8 text-center">
-              <ClipboardList className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-40" />
-              <p className="font-medium text-foreground">No bookings yet</p>
-              <p className="text-sm text-muted-foreground mt-1 max-w-xs mx-auto">
-                Complete your vendor profile so event creators can find and book your services
-              </p>
-              <Button className="mt-4" onClick={() => setCurrentPage('vendor-profile-setup')}>
-                <Briefcase className="h-4 w-4 mr-2" /> Set Up Profile
+            <CardContent className="space-y-3 p-5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-orange-600">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Host your own events</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Event creation, guest lists, invitations, polls and the planning board all work
+                  today.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                className="w-full gap-2"
+                onClick={() => setCurrentPage('switch-role')}
+              >
+                <ArrowLeftRight className="h-4 w-4" />
+                Switch role
               </Button>
             </CardContent>
           </Card>
-        </section>
 
-        {/* Services I Offer */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-foreground">My Services</h3>
-            <Badge variant="outline">0 active</Badge>
-          </div>
-          <Card className="border-dashed border-2 border-muted hover:border-orange-300 transition-colors cursor-pointer"
-            onClick={() => setCurrentPage('vendor-services')}>
-            <CardContent className="p-6 text-center">
-              <p className="text-sm text-muted-foreground">+ Add a service to start receiving bookings</p>
+          <Card>
+            <CardContent className="space-y-3 p-5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <Briefcase className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Keep the vendor role</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Nothing else is required from you. You can switch back and forth at any time from
+                  Settings.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                className="w-full"
+                onClick={() => setCurrentPage('settings')}
+              >
+                Open settings
+              </Button>
             </CardContent>
           </Card>
-        </section>
+        </div>
+      </section>
     </PageShell>
   );
 }

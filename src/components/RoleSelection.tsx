@@ -4,7 +4,18 @@ import { Ticket, Sparkles, Briefcase, CheckCircle2, Loader2 } from 'lucide-react
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-const ROLES: { role: UserRole; icon: React.ElementType; title: string; desc: string; color: string; border: string }[] = [
+interface RoleOption {
+  role: UserRole;
+  icon: React.ElementType;
+  title: string;
+  desc: string;
+  color: string;
+  border: string;
+  /** Shown as a badge when the role's destination is not built yet. */
+  notice?: string;
+}
+
+const ROLES: RoleOption[] = [
   {
     role: 'user',
     icon: Ticket,
@@ -25,9 +36,16 @@ const ROLES: { role: UserRole; icon: React.ElementType; title: string; desc: str
     role: 'vendor',
     icon: Briefcase,
     title: 'Vendor',
-    desc: 'Offer services, get bookings from event creators',
+    // The old copy, "Offer services, get bookings from event creators",
+    // described a marketplace that does not exist. `Vendor` and `VendorTask`
+    // are in the schema with no routes and no UI, so choosing this role led to
+    // a dashboard of hardcoded zeros. The role is still selectable, because
+    // people are entitled to register their intent, but the description now
+    // matches what happens next.
+    desc: 'Register your interest in listing services',
     color: 'bg-purple-50 text-purple-600',
     border: 'border-purple-200 hover:border-purple-400',
+    notice: 'Marketplace not open yet',
   },
 ];
 
@@ -60,7 +78,7 @@ export const RoleSelection = () => {
         </div>
 
         <div className="space-y-3">
-          {ROLES.map(({ role, icon: Icon, title, desc, color, border }) => (
+          {ROLES.map(({ role, icon: Icon, title, desc, color, border, notice }) => (
             <button
               key={role}
               onClick={() => setSelected(role)}
@@ -77,7 +95,14 @@ export const RoleSelection = () => {
                 <Icon className="h-6 w-6" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-foreground">{title}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-semibold text-foreground">{title}</p>
+                  {notice && (
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {notice}
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-muted-foreground mt-0.5">{desc}</p>
               </div>
               {selected === role && (

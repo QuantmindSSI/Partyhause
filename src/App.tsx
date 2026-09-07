@@ -199,13 +199,13 @@ const App = () => {
             case 'analytics':
               return <RoleGuard allowedRoles={['creator']}><CreatorDashboard /></RoleGuard>;
 
+            // 'vendor-profile-setup', 'vendor-bookings', 'vendor-earnings',
+            // 'vendor-reviews', 'vendor-analytics' and 'vendor-services' were
+            // handled here too, all falling through to this same component.
+            // Their only call sites were the six quick-action buttons on
+            // VendorDashboard, so every one of them re-rendered the page the
+            // user was already on. The buttons are gone and so are the arms.
             case 'vendor-dashboard':
-            case 'vendor-profile-setup':
-            case 'vendor-bookings':
-            case 'vendor-earnings':
-            case 'vendor-reviews':
-            case 'vendor-analytics':
-            case 'vendor-services':
               return <RoleGuard allowedRoles={['vendor']}><VendorDashboard /></RoleGuard>;
 
             case 'create-event':
