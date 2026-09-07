@@ -174,6 +174,176 @@ describe('mobile PWA manifest', () => {
   });
 });
 
+/**
+ * nginx location matching, implemented against the documented algorithm so the
+ * assertions below test resolved behaviour rather than the text of the config.
+ *
+ * Order, per nginx's `location` documentation:
+ *   1. an exact `=` match wins outright
+ *   2. otherwise take the longest matching prefix; if it carries `^~`, stop
+ *   3. otherwise try regex locations in declaration order, first match wins
+ *   4. if no regex matched, fall back to the prefix found in step 2
+ *
+ * Only that last-resort fallback serves index.html, which is why a file-shaped
+ * path reaching it is the bug this guards.
+ */
+type NginxLocation = {
+  modifier: '=' | '^~' | '~' | '~*' | '';
+  pattern: string;
+  body: string;
+};
+
+function parseNginxLocations(conf: string): NginxLocation[] {
+  // Comments are blanked rather than deleted so braces inside prose cannot
+  // unbalance the depth counter below.
+  const source = conf
+    .split(/\r?\n/)
+    .map((line) => (line.trim().startsWith('#') ? '' : line))
+    .join('\n');
+
+  const locations: NginxLocation[] = [];
+  const header = /location\s+(=|\^~|~\*|~)?\s*(\S+?)\s*\{/g;
+  let match: RegExpExecArray | null;
+  while ((match = header.exec(source)) !== null) {
+    let depth = 1;
+    let cursor = header.lastIndex;
+    while (cursor < source.length && depth > 0) {
+      if (source[cursor] === '{') depth += 1;
+      else if (source[cursor] === '}') depth -= 1;
+      cursor += 1;
+    }
+    locations.push({
+      modifier: (match[1] ?? '') as NginxLocation['modifier'],
+      pattern: match[2],
+      body: source.slice(header.lastIndex, cursor - 1),
+    });
+  }
+  return locations;
+}
+
+/** Step 1: an exact `=` match short-circuits the whole algorithm. */
+function findExactMatch(
+  locations: readonly NginxLocation[],
+  uri: string,
+): NginxLocation | undefined {
+  return locations.find((loc) => loc.modifier === '=' && loc.pattern === uri);
+}
+
+/** Step 2: the longest matching prefix, whether or not it carries `^~`. */
+function findLongestPrefixMatch(
+  locations: readonly NginxLocation[],
+  uri: string,
+): NginxLocation | undefined {
+  let best: NginxLocation | undefined;
+  for (const loc of locations) {
+    const isPrefix = loc.modifier === '^~' || loc.modifier === '';
+    if (!isPrefix || !uri.startsWith(loc.pattern)) continue;
+    if (!best || loc.pattern.length > best.pattern.length) best = loc;
+  }
+  return best;
+}
+
+/** Step 3: regex locations are tried in declaration order and the first wins. */
+function findFirstRegexMatch(
+  locations: readonly NginxLocation[],
+  uri: string,
+): NginxLocation | undefined {
+  return locations.find((loc) => {
+    if (loc.modifier !== '~' && loc.modifier !== '~*') return false;
+    return new RegExp(loc.pattern, loc.modifier === '~*' ? 'i' : '').test(uri);
+  });
+}
+
+function resolveNginxLocation(
+  locations: readonly NginxLocation[],
+  uri: string,
+): NginxLocation | undefined {
+  const exact = findExactMatch(locations, uri);
+  if (exact) return exact;
+
+  const prefix = findLongestPrefixMatch(locations, uri);
+  if (prefix?.modifier === '^~') return prefix;
+
+  // Step 4: no regex matched, so the prefix from step 2 is the last resort.
+  return findFirstRegexMatch(locations, uri) ?? prefix;
+}
+
+describe('web container nginx routing', () => {
+  const conf = fs.readFileSync(path.join(ROOT, 'nginx.conf'), 'utf8');
+  const locations = parseNginxLocations(conf);
+
+  const resolve = (uri: string): NginxLocation => {
+    const loc = resolveNginxLocation(locations, uri);
+    expect(loc, `no location matched ${uri}`).toBeDefined();
+    return loc!;
+  };
+  const rejectsMissingFile = (loc: NginxLocation) => /try_files\s+\$uri\s+=404/.test(loc.body);
+
+  it('parses every location block in the config', () => {
+    // Cheap canary: a parser that silently matched nothing would make every
+    // other assertion in this suite vacuously pass.
+    expect(locations.length).toBeGreaterThan(5);
+    expect(locations.some((loc) => loc.modifier === '' && loc.pattern === '/')).toBe(true);
+  });
+
+  // A missing file answered with index.html and HTTP 200 is the failure mode
+  // that shipped a stale service worker and a manifest syntax error. Every
+  // file-shaped path must reach a location that can return 404.
+  it.each([
+    '/definitely-not-a-real-asset.js',
+    '/vendor.mjs',
+    '/styles.css',
+    '/data.json',
+    '/bundle.js.map',
+    '/assets/nope-abc123.js',
+    '/assets/nope-abc123.css',
+    '/missing-icon.png',
+    '/missing-font.woff2',
+    '/robots.txt',
+    '/manifest.webmanifest',
+    '/sw.js',
+    '/registerSW.js',
+    '/privacy.html',
+    '/index.html',
+    '/.well-known/apple-app-site-association',
+  ])('answers 404 rather than the SPA shell for %s', (uri) => {
+    expect(rejectsMissingFile(resolve(uri))).toBe(true);
+  });
+
+  // The mirror of the rule above: client-side routes carry no file extension
+  // and must still receive the shell, or deep links 404.
+  it.each(['/', '/join/some-token', '/profile/42', '/events/7/partyboard'])(
+    'still serves the SPA shell for the client-side route %s',
+    (uri) => {
+      const loc = resolve(uri);
+      expect(rejectsMissingFile(loc)).toBe(false);
+      expect(loc.body).toMatch(/try_files\s+\$uri\s+\$uri\/\s+\/index\.html/);
+    },
+  );
+
+  // The unfingerprinted-code regex was added after the fact. nginx gives exact
+  // and `^~` matches priority over any regex, and takes the first regex in
+  // declaration order, so these must keep the policy they were written with.
+  it.each([
+    ['/assets/index-C3RRcVXm.js', 'immutable'],
+    ['/assets/index-C3RRcVXm.css', 'immutable'],
+    ['/workbox-9c191d2f.js', 'immutable'],
+  ])('keeps %s on the year-long immutable policy', (uri, expected) => {
+    expect(resolve(uri).body).toContain(expected);
+  });
+
+  it.each(['/sw.js', '/registerSW.js', '/manifest.webmanifest', '/index.html'])(
+    'keeps %s on no-cache so a stale client can recover',
+    (uri) => {
+      expect(resolve(uri).body).toMatch(/Cache-Control\s+"no-cache"/);
+    },
+  );
+
+  it('keeps robots.txt on its own one-hour policy', () => {
+    expect(resolve('/robots.txt').body).toContain('max-age=3600');
+  });
+});
+
 describe('web container PWA assets', () => {
   it('keeps the Vite public directory in the Docker build context', () => {
     const ignoredPaths = fs.readFileSync(path.join(ROOT, '.dockerignore'), 'utf8')
