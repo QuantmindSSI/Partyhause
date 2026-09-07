@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,38 +8,119 @@ import {
   TextInput,
   Alert,
   FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { sendInviteEmails } from '@/lib/email';
+import { api } from '@/lib/client';
 
-// Simple guest type for invite sending
+/** A guest row plus its selection state on this screen. */
 interface InviteGuest {
+  /** The server's guest id. Required: /api/send-email only accepts addresses
+   *  already on this event's guest list, so a guest with no row cannot be
+   *  mailed. */
   id: string;
   name: string;
   email: string;
   selected: boolean;
 }
 
+/**
+ * Compose and send an event's invitations.
+ *
+ * WHAT THIS USED TO DO
+ *   Rendered four fabricated guests, hardcoded in the source: John Smith,
+ *   Jane Doe, Bob Johnson and Alice Williams at @example.com. The Send button
+ *   mailed those addresses. It never read the event's real guest list, so a
+ *   host who had spent the previous screen adding twenty guests saw four
+ *   strangers here instead.
+ *
+ *   The send could not have worked in any case. /api/send-email requires
+ *   authentication (the mobile client sent none), requires `event_id` at the
+ *   top level of the body (it was buried in `metadata`), and restricts
+ *   recipients to that event's guest list (@example.com is on nobody's).
+ */
 export default function SendInvitesScreen() {
-  const { id, templateId, customization } = useLocalSearchParams<{
+  const { id } = useLocalSearchParams<{
     id: string;
     templateId: string;
     customization: string;
-  }>();  // Mock guests data (would come from event attendees/guests list)
-  const [guests, setGuests] = useState<InviteGuest[]>([
-    { id: '1', name: 'John Smith', email: 'john@example.com', selected: false },
-    { id: '2', name: 'Jane Doe', email: 'jane@example.com', selected: false },
-    { id: '3', name: 'Bob Johnson', email: 'bob@example.com', selected: false },
-    { id: '4', name: 'Alice Williams', email: 'alice@example.com', selected: false },
-  ]);
+  }>();
+
+  const [event, setEvent] = useState<{
+    id: string;
+    name: string;
+    date: string;
+    location: string;
+    description?: string;
+  } | null>(null);
+  const [guests, setGuests] = useState<InviteGuest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [newGuestName, setNewGuestName] = useState('');
   const [newGuestEmail, setNewGuestEmail] = useState('');
+  const [isAddingGuest, setIsAddingGuest] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
   const selectedCount = guests.filter(g => g.selected).length;
+
+  /** Load the event and its real guest list. Both are required to send. */
+  const load = useCallback(async () => {
+    if (!id) {
+      setLoadError('No event was specified.');
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setLoadError(null);
+
+    const [eventResult, guestResult] = await Promise.all([
+      api.events.get(id),
+      api.guests.listForEvent(id),
+    ]);
+
+    if (eventResult.error || !eventResult.data) {
+      setLoadError(eventResult.error?.message ?? 'This event could not be loaded.');
+      setLoading(false);
+      return;
+    }
+
+    if (guestResult.error) {
+      setLoadError(guestResult.error.message);
+      setLoading(false);
+      return;
+    }
+
+    const loaded = eventResult.data;
+    setEvent({
+      id: loaded.id,
+      name: loaded.name,
+      date: loaded.start_date ?? '',
+      location: loaded.location ?? '',
+      description: loaded.description ?? undefined,
+    });
+
+    setGuests(
+      (guestResult.data ?? [])
+        .filter(g => typeof g.email === 'string' && g.email.trim() !== '')
+        .map(g => ({
+          id: g.id,
+          name: g.name || g.email,
+          email: g.email,
+          selected: false,
+        })),
+    );
+
+    setLoading(false);
+  }, [id]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const toggleGuest = (guestId: string) => {
     setGuests(prev =>
@@ -52,27 +133,49 @@ export default function SendInvitesScreen() {
     setGuests(prev => prev.map(g => ({ ...g, selected: !allSelected })));
   };
 
-  const addNewGuest = () => {
-    if (!newGuestName.trim() || !newGuestEmail.trim()) {
-      Alert.alert('Error', 'Please enter both name and email');
+  /**
+   * Add a guest to the event, then to this list.
+   *
+   * The server call is not optional. This used to push a local object with
+   * `id: Date.now().toString()` and no persistence, which meant the guest
+   * vanished on navigation and, more to the point, was not on the event's
+   * guest list, so /api/send-email would refuse to mail them.
+   */
+  const addNewGuest = async () => {
+    const name = newGuestName.trim();
+    const email = newGuestEmail.trim().toLowerCase();
+
+    if (!name || !email) {
+      Alert.alert('Missing details', 'Enter both a name and an email address.');
       return;
     }
 
-    // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(newGuestEmail)) {
-      Alert.alert('Error', 'Please enter a valid email address');
+    if (!emailRegex.test(email)) {
+      Alert.alert('Invalid email', 'That does not look like an email address.');
       return;
     }
 
-    const newGuest: InviteGuest = {
-      id: Date.now().toString(),
-      name: newGuestName.trim(),
-      email: newGuestEmail.trim().toLowerCase(),
-      selected: true,
-    };
+    if (guests.some(g => g.email === email)) {
+      Alert.alert('Already invited', `${email} is already on the guest list.`);
+      return;
+    }
 
-    setGuests(prev => [...prev, newGuest]);
+    if (!id) return;
+
+    setIsAddingGuest(true);
+    const { data, error } = await api.guests.create(id, { name, email });
+    setIsAddingGuest(false);
+
+    if (error || !data) {
+      Alert.alert('Could not add guest', error?.message ?? 'The guest was not saved. Try again.');
+      return;
+    }
+
+    setGuests(prev => [
+      ...prev,
+      { id: data.id, name: data.name || name, email: data.email || email, selected: true },
+    ]);
     setNewGuestName('');
     setNewGuestEmail('');
   };
@@ -85,6 +188,11 @@ export default function SendInvitesScreen() {
       return;
     }
 
+    if (!event) {
+      Alert.alert('Not ready', 'The event has not finished loading yet.');
+      return;
+    }
+
     Alert.alert(
       'Send Invites?',
       `Send invitations to ${selectedGuests.length} guest${selectedGuests.length > 1 ? 's' : ''}?`,
@@ -94,31 +202,37 @@ export default function SendInvitesScreen() {
           text: 'Send',
           onPress: async () => {
             setIsSending(true);
-            try {
-              // TODO: Integrate with actual email API
-              await sendInviteEmails({
-                eventId: id,
-                templateId: templateId || '',
-                recipients: selectedGuests.map(g => ({ name: g.name, email: g.email })),
-                customization: customization ? JSON.parse(customization) : undefined,
-              });
+            const result = await sendInviteEmails({
+              event,
+              recipients: selectedGuests.map(g => ({
+                name: g.name,
+                email: g.email,
+                guest_id: g.id,
+              })),
+            });
+            setIsSending(false);
 
+            if (result.success) {
+              // Clear the selection so a second tap cannot re-send to everyone
+              // who has just been invited.
+              setGuests(prev => prev.map(g => ({ ...g, selected: false })));
               Alert.alert(
-                'Success!',
-                `Invitations sent to ${selectedGuests.length} guest${selectedGuests.length > 1 ? 's' : ''}`,
-                [
-                  {
-                    text: 'OK',
-                    onPress: () => router.push(`/events/${id}`),
-                  },
-                ]
+                'Invitations sent',
+                `Sent to ${selectedGuests.length} guest${selectedGuests.length > 1 ? 's' : ''}.`,
+                [{ text: 'OK', onPress: () => router.push(`/events/${id}`) }],
               );
-            } catch (error) {
-              Alert.alert('Error', 'Failed to send invitations. Please try again.');
-              console.error('Send invites error:', error);
-            } finally {
-              setIsSending(false);
+              return;
             }
+
+            // Partial failure is the common case with email, and the host needs
+            // to know who did not receive one. Successful recipients are
+            // deselected so a retry does not mail them twice.
+            const failed = new Set(result.failedRecipients);
+            setGuests(prev => prev.map(g => ({ ...g, selected: failed.has(g.email) })));
+            Alert.alert(
+              'Some invitations failed',
+              `${result.error ?? 'The send did not complete.'}\n\nThe guests who did not receive one are still selected, so you can retry just those.`,
+            );
           },
         },
       ]
@@ -163,6 +277,24 @@ export default function SendInvitesScreen() {
         </View>
       </LinearGradient>
 
+      {loading && (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#6366F1" />
+          <Text style={styles.centeredText}>Loading the guest list…</Text>
+        </View>
+      )}
+
+      {!loading && loadError && (
+        <View style={styles.centered}>
+          <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+          <Text style={styles.centeredText}>{loadError}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={load}>
+            <Text style={styles.retryButtonText}>Try again</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!loading && !loadError && (
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -188,9 +320,19 @@ export default function SendInvitesScreen() {
             keyboardType="email-address"
             autoCapitalize="none"
           />
-          <TouchableOpacity style={styles.addButton} onPress={addNewGuest}>
-            <Ionicons name="add-circle" size={20} color="#FFFFFF" />
-            <Text style={styles.addButtonText}>Add Guest</Text>
+          <TouchableOpacity
+            style={[styles.addButton, isAddingGuest && styles.addButtonDisabled]}
+            onPress={addNewGuest}
+            disabled={isAddingGuest}
+          >
+            {isAddingGuest ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="add-circle" size={20} color="#FFFFFF" />
+            )}
+            <Text style={styles.addButtonText}>
+              {isAddingGuest ? 'Adding…' : 'Add Guest'}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -217,9 +359,10 @@ export default function SendInvitesScreen() {
             ListEmptyComponent={
               <View style={styles.emptyState}>
                 <Ionicons name="people-outline" size={48} color="#D1D5DB" />
-                <Text style={styles.emptyStateText}>No guests added yet</Text>
+                <Text style={styles.emptyStateText}>No guests on this event yet</Text>
                 <Text style={styles.emptyStateSubtext}>
-                  Add guests above to start sending invitations
+                  Add guests above. They are saved to the event, which is what
+                  lets us email them.
                 </Text>
               </View>
             }
@@ -228,6 +371,7 @@ export default function SendInvitesScreen() {
 
         <View style={{ height: 120 }} />
       </ScrollView>
+      )}
 
       {/* Bottom Action Bar */}
       {selectedCount > 0 && (
@@ -367,7 +511,34 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 8,
   },
+  addButtonDisabled: {
+    opacity: 0.6,
+  },
   addButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    gap: 12,
+  },
+  centeredText: {
+    fontSize: 15,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 4,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#6366F1',
+  },
+  retryButtonText: {
     fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',

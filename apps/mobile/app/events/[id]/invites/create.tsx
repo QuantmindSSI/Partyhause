@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,15 +8,55 @@ import {
   TextInput,
   Alert,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { INVITE_TEMPLATES, InviteCustomization } from '@/types/invites';
 import { InvitePreview } from '@/components/invites/InvitePreview';
+import { api } from '@/lib/client';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+/** What InvitePreview renders. */
+interface PreviewEvent {
+  title: string;
+  date: string;
+  time: string;
+  location: string;
+  /** Omitted when the viewer is not the host; InvitePreview hides the line. */
+  host_name?: string;
+}
+
+/**
+ * Split an ISO timestamp into the date and 12-hour time the preview shows.
+ *
+ * @param iso - `start_date` from the API, an ISO 8601 string
+ * @returns `{ date: 'YYYY-MM-DD', time: 'H:MM AM' }`, both empty when unparseable
+ *
+ * An unparseable date yields empty strings rather than "Invalid Date", which
+ * is what `new Date(x).toLocaleTimeString()` renders into the preview when the
+ * field is missing.
+ */
+function splitEventDateTime(iso: string | undefined | null): { date: string; time: string } {
+  if (!iso) return { date: '', time: '' };
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return { date: '', time: '' };
+  return {
+    date: parsed.toISOString().slice(0, 10),
+    time: parsed.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+  };
+}
+
+/**
+ * Customise an invitation before sending it.
+ *
+ * The preview used to render a hardcoded "Summer BBQ Party" on 2025-07-15 at
+ * "Backyard", hosted by "John Doe", regardless of which event the host had
+ * opened. Someone designing an invitation was looking at a different party's
+ * details the entire time, then sending the result.
+ */
 export default function CreateInviteScreen() {
   const { id, templateId } = useLocalSearchParams<{ id: string; templateId: string }>();
   const template = INVITE_TEMPLATES.find(t => t.id === templateId);
@@ -31,6 +71,52 @@ export default function CreateInviteScreen() {
 
   const [customMessage, setCustomMessage] = useState('');
   const [customFooter, setCustomFooter] = useState('');
+  const [eventData, setEventData] = useState<PreviewEvent | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadEvent() {
+      if (!id) {
+        setLoadError('No event was specified.');
+        return;
+      }
+      const [eventResult, meResult] = await Promise.all([api.events.get(id), api.auth.me()]);
+      if (cancelled) return;
+
+      if (eventResult.error || !eventResult.data) {
+        setLoadError(eventResult.error?.message ?? 'This event could not be loaded.');
+        return;
+      }
+
+      const event = eventResult.data;
+      const { date, time } = splitEventDateTime(event.start_date);
+
+      // The event DTO carries host_id but no host name, and widening every
+      // event response for one preview line is not worth it. The signed-in
+      // user's name is only correct when they are the host; a co-host would
+      // otherwise see their own name under "Hosted by". When it does not
+      // apply, the field is left undefined and InvitePreview omits the line
+      // rather than printing a guess.
+      const me = meResult.data;
+      const hostName =
+        me && event.host_id === me.id ? me.name || undefined : undefined;
+
+      setEventData({
+        title: event.title || event.name,
+        date,
+        time,
+        location: event.location ?? '',
+        host_name: hostName,
+      });
+    }
+
+    void loadEvent();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   if (!template) {
     return (
@@ -40,14 +126,25 @@ export default function CreateInviteScreen() {
     );
   }
 
-  // Mock event data (would come from event details)
-  const eventData = {
-    title: 'Summer BBQ Party',
-    date: '2025-07-15',
-    time: '4:00 PM',
-    location: 'Backyard',
-    host_name: 'John Doe',
-  };
+  if (loadError) {
+    return (
+      <View style={styles.errorContainer}>
+        <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+        <Text style={styles.errorText}>{loadError}</Text>
+      </View>
+    );
+  }
+
+  // Designing an invitation against placeholder details is what produced the
+  // "Summer BBQ Party" bug, so the editor waits for the real event.
+  if (!eventData) {
+    return (
+      <View style={styles.errorContainer}>
+        <ActivityIndicator size="large" color="#6366F1" />
+        <Text style={styles.errorText}>Loading your event…</Text>
+      </View>
+    );
+  }
 
   const handleSaveAndContinue = () => {
     const finalCustomization: InviteCustomization = {
@@ -275,6 +372,13 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 32,
+    gap: 12,
+  },
+  errorText: {
+    fontSize: 15,
+    color: '#6B7280',
+    textAlign: 'center',
   },
   header: {
     paddingTop: 60,

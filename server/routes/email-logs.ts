@@ -145,35 +145,13 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
-// GET /api/email-logs/:id — get a single email log
-router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const { id } = req.params;
-    const emailLog = await prisma.emailLog.findUnique({
-      where: { id },
-      include: {
-        event: { select: { name: true, event_date: true, location: true, invite_image_url: true } },
-        guest: { select: { name: true, email: true } },
-      },
-    });
-
-    if (!emailLog) {
-      return res.status(404).json({ error: 'Email log not found' });
-    }
-
-    // Event-scoped logs are host-only (recipient PII).
-    if (emailLog.event_id && !(await isEventHost(emailLog.event_id, req.user!.id))) {
-      return res.status(403).json({ error: 'Only the event host can view this email log' });
-    }
-
-    res.json({ email_log: emailLog });
-  } catch (error: any) {
-    console.error('Get email log error:', error);
-    res.status(500).json({ error: error?.message || 'Failed to get email log' });
-  }
-});
-
-// GET /api/email-logs/analytics — get email analytics for an event
+// GET /api/email-logs/analytics/event?eventId=xxx — email analytics for an event
+//
+// Registered BEFORE `/:id`, and that ordering is the whole point. Express
+// matches in registration order, so while this route sat after `/:id` the
+// request bound `id = "analytics"`, looked up an email log with that id, found
+// none and answered 404. The endpoint had never once been reachable. Moving it
+// above `/:id` is the entire fix; keep it there.
 router.get('/analytics/event', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { eventId } = req.query;
@@ -210,5 +188,34 @@ router.get('/analytics/event', requireAuth, async (req: AuthenticatedRequest, re
     res.status(500).json({ error: error?.message || 'Failed to get analytics' });
   }
 });
+
+// GET /api/email-logs/:id — get a single email log
+router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const emailLog = await prisma.emailLog.findUnique({
+      where: { id },
+      include: {
+        event: { select: { name: true, event_date: true, location: true, invite_image_url: true } },
+        guest: { select: { name: true, email: true } },
+      },
+    });
+
+    if (!emailLog) {
+      return res.status(404).json({ error: 'Email log not found' });
+    }
+
+    // Event-scoped logs are host-only (recipient PII).
+    if (emailLog.event_id && !(await isEventHost(emailLog.event_id, req.user!.id))) {
+      return res.status(403).json({ error: 'Only the event host can view this email log' });
+    }
+
+    res.json({ email_log: emailLog });
+  } catch (error: any) {
+    console.error('Get email log error:', error);
+    res.status(500).json({ error: error?.message || 'Failed to get email log' });
+  }
+});
+
 
 export default router;

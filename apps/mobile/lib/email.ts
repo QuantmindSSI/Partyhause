@@ -5,6 +5,7 @@
 
 import { Platform } from 'react-native';
 import { apiUrl, invitationUrl, getWebBaseUrl } from './api';
+import { getAccessToken } from './client';
 
 // Endpoint resolution lives in lib/api.ts. This file previously hardcoded
 // https://partyhause.netlify.app, a deployment target that has been
@@ -23,10 +24,19 @@ export interface SendEmailOptions {
   to: string;
   subject: string;
   html: string;
+  /**
+   * The event this send belongs to. Required, not optional.
+   *
+   * /api/send-email now refuses any request without it (server/index.ts). The
+   * endpoint used to be an open relay: no auth, arbitrary recipients. It is
+   * now a scoped command, and the scope is an event the caller may invite for.
+   * Passing it inside `metadata` is not enough; the server reads `event_id`
+   * from the top level of the body.
+   */
+  eventId: string;
   metadata?: {
     emailLogId?: string;
     guestId?: string;
-    eventId?: string;
   };
 }
 
@@ -49,12 +59,26 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
         console.log('[EmailService] sending via', EMAIL_API_URL, 'platform', Platform.OS);
       }
 
+    // Authorization was absent here for the whole life of this file. It did
+    // not matter while /api/send-email was anonymous; it does now, and without
+    // it every mobile send is a 401 before a provider is ever contacted.
+    const token = await getAccessToken();
+    if (!token) {
+      return { success: false, error: 'You need to be signed in to send invitations.' };
+    }
+
     const response = await fetch(EMAIL_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(options),
+      body: JSON.stringify({
+        to: options.to,
+        subject: options.subject,
+        html: options.html,
+        event_id: options.eventId,
+      }),
     });
 
     const duration = Date.now() - startTime;
@@ -334,23 +358,28 @@ export function buildInvitationEmail(
  * Send invitation email to a guest
  */
 export async function sendInvitationEmail(
-  guest: { name: string; email: string },
+  guest: { name: string; email: string; guest_id?: string },
   event: { id: string; name: string; date: string; location: string; description?: string },
   options?: {
     emailLogId?: string;
   }
 ): Promise<SendEmailResult> {
   try {
-    const invitationUrl = generateInvitationUrl(event.id, ''); // Guest ID will be added after creation
-    const html = buildInvitationEmail(guest.name, event, invitationUrl);
+    // The guest id belongs in the RSVP link. It was passed as '' with the
+    // comment "Guest ID will be added after creation", which produced a URL
+    // ending in a bare slash that the web app cannot resolve to a guest, so
+    // every RSVP button in every mobile-sent invitation was dead.
+    const rsvpUrl = generateInvitationUrl(event.id, guest.guest_id ?? '');
+    const html = buildInvitationEmail(guest.name, event, rsvpUrl);
 
     const result = await sendEmail({
       to: guest.email,
       subject: `🎉 You're Invited to ${event.name}!`,
       html,
+      eventId: event.id,
       metadata: {
         emailLogId: options?.emailLogId,
-        eventId: event.id,
+        guestId: guest.guest_id,
       },
     });
 
@@ -365,52 +394,67 @@ export async function sendInvitationEmail(
 }
 
 /**
- * Send custom invite emails using templates
+ * Send the event's invitation to a set of recipients.
+ *
+ * @param options.event      the real event, used to render the invitation body
+ * @param options.recipients guests who already exist on the event's guest list
+ * @returns aggregate success, plus the addresses that failed
+ *
+ * WHAT THIS USED TO SEND
+ *   A fixed three-line body reading "You've been invited to an event. More
+ *   details coming soon!" with no event name, no date and no location, above
+ *   a link to the web app. `buildInvitationEmail` in this same file renders a
+ *   complete invitation with all of those fields, and was never called from
+ *   here.
+ *
+ *   It also passed `eventId` inside `metadata`, where the server never looks,
+ *   so every send was a 400 even once authentication was added.
+ *
+ * WHY RECIPIENTS MUST ALREADY BE GUESTS
+ *   /api/send-email restricts recipients to addresses on that event's guest
+ *   list. A name typed into the compose screen is not a guest until it has
+ *   been POSTed to /api/guests, so the caller creates it first and passes the
+ *   resulting row here. Sending to a stranger is refused server-side, and that
+ *   is deliberate: the endpoint was an open relay before.
+ *
+ * Complexity: one request per recipient, issued concurrently.
  */
 export async function sendInviteEmails(options: {
-  eventId: string;
-  templateId: string;
+  event: { id: string; name: string; date: string; location: string; description?: string };
   recipients: { name: string; email: string; guest_id?: string }[];
-  customization?: any;
-}): Promise<SendEmailResult> {
-  try {
-    // TODO: Build custom HTML from template and customization
-    // For now, use a placeholder
-    const results = await Promise.all(
-      options.recipients.map(async recipient => {
-        const html = `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2>You're Invited!</h2>
-            <p>Hi ${recipient.name},</p>
-            <p>You've been invited to an event. More details coming soon!</p>
-            <p><a href="${getWebBaseUrl()}/events/${options.eventId}" style="display: inline-block; padding: 12px 24px; background-color: #6366F1; color: white; text-decoration: none; border-radius: 6px;">View Invitation</a></p>
-          </div>
-        `;
+}): Promise<SendEmailResult & { failedRecipients: string[] }> {
+  if (options.recipients.length === 0) {
+    return { success: false, error: 'No recipients selected', failedRecipients: [] };
+  }
 
-        return sendEmail({
-          to: recipient.email,
-          subject: 'You\'re Invited!',
-          html,
-          metadata: {
-            eventId: options.eventId,
-            guestId: recipient.guest_id,
-          },
-        });
-      })
+  try {
+    const results = await Promise.all(
+      options.recipients.map(async (recipient) => ({
+        email: recipient.email,
+        result: await sendInvitationEmail(recipient, options.event),
+      })),
     );
 
-    // Return success if all emails sent successfully
-    const allSuccess = results.every(r => r.success);
+    const failed = results.filter((r) => !r.result.success);
+
+    // Naming the addresses that failed is the difference between a retry and a
+    // guess. The old code answered "Some emails failed to send" and discarded
+    // which ones, so a host had no way to tell who had been invited.
     return {
-      success: allSuccess,
-      messageId: allSuccess ? 'batch-send-success' : undefined,
-      error: allSuccess ? undefined : 'Some emails failed to send',
+      success: failed.length === 0,
+      messageId: failed.length === 0 ? 'batch-send-success' : undefined,
+      error:
+        failed.length === 0
+          ? undefined
+          : `${failed.length} of ${results.length} invitations failed: ${failed[0].result.error ?? 'unknown error'}`,
+      failedRecipients: failed.map((f) => f.email),
     };
   } catch (error) {
     console.error('[EmailService] Error in sendInviteEmails:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to send invites',
+      failedRecipients: options.recipients.map((r) => r.email),
     };
   }
 }
