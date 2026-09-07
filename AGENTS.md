@@ -62,12 +62,12 @@ npm workspaces are `apps/*` and `packages/*` (`package.json:10-13`).
 | Path | Contents |
 |---|---|
 | `src/` | Vite React PWA. `App.tsx`, `pages/` (11), `features/` (partyboard, partycrew, polls, timeline, notifications), `components/`, `lib/`, `store/`, `test/` |
-| `server/` | Express API. `index.ts` entrypoint, `routes/` (19 files), `lib/` (7), `middleware/auth.ts` |
+| `server/` | Express API. `index.ts` entrypoint, `routes/` (20 files), `lib/` (9), `middleware/auth.ts` |
 | `packages/core/` | Shared API client and zustand store. Ships raw TypeScript; `main` points at `src/index.ts` |
 | `apps/mobile/` | Expo Router app. Own lockfile, `app.config.ts`, `eas.json`, `ios/` |
-| `prisma/` | `schema.prisma` (1144 lines, 36 models) and `seed.ts` |
+| `prisma/` | `schema.prisma` (1231 lines, 39 models) and `seed.ts` |
 | `infra/` | Bicep. `main.bicep` (subscription scope), `resources.bicep`, `modules/` (5) |
-| `scripts/` | 28 operational scripts, mixed languages. Four are wired to npm scripts; the rest are ad hoc |
+| `scripts/` | 28 operational scripts, mixed languages. Four are wired to npm scripts; the rest are run by hand, including `e2e-partyboard.mjs` |
 | `docs/` | 88 markdown files, all current, historical or non-technical. 97 stale ones were deleted on 2026-09-04. Index at [`docs/README.md`](./docs/README.md) |
 
 **`packages/core` is consumed by mobile only.** `rg "@partyhause/core" src/` returns nothing. The
@@ -128,11 +128,13 @@ still produce a working bundle if you bypass `build:check`.
 
 Base URL in production is the API Container App FQDN. All routes are under `/api`.
 
-`server/index.ts` mounts 19 routers (`:174-192`) behind `apiLimiter` (`:173`), plus four inline
-endpoints registered **before** the limiter and therefore not covered by it: `GET /api/health`
-(`:129`), `POST /api/send-email` (`:143`), and the favicon and SPA fallback when `dist/` exists.
+`server/index.ts` mounts 20 routers (`:348-367`) behind `apiLimiter` (`:347`), plus inline
+endpoints registered **before** the limiter: `GET /api/health` (`:248`), `POST /api/send-email`
+(`:262`), and the favicon and SPA fallback when `dist/` exists. `/api/send-email` is outside
+`apiLimiter` deliberately, so a mail send cannot be starved by ordinary API traffic; it carries its
+own `emailLimiter`, 20 per 5 minutes keyed on the authenticated user.
 
-62 routes across 19 files.
+82 routes across 20 files.
 
 | Router | Routes |
 |---|---|
@@ -141,6 +143,7 @@ endpoints registered **before** the limiter and therefore not covered by it: `GE
 | `/api/guests` | `GET /`, `POST /`, `PUT /:id`, `DELETE /:id` |
 | `/api/timeline` | `GET /:eventId`, `POST /`, `PUT /:id`, `DELETE /:id` |
 | `/api/polls` | `GET /`, `POST /`, `GET /:id`, `POST /:id/vote`, `POST /:id/close` |
+| `/api/partyboard` | `GET /stickies`, `POST /stickies`, `PATCH /stickies/:id/position`, `PATCH /stickies/:id/vote`, `POST /stickies/:id/convert-to-task`, `GET /tasks`, `DELETE /stickies/:id` |
 | `/api/invite-templates` | `GET /`, `POST /`, `PUT /:id`, `DELETE /:id` |
 | `/api/event-templates` | `GET /`, `GET /:id`, `POST /:id/create-event` |
 | `/api/email-webhook` | `POST /` (anonymous, svix HMAC verified) |
@@ -158,15 +161,23 @@ endpoints registered **before** the limiter and therefore not covered by it: `GE
 
 ### Known API defects
 
-- **`GET /api/email-logs/analytics/event` is unreachable.** `GET /:id` is registered at
-  `email-logs.ts:149`, before the analytics route at `:177`. Express matches in registration order,
-  so the request binds `id="analytics"` and never arrives.
-- **`POST /api/send-email` is anonymous, accepts arbitrary recipients and HTML, and bypasses the
-  rate limiter.** This is `GAP-INV-04` in the iOS register and is a live abuse vector.
 - **The global error handler returns `err?.message` to the client** in 500 bodies
-  (`server/index.ts:218`).
+  (`server/index.ts:393`).
 - **`optionalAuth` does not enforce `email_verified`**, unlike `requireAuth`.
-- **Empty `CORS_ALLOWED_ORIGINS` allows all origins** (`server/index.ts:100-102`).
+- **Empty `CORS_ALLOWED_ORIGINS` allows all origins** (`server/index.ts:219`).
+
+Two long-standing entries were removed from this list on 2026-09-07 because they are fixed, not
+because they were reclassified.
+
+`POST /api/send-email` is no longer an open relay. It requires `requireAuth`, requires a top-level
+`event_id`, requires the caller to hold invite permission on that event, and refuses any recipient
+who is not already on that event's guest list. `emailLimiter` bounds it at 20 sends per 5 minutes
+per user. That closes `GAP-INV-04`.
+
+`GET /api/email-logs/analytics/event` is reachable. It was registered after `GET /:id`, so Express
+bound `id="analytics"` and answered 404 for the life of the endpoint. It now sits above `/:id`
+(`email-logs.ts:149`), and both routes are verified working against a live database. **Keep that
+ordering.** Any new literal path under this router must be registered before `/:id`.
 
 ---
 
@@ -214,14 +225,19 @@ anywhere, so it cannot verify an Entra RS256 token. **Do not set `ENTRA_TENANT_I
 
 ## Data model
 
-36 Prisma models and 2 enums in `prisma/schema.prisma`. Core entities: `User`, `UserProfile`,
+39 Prisma models and 2 enums in `prisma/schema.prisma`. Core entities: `User`, `UserProfile`,
 `Event`, `EventCoHost`, `Guest`, `Ticket`, `TimelineBlock`, `Poll`, `PollOption`, `PollVote`,
-`Connection`, `ConnectionRequest`, `PartycrewPost`, `Notification`, `EmailLog`, `EmailEvent`,
-`Template`, `InviteTemplate`, `EventInviteToken`, `CostSplitRequest`, `Media`, `Vendor`,
-`VendorTask`.
+`PartyBoardSticky`, `PartyBoardStickyVote`, `PartyBoardTask`, `Connection`, `ConnectionRequest`,
+`PartycrewPost`, `Notification`, `EmailLog`, `EmailEvent`, `Template`, `InviteTemplate`,
+`EventInviteToken`, `CostSplitRequest`, `Media`, `Vendor`, `VendorTask`.
 
-`Vendor` and `VendorTask` exist in the schema but **have no API routes and no UI**. The vendor
-marketplace is not built.
+`Vendor` and `VendorTask` exist in the schema but **have no API routes**. The vendor marketplace is
+not built, and as of 2026-09-07 the UI says so rather than showing a dashboard of zeros. See
+`src/pages/VendorDashboard.tsx` for why that was the choice.
+
+The three `PartyBoard*` models back `/api/partyboard`. Votes are a table rather than a counter
+column because the canvas renders `user_has_voted` per viewer, which a counter cannot answer, and
+the unique `(sticky_id, user_id)` is what makes a repeated click a toggle instead of a second vote.
 
 The datasource declares no `url` (Prisma 7 requirement); it is supplied by `prisma.config.ts` from
 `DATABASE_URL`. `server/lib/prisma.ts` falls back to assembling a connection string from
@@ -435,14 +451,32 @@ the cache expires.
 
 ## Testing
 
-15 files in `src/test/`, 155 passing and 5 skipped. Vitest with jsdom.
+19 files in `src/test/`, 252 passing and 5 skipped. Vitest with jsdom.
 
 Notable suites: `bundle-chunk-graph.test.ts` guards the emitted Rollup chunk graph against import
 cycles, which once shipped a white screen that returned HTTP 200, and asserts PWA manifest icons
 resolve to real correctly-sized PNGs. `email-verification-gate.test.ts` covers the three auth
 gates. `core-api-client.test.ts` covers transport retry bounds and 401 handling.
+`partyboard-contract.test.ts` covers the board's validation and per-viewer vote projection.
 
 The skipped 5 are live email E2E tests requiring a running API.
+
+### Tests that need a database
+
+Vitest runs under jsdom with no Postgres, so route-level authorization and persistence cannot be
+asserted there. `scripts/e2e-partyboard.mjs` boots the real Express app against a real database and
+drives all seven `/api/partyboard` routes plus their authorization, 56 checks. **It truncates
+users, events, guests and the partyboard tables**, so point it at a scratch database only.
+
+```bash
+brew services start postgresql@18
+createdb partyhause_dev
+DATABASE_URL="postgresql://$USER@localhost:5432/partyhause_dev?schema=public" npx prisma db push
+npx tsx scripts/e2e-partyboard.mjs
+```
+
+The connection string needs an explicit username. Omitting it makes Prisma answer `P1010: User was
+denied access`, which reads like a permissions problem and is not one.
 
 ---
 
@@ -450,25 +484,51 @@ The skipped 5 are live email E2E tests requiring a running API.
 
 Ranked by consequence.
 
-1. **68 blocking items for iOS launch.** `docs/mobile-ios-launch/08-current-state-gap-register.md`
-   records 93 gaps, 68 marked BLOCKER, each with file:line evidence. It is current and trustworthy.
-2. **Six mobile event-template forms are 27-line stubs** that call `onValidation(true)` with an
-   empty payload, so the create wizard advances past them collecting nothing.
-3. **About 2,900 lines of mobile components have no reachable route**, including the entire
-   `PartyCrewFeedScreen`.
-4. **Two HTTP clients**, described under Repository layout.
-5. **Web routing is split** between React Router, which owns 8 paths, and a `currentPage` string
-   state machine handling 33 keys behind `path="*"`. The state type ends in `| string`, so the
-   literal set is not enforced. Eleven handled keys are never set by any call site.
-6. **537 lint warnings**, mostly `no-explicit-any`.
-7. **`build.target` is `esnext`**, so nothing is downlevelled. `Object.hasOwn` (Safari 15.4+) is
-   already present in two eagerly loaded chunks.
-8. **`eas.json` submit config contains literal placeholders**: `REPLACE_WITH_APP_STORE_CONNECT_APP_ID`
-   and `your-apple-id@example.com`. Store submission is not configured.
-9. **`Dockerfile:26` mutates `tsconfig.json`** during the web build, so the image build differs from
-   a local `npm run build:web`.
-10. **`src/lib/env-server.ts` is orphaned**: Node `process.env` inside the client tree, no importers.
-11. **`app.set('trust proxy', 1)` is called twice** in `server/index.ts`.
+1. **The iOS gap register predates the last four days of work.**
+   `docs/mobile-ios-launch/08-current-state-gap-register.md` records 93 gaps, 68 marked BLOCKER,
+   each with file:line evidence. Several are now fixed and the file has not been re-run. Verify any
+   entry against the code before acting on it; that is the standing rule for this whole repository,
+   and this document is no longer the exception it used to be.
+2. **8,637 lines of mobile TypeScript are unreachable**, 31% of the app, including the entire
+   `components/partyhub/` poll and idea subsystem (2,481 lines across 7 files) and a checked-in
+   `PollSticky.backup.tsx`. This supersedes the old "about 2,900 lines" figure, which was measured
+   before `PartyCrewFeedScreen` became reachable and was low regardless.
+3. **Three mobile screens push to routes that do not exist**: `/events/:id/games`
+   (`events/[id]/index.tsx:714`, moved to `_deferred/`), `planning` (declared in
+   `events/[id]/_layout.tsx:46`, no directory), and `/settings/profile` (`profile/[id].tsx:75`, no
+   `app/settings/`).
+4. **Six empty `onPress` handlers ship on tappable UI** in `events/[id]/index.tsx` and
+   `events/[id]/activities.tsx`.
+5. **`CorporateForm` is unselectable.** `TemplateForm.tsx:64` handles `case 'corporate'`, but the
+   wizard's `TEMPLATES` array in `events/create/index.tsx` has no `corporate` entry.
+6. **Two HTTP clients**, described under Repository layout.
+7. **Web routing is split** between React Router, which owns 8 paths, and a `currentPage` string
+   state machine behind `path="*"`. The state type ends in `| string`, so the literal set is not
+   enforced. Four handled keys have no setter: `logout`, `guest-view-*`, `role-selection` and
+   `games`. Six vendor keys were removed on 2026-09-07 when the buttons that set them were deleted.
+8. **Five routers have no web consumer**: `timeline`, `event-templates`, `connections`,
+   `cost-split` and, on mobile only, `ai`. `cost-split` has full CRUD and no UI on either client.
+   `timeline` is bypassed deliberately and `src/lib/timeline.ts:17` explains why.
+9. **503 lint warnings**, mostly `no-explicit-any`.
+10. **`build.target` is `esnext`**, so nothing is downlevelled. `Object.hasOwn` (Safari 15.4+) is
+    already present in two eagerly loaded chunks.
+11. **`Dockerfile:26` mutates `tsconfig.json`** during the web build, so the image build differs
+    from a local `npm run build:web`.
+12. **`src/lib/env-server.ts` is orphaned**: Node `process.env` inside the client tree, no importers.
+13. **`app.set('trust proxy', 1)` is called twice** in `server/index.ts`.
+14. **`apps/mobile/app.json` and `app.config.ts` conflict.** `app.config.ts` spreads `...config`
+    then overrides name, slug and scheme, and replaces the plugin list wholesale, which silently
+    drops `react-native-reanimated/plugin` declared in `app.json`.
+
+### Fixed on 2026-09-07, listed so nobody re-reports them
+
+`/api/partyboard` now exists; the canvas was calling a router that was never written and every
+sticky was discarded. The create-event AI planner calls `/api/ai/chat` instead of a `setTimeout`.
+The Guest List no longer ships a "Test Email" button addressed to a developer's personal inbox.
+`VendorDashboard` says the marketplace is unbuilt instead of reporting $0 revenue. The mobile
+invite flow reads the real event and the real guest list instead of four fabricated `@example.com`
+recipients, and its send now passes all three of `/api/send-email`'s gates. Both AI and email rate
+limiters keyed on a raw `req.ip`, which gave any IPv6 caller 2^64 buckets.
 
 ---
 

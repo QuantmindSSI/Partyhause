@@ -145,7 +145,7 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
-// GET /api/email-logs/analytics/event?eventId=xxx — email analytics for an event
+// GET /api/email-logs/analytics/event?eventId=xxx: email analytics for an event
 //
 // Registered BEFORE `/:id`, and that ordering is the whole point. Express
 // matches in registration order, so while this route sat after `/:id` the

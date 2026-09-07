@@ -968,7 +968,7 @@ model PollVote {
 }
 
 // ============================================================================
-// PARTYBOARD — collaborative planning canvas
+// PARTYBOARD: collaborative planning canvas
 // ============================================================================
 //
 // The web canvas (src/features/partyboard, 1,320 lines) shipped against
@@ -985,7 +985,7 @@ model PartyBoardSticky {
   id         String   @id @default(dbgenerated("gen_random_uuid()"))
   event_id   String
   session_id String? // optional brainstorm session grouping
-  type       String // CHECK: IN ('note', 'idea') — the two the canvas creates
+  type       String // CHECK: IN ('note', 'idea'), the two the canvas creates
   position_x Int      @default(0)
   position_y Int      @default(0)
   width      Int      @default(200)

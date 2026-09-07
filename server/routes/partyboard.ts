@@ -10,7 +10,7 @@
 //
 // Authorization is the same rule polls use: event participants (host, co-host,
 // or a guest who accepted) may read and write the board. Deleting a sticky is
-// narrower — its author, or someone who can moderate the event.
+// narrower: its author, or someone who can moderate the event.
 
 import { Router } from 'express';
 import { Prisma } from '@prisma/client';
@@ -285,7 +285,7 @@ router.patch('/stickies/:id/position', async (req: AuthenticatedRequest, res) =>
   }
 });
 
-// PATCH /api/partyboard/stickies/:id/vote — toggle the caller's vote
+// PATCH /api/partyboard/stickies/:id/vote: toggle the caller's vote
 router.patch('/stickies/:id/vote', async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
