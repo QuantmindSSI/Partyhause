@@ -37,6 +37,8 @@ export default function EventDetailsScreen() {
     media_count: 0,
   });
   const [loading, setLoading] = useState(true);
+  /** Guards the cancel write so a double tap cannot issue two PUTs. */
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -109,6 +111,52 @@ export default function EventDetailsScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  /**
+   * Move the event to its terminal state via PUT /api/events/:id.
+   *
+   * Writes 'archived', not 'cancelled'. The CHECK constraint on events.status
+   * permits only ('draft','published','active','completed','archived'), so a
+   * write of 'cancelled' is rejected by the database. The confirmation dialog
+   * that calls this previously had an empty onPress: it warned the action
+   * "cannot be undone" and then did nothing at all.
+   *
+   * The transport resolves rather than throws, so the error is read off the
+   * response. Authorisation is enforced server-side, which answers 403 to a
+   * guest or a view-only co-host; that is surfaced rather than swallowed.
+   */
+  const handleCancelEvent = async (): Promise<void> => {
+    if (!id || cancelling) return;
+
+    setCancelling(true);
+    const { data, error: apiError } = await api.events.update(id, { status: 'archived' });
+    setCancelling(false);
+
+    if (apiError) {
+      console.error('[Event Details] Cancel failed:', apiError.status, apiError.message);
+      if (apiError.status === 401 || apiError.status === 403) {
+        Alert.alert(
+          'Not allowed',
+          'Only the host or a co-host with edit permission can cancel this event.',
+        );
+      } else if (apiError.status === 404) {
+        Alert.alert('Event not found', 'This event no longer exists.', [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      } else {
+        Alert.alert('Could not cancel event', apiError.message);
+      }
+      return;
+    }
+
+    // Reflect the new status locally so the danger zone hides immediately; the
+    // screen is popped anyway, but a failed pop must not leave stale UI behind.
+    if (data) setEvent(data);
+
+    Alert.alert('Event cancelled', 'This event has been archived.', [
+      { text: 'OK', onPress: () => router.back() },
+    ]);
   };
 
   // Cases match the CHECK constraint on events.status. 'cancelled' was handled
@@ -630,7 +678,7 @@ export default function EventDetailsScreen() {
           {/* Create Invites */}
           <TouchableOpacity
             style={styles.actionCard}
-            onPress={() => router.push(`/events/${id}/invites/templates` as any)}
+            onPress={() => router.push(`/events/${id}/invites/templates`)}
             activeOpacity={0.7}
           >
             <View style={styles.actionIconContainer}>
@@ -647,7 +695,7 @@ export default function EventDetailsScreen() {
           
           <TouchableOpacity
             style={styles.actionCard}
-            onPress={() => router.push(`/events/${id}/guests` as any)}
+            onPress={() => router.push(`/events/${id}/guests`)}
             activeOpacity={0.7}
           >
             <View style={styles.actionIconContainer}>
@@ -664,7 +712,7 @@ export default function EventDetailsScreen() {
 
           <TouchableOpacity
             style={styles.actionCard}
-            onPress={() => router.push(`/events/${id}/activities` as any)}
+            onPress={() => router.push(`/events/${id}/activities`)}
             activeOpacity={0.7}
           >
             <View style={styles.actionIconContainer}>
@@ -679,50 +727,13 @@ export default function EventDetailsScreen() {
             <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => {/* TODO: Navigate to media */}}
-          >
-            <View style={styles.actionIconContainer}>
-              <Ionicons name="images" size={24} color="#9333ea" />
-            </View>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Media</Text>
-              <Text style={styles.actionSubtitle}>
-                {stats.media_count} photos and videos
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => {/* TODO: Navigate to vendors */}}
-          >
-            <View style={styles.actionIconContainer}>
-              <Ionicons name="business" size={24} color="#9333ea" />
-            </View>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Vendors</Text>
-              <Text style={styles.actionSubtitle}>Manage vendors and services</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push(`/events/${id}/games` as any)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.actionIconContainer}>
-              <Ionicons name="game-controller" size={24} color="#9333ea" />
-            </View>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Games</Text>
-              <Text style={styles.actionSubtitle}>Interactive party games</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
-          </TouchableOpacity>
+          {/* Media, Vendors and Games cards were removed here. Media and
+              Vendors had empty onPress handlers and no API behind them: the
+              server mounts no /api/media or /api/vendors router, so there was
+              nothing for a screen to call. Games navigated to /events/:id/games,
+              whose screens were parked in _deferred/ and have now been deleted.
+              A card that reports a count and does nothing when tapped reads as a
+              loading bug rather than an unbuilt feature. */}
 
           
         </View>
@@ -735,19 +746,26 @@ export default function EventDetailsScreen() {
           <View style={styles.dangerZone}>
             <TouchableOpacity
               style={styles.dangerButton}
+              disabled={cancelling}
               onPress={() => {
                 Alert.alert(
                   'Cancel Event',
                   'Are you sure you want to cancel this event? This action cannot be undone.',
                   [
                     { text: 'No', style: 'cancel' },
-                    { text: 'Yes, Cancel', style: 'destructive', onPress: () => {/* TODO: Cancel event */} },
+                    { text: 'Yes, Cancel', style: 'destructive', onPress: handleCancelEvent },
                   ]
                 );
               }}
             >
-              <Ionicons name="close-circle" size={20} color="#ef4444" />
-              <Text style={styles.dangerButtonText}>Cancel Event</Text>
+              {cancelling ? (
+                <ActivityIndicator size="small" color="#ef4444" />
+              ) : (
+                <Ionicons name="close-circle" size={20} color="#ef4444" />
+              )}
+              <Text style={styles.dangerButtonText}>
+                {cancelling ? 'Cancelling…' : 'Cancel Event'}
+              </Text>
             </TouchableOpacity>
           </View>
         )}
