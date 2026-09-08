@@ -111,6 +111,13 @@ const reset = await post('/reset-password', { token, email: EMAIL, password: 'br
 check('reset succeeds', reset.status, 200);
 check('reset returns a usable session token', typeof reset.body?.token, 'string');
 
+// The token alone is not a session on the web client: it stores the JWT and
+// the cached user under two keys and hydrates only when both are present. A
+// token-only response meant a successful reset rendered as signed out.
+check('reset also returns the user, so the client can hydrate', typeof reset.body?.user?.id, 'string');
+check('  ...with the address', reset.body?.user?.email, EMAIL);
+check('  ...marked verified, matching the column it just set', reset.body?.user?.email_verified, true);
+
 // 5. THE POINT: the address is now confirmed, not just the password changed.
 const after = await prisma.user.findUnique({ where: { email: EMAIL } });
 check('the account is now VERIFIED by the reset', after.email_verified, true);
