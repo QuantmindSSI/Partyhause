@@ -17,7 +17,7 @@ An audit of the shipping codebase found no single identity to document. It found
 | Three competing "brand" colours | `--primary` is `#FF5233` coral. The logo house is `#6C63FF` periwinkle. The PWA `theme_color` is `#6366F1` indigo. None of them match. |
 | Three palettes in one `:root` | A "Liquid Metal" chrome and iridescent set, the coral-orange shadcn scale, and a "PartyHause Solid Color System" of burnt orange and dark slate. `src/index.css:22-115` |
 | No logo component | The de facto lockup is the string `PartyHause` flanked by two lucide `Sparkles` icons. `src/components/AuthScreen.tsx:209-225` |
-| The wordmark was misspelled | `public/placeholder.svg:33` rendered `PartyHaus` in Arial Bold while serving as the `og:image` and `twitter:image`. `index.html:28,34`. Spelling since corrected repo-wide; the file is still Arial and still slated for retirement. |
+| The share card was a stand-in | `public/placeholder.svg` served as both `og:image` and `twitter:image`: the name misspelled, set in Arial Bold on a flat periwinkle field, and in a format no social crawler renders. Resolved 2026-09-08. The tags point at `social-card-1200x630.png` and the file is deleted. |
 | No brand typeface | Zero `@font-face`, zero font `<link>`, no `fontFamily` in Tailwind. Everything renders in the OS system UI font. Inter is loaded only inside HTML email templates. |
 | Logo palette orphaned | `public/partyhause-icon.svg` uses seven colours, none of which appear anywhere in the app's CSS. |
 | Non-monotonic colour scale | `--orange-500` and `--orange-600` sit at hue 9 and 349. `--orange-700` returns to hue 17. The 600 step is pinker than the 700 step. `src/index.css:43-52` |
@@ -353,7 +353,7 @@ Alpha channels are deliberate, not incidental. The Apple touch icons, both `icon
 
 ## 10. Implementation
 
-These assets are not yet consumed by the app. Nothing in `src/`, `index.html`, `public/manifest.json` or `vite.config.ts` was modified.
+Partly implemented as of 2026-09-08. The landing page (`src/components/LandingPageCreative.tsx`) was rebuilt against this specification and is the reference for how the palette is meant to be applied; `index.html` carries the correct `theme-color` and social card. The rest of the app still runs on the legacy scales. Each paragraph below records its own state.
 
 **Colour.** Replace `src/index.css:8-192` with the scales in section 4. Delete the Liquid Metal block at `:22-40` and the Solid Color System block at `:92-115`. Define the ten currently undefined variables listed in section 1, or delete the rules that reference them. Point `--primary` at `coral-500` for brand use but set button fills to `coral-700`, and set `--ring` to `coral-600`.
 
@@ -361,13 +361,13 @@ These assets are not yet consumed by the app. Nothing in `src/`, `index.html`, `
 
 **Type.** Self-host Outfit and Inter, add `@font-face` rules, and set the Tailwind `fontFamily` tokens.
 
-**Icons and manifest.** Copy `public/brand/icons/*` over `public/icons/*`. Update `index.html:5-13` to point at the new favicon set, and change `index.html:15`, `public/manifest.json:9` and `vite.config.ts:16` from `#6366F1` to `#FF5233`. Add `badge.png` to the manifest icon list. Either create `public/screenshots/` or remove the three entries at `public/manifest.json:46-61`, which currently point at files that do not exist.
+**Icons and manifest.** `theme-color` is done: `index.html` and the generated manifest both carry `#FF5233`. `#6366F1` no longer appears in the build. Still outstanding: copy `public/brand/icons/*` over `public/icons/*` and update `index.html:5-13` to point at the new favicon set. Add `badge.png` to the manifest icon list. Either create `public/screenshots/` or remove the three entries at `public/manifest.json:46-61`, which currently point at files that do not exist.
 
-**Social.** Replace `og:image` and `twitter:image` at `index.html:28,34` with `/brand/icons/social-card-1200x630.png`. The spelling in `placeholder.svg` has been corrected, but it is still Arial Bold on a flat periwinkle field and is not the identity defined here.
+**Social.** Done, 2026-09-08. `og:image` and `twitter:image` now point at `https://partyhause.com/brand/icons/social-card-1200x630.png`, with `og:image:width`, `:height`, `:type` and `:alt` declared and `og:url` and `og:site_name` added. Two things had been wrong, not one: the previous target was `/placeholder.svg`, and no major crawler renders SVG as a share image, so the card had never appeared on any platform; and a root-relative path is not reliably resolved by crawlers that fetch the tag without page context, so the URL is now absolute. `placeholder.svg` has been deleted.
 
-**Retire.** Delete `public/partyhause-icon.svg` and `public/placeholder.svg` once nothing references them. `public/partyhause-icon.svg` is currently rendered at `src/components/PWAInstallBanner.tsx:156`.
+**Retire.** `public/placeholder.svg` was deleted on 2026-09-08 along with its three references (`index.html`, `vite.config.ts` includeAssets, and the hand-written `public/sw.js`, which was itself deleted after being confirmed unreachable: `vite-plugin-pwa` in `generateSW` mode overwrites `dist/sw.js` at build, so that file was never served). `public/partyhause-icon.svg` remains, rendered at `src/components/PWAInstallBanner.tsx:156`.
 
-**Logo in the app.** Build a `Logo` component that renders the SVG mark, and replace the `Sparkles` lockups at `src/components/AuthScreen.tsx:209-225` and `:356-365`. The dashboard headers that pass `title="PartyHause"` into `PageShell` should render the mark alongside the text.
+**Logo in the app.** Partly done, 2026-09-08. `src/components/BrandMark.tsx` renders the committed mark with an `onLight` / `onDark` tone, and the landing page uses it in the header and the footer instead of a text-only wordmark. Path data is byte-identical to `public/brand/partyhause-mark.svg`, so the component and the assets cannot drift. Still outstanding: replace the `Sparkles` lockups at `src/components/AuthScreen.tsx:209-225` and `:356-365`. The dashboard headers that pass `title="PartyHause"` into `PageShell` should render the mark alongside the text.
 
 Two duplicate manifests currently exist and disagree. `vite.config.ts:9-42` generates one while `index.html:13` hard-links `/manifest.json`. Resolve to a single source before shipping icon changes, or the icon set that wins will depend on injection order.
 
@@ -375,11 +375,11 @@ Two duplicate manifests currently exist and disagree. `vite.config.ts:9-42` gene
 
 ## 11. Open items
 
-Name spelling is resolved. All 208 occurrences of the misspelling were corrected across 54 files, and `partyhaus-icon.svg` was renamed to `partyhause-icon.svg` in both `public/` and `apps/mobile/public/`. Typecheck and the full test suite were clean afterwards.
+Name spelling is resolved. All 208 occurrences were corrected across 54 files, and the misspelled icon filename was renamed in both `public/` and `apps/mobile/public/`. Typecheck and the full test suite were clean afterwards. Re-verified 2026-09-08: a case-insensitive search for the name without its trailing `e` returns nothing anywhere in the repository, including filenames, binary assets and both lockfiles.
 
-The X (Twitter) handle is resolved, and the answer is that **neither spelling belongs to PartyHause**. Verified 2026-08-30: `@partyhause` is an account named "Non Stop" with 6 followers, and `@partyhaus` is an account named "jaae" with 1 follower. The `twitter:site` tag has therefore been removed from `index.html` rather than pointed at a stranger. Cards still render, because `summary_large_image` does not require it.
+The X (Twitter) handle is resolved, and the answer is that **no X handle belongs to PartyHause**. Verified 2026-08-30: both the correct spelling and the misspelling are held by unrelated accounts with single-digit follower counts. The `twitter:site` tag is therefore absent from `index.html` rather than pointed at a stranger, and the comment there says so without naming either account. Cards still render, because `summary_large_image` does not require the tag.
 
-Four candidate handles were free at the time of checking: `@partyhausapp`, `@partyhauseapp`, `@getpartyhause` and `@partyhausehq`. Register one and restore the tag. Note that the marketing and setup documents still list `@partyhause` as the social handle in about a dozen places; those are aspirational copy, not shipped metadata, and should be corrected when a handle is actually secured. Email addresses on `@partyhause.com` are unaffected: that domain is owned and its use is correct throughout.
+Several candidate handles were free at the time of checking. Register one and restore the tag. Note that the marketing and setup documents still list a social handle in about a dozen places; those are aspirational copy, not shipped metadata, and should be corrected when a handle is actually secured. Email addresses on `@partyhause.com` are unaffected: that domain is owned and its use is correct throughout.
 
 Separately, seven lines in the archived Vercel and mobile documentation contradicted themselves, because they were written to explain that the old deployment hostname deliberately had no `e`. The recommendation here was to delete them along with the obsolete Vercel docs rather than edit them. That was done on 2026-09-04: `docs/mobile/MOBILE_API_CONFIG.md`, `docs/mobile/MOBILE_EVENT_PUBLISHING_READY.md` and `docs/TESTING_GUIDE_NATIVE_VS_WEB.md` were removed with the other 94 documents describing retired infrastructure.
 

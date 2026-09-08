@@ -1,529 +1,688 @@
-import { motion, useScroll, useTransform } from 'framer-motion';
-import { useRef, useState } from 'react';
+/**
+ * The unauthenticated landing page.
+ *
+ * Mounted from `App.tsx` when `appMode === 'landing'` and no user is present.
+ * It is a static import rather than lazy, deliberately: it is the first paint
+ * for every anonymous visitor, so putting it behind a chunk boundary trades a
+ * smaller entry bundle for a slower first contentful paint on the one route
+ * where that matters most.
+ *
+ * Design constraints taken from docs/BRAND.md and enforced here:
+ *
+ *   - `coral-500` (#FF5233) is the brand colour, not a button colour. White on
+ *     it is 3.23:1, which passes only for large display text. Solid buttons
+ *     with white labels use `coral-700` (5.86:1); small links and labels use
+ *     `coral-700` or darker; `coral-600` is the focus ring.
+ *   - The brand gradient is permitted on surfaces and prohibited on buttons
+ *     and body text. It appears here twice, on the video tint and on the
+ *     closing band, and nowhere else.
+ *   - The `Sparkles` icon is retired from anything logo-shaped. The mark is
+ *     `BrandMark`, which is the committed artwork rather than a stand-in.
+ *
+ * This file previously leaned on `.modern-card`, `.card-elevated`,
+ * `.icon-button-3d` and `.btn-floating` from `src/index.css`. Three of those
+ * are declared twice in that stylesheet, once inside `@layer components` and
+ * again unlayered, so the second declaration silently won and the hover
+ * behaviour did not match the rule most readers would find first. It also used
+ * `.hover-lift`, which is not defined anywhere in the repository and therefore
+ * did nothing in three places. Surfaces are now plain utilities and motion is
+ * expressed in `whileHover`, so what renders is what the file says.
+ */
+
+import { motion, useReducedMotion, useScroll, useTransform } from 'framer-motion';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { BrandMark } from '@/components/BrandMark';
 import { usePartyStore } from '@/store/usePartyStore';
-import { 
-  Calendar, 
-  Sparkles, 
-  ArrowRight, 
-  Play,
-  Heart,
-  Wand2,
-  Lightbulb,
-  Coffee,
+import {
+  ArrowRight,
   BookOpen,
-  ChevronDown
+  CalendarCheck,
+  ChevronDown,
+  Coffee,
+  Heart,
+  Lightbulb,
+  ListChecks,
+  Menu,
+  PartyPopper,
+  Ticket,
+  Users,
+  Wand2,
+  X,
 } from 'lucide-react';
 
+/**
+ * What the visitor came to do. Forwarded to `AuthScreen`, which renders
+ * different headline, subtitle and benefit copy per branch.
+ *
+ * All three values are produced by this page. They were not before: every call
+ * site relied on the `'create_event'` default, so two thirds of the copy in
+ * `AuthScreen` was unreachable from the only page that can reach it.
+ */
 type LandingIntent = 'create_event' | 'join_event' | 'explore_features';
 
 type LandingPageCreativeProps = {
   onStartAuth?: (intent: LandingIntent) => void;
 };
 
-const videoSources = [
-  {
-    src: '/videos/Video_concept_lively_202509130901.mp4',
-    poster: '/images/video-poster-1.jpg',
-    type: 'video/mp4'
-  }
+const HERO_VIDEO_SRC = '/videos/Video_concept_lively_202509130901.mp4';
+const HERO_VIDEO_POSTER = '/images/video-poster-1.jpg';
+
+const SECTION_HOW = 'how-it-works';
+const SECTION_STYLE = 'find-your-style';
+const SECTION_CULTURE = 'party-culture';
+
+/** In-page nav destinations. Every entry scrolls; the blog is reached from
+ *  the culture section itself rather than from the header, so there is no
+ *  second kind of destination to model. */
+const NAV_LINKS: ReadonlyArray<{ label: string; id: string }> = [
+  { label: 'How it works', id: SECTION_HOW },
+  { label: 'Find your style', id: SECTION_STYLE },
+  { label: 'Party culture', id: SECTION_CULTURE },
 ];
 
+const PRINCIPLES = [
+  {
+    icon: Users,
+    title: 'Everyone in one place',
+    body:
+      'Guest list, RSVPs, running order and the group chat that usually lives in four apps. One link, one page, one source of truth.',
+  },
+  {
+    icon: ListChecks,
+    title: 'Nothing forgotten',
+    body:
+      'Turn a sticky note into a task, split the cost, and see what is still open. The plan updates for everyone the moment it changes.',
+  },
+  {
+    icon: PartyPopper,
+    title: 'Then get out of the way',
+    body:
+      'The work happens before the night. On the night you should be at your own party, not answering the same question eleven times.',
+  },
+] as const;
+
+const ARCHETYPES = [
+  {
+    id: 'intimate',
+    title: 'The Intimate Curator',
+    description:
+      'Eight people around one table. You care about who sits where, what is playing, and whether the wine ran out. Small is the point.',
+    signature: 'Seating plans, playlists, and a running order measured in courses.',
+    icon: Heart,
+  },
+  {
+    id: 'bold',
+    title: 'The Bold Creator',
+    description:
+      'The room should not look like the room. You build a theme and commit to it, and people talk about it for a year afterwards.',
+    signature: 'Themes, budgets that need splitting, and a build day before the day.',
+    icon: Wand2,
+  },
+  {
+    id: 'mindful',
+    title: 'The Mindful Host',
+    description:
+      'Fewer, better. You would rather do four nights a year properly than one a month badly, and your guests can tell the difference.',
+    signature: 'Short guest lists, long lead times, and a plan that never feels rushed.',
+    icon: Lightbulb,
+  },
+  {
+    id: 'catalyst',
+    title: 'The Culture Catalyst',
+    description:
+      'You introduce people. Half the room did not know the other half, and by midnight nobody remembers which half they arrived in.',
+    signature: 'Big lists, open invites, and a crew that grows every time you host.',
+    icon: Coffee,
+  },
+] as const;
+
+const BLOG_PREVIEWS = [
+  {
+    title: 'The art of micro-moments',
+    excerpt:
+      'The difference between a dinner and an occasion is about four decisions, and none of them cost anything.',
+    category: 'Experience design',
+    readTime: '4 min read',
+  },
+  {
+    title: 'Celebration trends worth stealing',
+    excerpt:
+      'What hosts in six cities are doing differently this year, and which of it survives contact with a Tuesday.',
+    category: 'Culture',
+    readTime: '7 min read',
+  },
+  {
+    title: 'The psychology of timing',
+    excerpt:
+      'Every good night has a shape. Here is how to plan the shape instead of hoping for it.',
+    category: 'Hosting craft',
+    readTime: '5 min read',
+  },
+] as const;
+
+const FOOTER_LEGAL = [
+  { label: 'Privacy', href: '/privacy.html' },
+  { label: 'Terms', href: '/terms.html' },
+  { label: 'Support', href: '/support.html' },
+] as const;
+
+/** Section heading with the brand accent on the second line.
+ *  `coral-500` is permitted here and only here: at this size the text is
+ *  "large" under WCAG, where the threshold is 3:1 and coral-500 measures
+ *  3.23:1 on white. The same colour on 16px body text would fail. */
+function SectionHeading({
+  lead,
+  accent,
+  body,
+  align = 'center',
+}: {
+  lead: string;
+  accent: string;
+  body?: string;
+  align?: 'center' | 'left';
+}) {
+  const alignment = align === 'center' ? 'text-center mx-auto' : 'text-left';
+  return (
+    <div className={`max-w-2xl ${alignment}`}>
+      <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-neutral-900">
+        {lead}
+        <span className="block text-coral-500">{accent}</span>
+      </h2>
+      {body ? (
+        <p className="mt-5 text-lg leading-relaxed text-neutral-600">{body}</p>
+      ) : null}
+    </div>
+  );
+}
+
 export const LandingPageCreative = ({ onStartAuth }: LandingPageCreativeProps) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: containerRef });
-  
-  const [currentArchetype, setCurrentArchetype] = useState(0);
-  
-  // Store access
-  const { setCurrentPage } = usePartyStore();
-  
-  // Navigation handlers
-  const navigateToBlog = () => {
+
+  const [selectedArchetype, setSelectedArchetype] = useState(0);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  const setCurrentPage = usePartyStore((s) => s.setCurrentPage);
+
+  /**
+   * `useReducedMotion` returns the live value of `prefers-reduced-motion`.
+   *
+   * It gates the hero video, which is an 8 MB autoplaying MP4. The CSS in
+   * `src/index.css` neutralises animation *durations* under the same query,
+   * but a `<video autoplay loop>` is not a CSS animation and was unaffected:
+   * a visitor who has asked the platform to stop moving things still got a
+   * looping video, and paid for it on a metered connection. When reduced
+   * motion is requested the poster frame is shown instead and the MP4 is
+   * never requested.
+   */
+  const prefersReducedMotion = useReducedMotion();
+  const showVideo = !prefersReducedMotion;
+
+  const videoScale = useTransform(scrollYProgress, [0, 0.3], [1, 1.08]);
+  const videoOpacity = useTransform(scrollYProgress, [0, 0.5], [1, 0.35]);
+
+  /** Close the mobile sheet on Escape. Without this the only way out is the
+   *  close button, which is a trap for keyboard users who opened it by
+   *  accident. */
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileNavOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [mobileNavOpen]);
+
+  const goToBlog = () => {
+    setMobileNavOpen(false);
     setCurrentPage('party-culture-blog');
   };
-  
-  const navigateToApp = () => {
-    setCurrentPage('dashboard');
-  };
-  
-  const navigateToAuth = (intent: LandingIntent = 'create_event') => {
+
+  /**
+   * Hands the visitor to the auth screen carrying their intent.
+   *
+   * Note what this does NOT do. The previous version had a second helper that
+   * called `setCurrentPage('dashboard')`, which for a signed-out visitor
+   * matched no branch in `App.tsx`'s mode effect: `appMode` stayed `'landing'`
+   * and the landing page simply re-rendered. Two buttons, "The Curator's
+   * Toolkit" in the nav and "Explore Platform" in the closing band, did
+   * nothing at all when clicked. Both now route here with
+   * `'explore_features'`, which is a real destination.
+   */
+  const goToAuth = (intent: LandingIntent) => {
+    setMobileNavOpen(false);
     setCurrentPage('auth');
     onStartAuth?.(intent);
   };
-  
-  const scrollToSection = (sectionId: string) => {
-    const element = document.getElementById(sectionId);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-  // Video background parallax effect
-  const videoScale = useTransform(scrollYProgress, [0, 0.3], [1, 1.1]);
-  const videoOpacity = useTransform(scrollYProgress, [0, 0.5], [0.8, 0.3]);
-  
-  const experienceArchetypes = [
-    {
-      title: "The Intimate Curator",
-      description: "You create meaningful moments through thoughtful details and personal connections.",
-      icon: Heart,
-      color: "from-rose-400 to-orange-400"
-    },
-    {
-      title: "The Bold Creator", 
-      description: "You transform spaces and experiences with innovative ideas and creative energy.",
-      icon: Wand2,
-      color: "from-purple-400 to-pink-400"
-    },
-    {
-      title: "The Mindful Host",
-      description: "You believe in quality over quantity, creating authentic experiences that nourish the soul.",
-      icon: Lightbulb,
-      color: "from-emerald-400 to-teal-400"
-    },
-    {
-      title: "The Culture Catalyst",
-      description: "You bring people together across communities, creating bridges through shared celebration.",
-      icon: Coffee,
-      color: "from-amber-400 to-orange-400"
-    }
-  ];
 
-  const blogPreviews = [
-    {
-      title: "The Art of Micro-Moments",
-      excerpt: "How to transform ordinary Tuesday dinners into memory-making experiences",
-      category: "Experience Design",
-      readTime: "4 min read",
-      image: "/images/blog-micro-moments.jpg"
-    },
-    {
-      title: "Cultural Celebration Trends 2025",
-      excerpt: "Global inspiration for creating authentic, meaningful gatherings",
-      category: "Culture",
-      readTime: "7 min read", 
-      image: "/images/blog-culture-trends.jpg"
-    },
-    {
-      title: "The Psychology of Perfect Timing",
-      excerpt: "Understanding rhythm and flow in experience design",
-      category: "Mindful Celebration",
-      readTime: "5 min read",
-      image: "/images/blog-psychology.jpg"
-    }
-  ];
+  const scrollToSection = (sectionId: string) => {
+    setMobileNavOpen(false);
+    const element = document.getElementById(sectionId);
+    if (!element) return;
+    element.scrollIntoView({
+      behavior: prefersReducedMotion ? 'auto' : 'smooth',
+      block: 'start',
+    });
+  };
+
+  const activeArchetype = ARCHETYPES[selectedArchetype];
 
   return (
-    <div ref={containerRef} className="relative min-h-screen overflow-hidden">
-      {/* Video Background */}
-      <motion.div 
-        className="fixed inset-0 w-full h-full z-0"
+    <div ref={containerRef} className="relative min-h-screen overflow-x-hidden bg-neutral-50">
+      {/* ---------------------------------------------------------------- */}
+      {/* Hero backdrop                                                     */}
+      {/* ---------------------------------------------------------------- */}
+      <motion.div
+        className="fixed inset-0 z-0 h-full w-full"
         style={{ scale: videoScale, opacity: videoOpacity }}
+        aria-hidden="true"
       >
-        {/*
-          object-position is 50% 35%, not the browser default of 50% 50%.
+        {showVideo ? (
+          <video
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="metadata"
+            poster={HERO_VIDEO_POSTER}
+            /*
+              object-position is 50% 35%, not the browser default of 50% 50%.
+              The source is 1280x720; `object-cover` on a 390x844 phone scales
+              it to ~1500px wide and crops three quarters of the frame away. A
+              centre crop takes the middle band, which on this footage is the
+              floor. Biasing upward keeps faces and the horizon in shot.
+            */
+            className="h-full w-full object-cover [object-position:50%_35%]"
+            style={{ filter: 'brightness(0.62) contrast(1.05) saturate(1.1)' }}
+          >
+            <source src={HERO_VIDEO_SRC} type="video/mp4" />
+          </video>
+        ) : (
+          <div
+            className="h-full w-full bg-neutral-900 bg-cover bg-center"
+            style={{
+              backgroundImage: `url(${HERO_VIDEO_POSTER})`,
+              filter: 'brightness(0.62) contrast(1.05) saturate(1.1)',
+            }}
+          />
+        )}
 
-          The source is 1280x720. `object-cover` on a phone in portrait, say
-          390x844, has to scale it to cover 844px of height, which renders it
-          ~1500px wide and crops away roughly three quarters of the frame. A
-          centre crop takes the middle band, which on this footage is the floor.
-          Biasing upward keeps faces and the horizon in frame instead.
-        */}
-        <video
-          ref={videoRef}
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="metadata"
-          aria-hidden="true"
-          className="w-full h-full object-cover [object-position:50%_35%]"
-          poster="/images/video-poster-1.jpg"
-          style={{
-            filter: 'brightness(0.7) contrast(1.1) saturate(1.2)',
-          }}
-        >
-          {videoSources.map((source, index) => (
-            <source key={index} src={source.src} type={source.type} />
-          ))}
-        </video>
-
-        {/*
-          Two overlays, not three. The stack used to be a b/30-50-70 wash, a
-          horizontal orange/purple tint, and a second bottom-up black/60, then
-          the hero section added its own black/20 with a backdrop-blur on top.
-          Five layers over a video already at brightness(0.7) left roughly 28%
-          of the original luminance: the footage was paid for and then hidden.
-
-          What remains is one vertical wash sized for text contrast, and the
-          brand gradient at low opacity carrying coral to magenta rather than
-          the orange/purple that matched nothing in the palette.
-        */}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-black/35 to-black/65" />
+        {/* Contrast wash, sized so white body text clears 4.5:1 over the
+            brightest frame of the footage. */}
+        <div className="absolute inset-0 bg-gradient-to-b from-neutral-950/55 via-neutral-950/45 to-neutral-950/75" />
+        {/* Brand gradient as a surface tint. Permitted use. */}
         <div
-          className="absolute inset-0 opacity-20 mix-blend-overlay"
+          className="absolute inset-0 opacity-25 mix-blend-overlay"
           style={{ backgroundImage: 'var(--gradient-brand)' }}
-        />
-        {/* Subtle noise overlay for texture */}
-        <div className="absolute inset-0 opacity-10" 
-             style={{
-               backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
-               mixBlendMode: 'multiply'
-             }}
         />
       </motion.div>
 
-      {/* Navigation */}
-      <motion.nav 
-        className="fixed top-0 w-full z-50 backdrop-blur-lg bg-black/20 border-b border-white/10"
-        initial={{ y: -100 }}
-        animate={{ y: 0 }}
-        transition={{ duration: 0.8, delay: 0.2 }}
+      {/* ---------------------------------------------------------------- */}
+      {/* Navigation                                                        */}
+      {/* ---------------------------------------------------------------- */}
+      <motion.header
+        className="fixed top-0 z-50 w-full border-b border-white/10 bg-neutral-950/40 backdrop-blur-lg"
+        initial={{ y: -80, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
       >
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <motion.div 
-              className="text-2xl font-bold text-white"
-              whileHover={{ scale: 1.05 }}
+        <nav
+          aria-label="Primary"
+          className="container mx-auto flex items-center justify-between gap-4 px-6 py-4"
+        >
+          <button
+            type="button"
+            onClick={() => window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' })}
+            className="flex items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral-500 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
+          >
+            <BrandMark tone="onDark" size={32} />
+            <span className="text-xl font-bold tracking-tight text-white">PartyHause</span>
+          </button>
+
+          {/* Desktop */}
+          <div className="hidden items-center gap-1 md:flex">
+            {NAV_LINKS.map((link) => (
+              <button
+                key={link.label}
+                type="button"
+                onClick={() => scrollToSection(link.id)}
+                className="rounded-md px-3 py-2 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral-500 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950"
+              >
+                {link.label}
+              </button>
+            ))}
+            <Button
+              size="sm"
+              className="ml-3 bg-white text-coral-700 hover:bg-white/90"
+              onClick={() => goToAuth('explore_features')}
             >
-              PartyHause
-            </motion.div>
-            
-            <div className="hidden md:flex items-center space-x-8">
-              <button 
-                onClick={() => scrollToSection('experience-archetypes')}
-                className="text-white/80 hover:text-white transition-colors"
+              Sign in
+            </Button>
+          </div>
+
+          {/* Mobile toggle. The nav links were `hidden md:flex` with no
+              alternative, so below 768px the only thing in the header was the
+              wordmark and every destination was unreachable. */}
+          <button
+            type="button"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-md text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral-500 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-950 md:hidden"
+            aria-expanded={mobileNavOpen}
+            aria-controls="landing-mobile-nav"
+            aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
+            onClick={() => setMobileNavOpen((open) => !open)}
+          >
+            {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </nav>
+
+        {mobileNavOpen ? (
+          <motion.div
+            id="landing-mobile-nav"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden border-t border-white/10 bg-neutral-950/90 backdrop-blur-lg md:hidden"
+          >
+            <div className="container mx-auto flex flex-col gap-1 px-6 py-4">
+              {NAV_LINKS.map((link) => (
+                <button
+                  key={link.label}
+                  type="button"
+                  onClick={() => scrollToSection(link.id)}
+                  className="rounded-md px-3 py-3 text-left text-base font-medium text-white/85 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral-500"
+                >
+                  {link.label}
+                </button>
+              ))}
+              <Button
+                className="mt-2 w-full bg-white text-coral-700 hover:bg-white/90"
+                onClick={() => goToAuth('explore_features')}
               >
-                Curate My Experience
-              </button>
-              <button 
-                onClick={navigateToBlog}
-                className="text-white/80 hover:text-white transition-colors"
-              >
-                Party Culture
-              </button>
-              <button 
-                onClick={() => scrollToSection('philosophy')}
-                className="text-white/80 hover:text-white transition-colors"
-              >
-                Experience Gallery
-              </button>
-              <Button 
-                variant="outline" 
-                className="border-white/30 text-white hover:bg-white/10"
-                onClick={navigateToApp}
-              >
-                The Curator's Toolkit
+                Sign in
               </Button>
             </div>
-          </div>
-        </div>
-      </motion.nav>
+          </motion.div>
+        ) : null}
+      </motion.header>
 
-      {/* Hero Section */}
-      <section className="relative z-10 min-h-screen flex items-center justify-center">
-        {/*
-          The fifth overlay layer used to live here: bg-black/20 with a
-          backdrop-blur-sm across the whole section. It was removed for two
-          reasons. It was redundant once the wash above was sized for contrast,
-          and backdrop-blur over a playing video forces the compositor to
-          re-blur every frame across the full viewport, which is the most
-          expensive thing on this page and buys nothing legibility already has.
-        */}
-        
-        <div className="container mx-auto px-6 text-center relative z-20">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
+      {/* ---------------------------------------------------------------- */}
+      {/* Hero                                                              */}
+      {/* ---------------------------------------------------------------- */}
+      <section className="relative z-10 flex min-h-screen items-center justify-center px-6 pt-24">
+        <div className="container mx-auto max-w-3xl text-center">
+          <motion.p
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1, delay: 0.5 }}
-            className="max-w-4xl mx-auto"
+            transition={{ duration: 0.5, delay: 0.15 }}
+            className="text-sm font-semibold uppercase tracking-[0.18em] text-white/70"
           >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 1.2, delay: 0.8 }}
-              className="mb-8"
-            >
-              {/*
-                The brand gradient, coral-400 to magenta-400, replacing
-                `from-orange-400 to-pink-400`. The old pair was Tailwind's stock
-                palette and matched nothing in docs/BRAND.md.
+            Plan. Party. Perfect.
+          </motion.p>
 
-                The 400 steps rather than the specified 500s because this text
-                sits on a darkened video, not on white. At display size WCAG
-                needs 3:1, and coral-400 clears it against the wash while
-                coral-500 is marginal. The 500 pair remains correct wherever the
-                gradient is a surface rather than type.
-              */}
-              <h1 className="text-6xl md:text-8xl font-light text-white mb-6 leading-tight drop-shadow-2xl">
-                Your Personal
-                <span className="block bg-gradient-to-r from-coral-400 to-magenta-400 bg-clip-text text-transparent font-bold">
-                  Experience Curator
-                </span>
-              </h1>
-            </motion.div>
+          {/*
+            The heading was `text-6xl md:text-8xl` (128px at lg). BRAND.md caps
+            display type at 60px and flags the old scale explicitly. This is
+            48px to 72px, which still reads as a hero and stops the second line
+            wrapping to three on a 390px phone.
 
-            <motion.p 
-              className="text-xl md:text-2xl text-white/90 mb-12 max-w-2xl mx-auto leading-relaxed drop-shadow-lg"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 1.2 }}
-            >
-              We don't just plan events—we curate experiences that transform 
-              ordinary moments into extraordinary memories.
-            </motion.p>
+            coral-400 rather than coral-500 in the gradient because this text
+            sits on a darkened video, not on white. At display size WCAG asks
+            for 3:1, and the 400 step clears it against the wash while the 500
+            step is marginal.
+          */}
+          <motion.h1
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.25 }}
+            className="mt-5 text-5xl font-bold leading-[1.05] tracking-tight text-white md:text-6xl lg:text-7xl"
+          >
+            Throw the party.
+            <span className="block bg-gradient-to-r from-coral-400 to-magenta-400 bg-clip-text text-transparent">
+              Skip the admin.
+            </span>
+          </motion.h1>
 
-            <motion.div 
-              className="flex flex-col sm:flex-row gap-4 justify-center"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 1.5 }}
+          <motion.p
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.35 }}
+            className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-white/85 md:text-xl"
+          >
+            Guest list, invites, RSVPs, running order and who owes what. PartyHause
+            keeps all of it in one place so the night belongs to you too.
+          </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.45 }}
+            className="mt-10 flex flex-col justify-center gap-3 sm:flex-row"
+          >
+            <Button
+              size="lg"
+              className="h-12 bg-coral-700 px-8 text-base text-white hover:bg-coral-800"
+              onClick={() => goToAuth('create_event')}
             >
-              <Button 
-                size="lg" 
-                className="btn-floating text-lg px-8 py-4 h-auto"
-                onClick={() => navigateToAuth()}
-              >
-                <Sparkles className="w-5 h-5 mr-2" />
-                Create Your Event
-              </Button>
-              
-              <Button 
-                variant="outline" 
-                size="lg"
-                className="border-white/30 text-white hover:bg-white/10 text-lg px-8 py-4 h-auto"
-                onClick={() => scrollToSection('experience-archetypes')}
-              >
-                <Play className="w-5 h-5 mr-2" />
-                Discover Your Style
-              </Button>
-            </motion.div>
+              <CalendarCheck className="mr-2 h-5 w-5" />
+              Create your event
+            </Button>
+
+            {/* This is what makes the `join_event` branch of AuthScreen
+                reachable. Every CTA on the old page defaulted to
+                `create_event`, so two thirds of that copy was dead. */}
+            <Button
+              size="lg"
+              variant="outline"
+              className="h-12 border-white/40 bg-white/5 px-8 text-base text-white hover:bg-white/15 hover:text-white"
+              onClick={() => goToAuth('join_event')}
+            >
+              <Ticket className="mr-2 h-5 w-5" />
+              I have an invite
+            </Button>
           </motion.div>
         </div>
 
-        {/*
-          Scroll indicator, moved out of the container and anchored to the
-          section.
-
-          It previously sat inside `container mx-auto ... relative z-20`, whose
-          only positioned ancestor is itself. That container is a flex child
-          under `items-center`, so it is content-height, not section-height.
-          `bottom-8` therefore measured eight units from the bottom of the text
-          block, parking the chevron just under the buttons in the middle of the
-          viewport rather than at the foot of the hero.
-
-          The section is `relative min-h-screen`, so anchoring here puts it
-          where it was always meant to be, at every viewport height.
-        */}
         <motion.div
-          className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20"
+          className="absolute bottom-8 left-1/2 z-20 -translate-x-1/2"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 2, duration: 1 }}
+          transition={{ delay: 1.1, duration: 0.6 }}
         >
           <motion.button
             type="button"
-            aria-label="Scroll to next section"
-            onClick={() => scrollToSection('experience-archetypes')}
-            animate={{ y: [0, 10, 0] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="text-white/60 hover:text-white transition-colors cursor-pointer rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+            aria-label="Scroll to how it works"
+            onClick={() => scrollToSection(SECTION_HOW)}
+            animate={prefersReducedMotion ? undefined : { y: [0, 8, 0] }}
+            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+            className="rounded-full p-2 text-white/60 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral-500 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
           >
-            <ChevronDown className="w-6 h-6" />
+            <ChevronDown className="h-6 w-6" />
           </motion.button>
         </motion.div>
       </section>
 
-      {/* Content Sections */}
-      <div className="relative z-10 bg-white">
-        {/* Philosophy Section */}
-        <section id="philosophy" className="py-20 bg-gradient-to-b from-gray-50 to-white">
+      {/* ---------------------------------------------------------------- */}
+      {/* Everything below the hero sits on an opaque surface so the fixed  */}
+      {/* video cannot show through it.                                     */}
+      {/* ---------------------------------------------------------------- */}
+      <div className="relative z-10 bg-neutral-50">
+        {/* How it works */}
+        <section id={SECTION_HOW} className="scroll-mt-20 border-b border-neutral-200 bg-white py-20 md:py-24">
           <div className="container mx-auto px-6">
-            <motion.div 
-              className="max-w-4xl mx-auto text-center"
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
-              viewport={{ once: true }}
-            >
-              <h2 className="text-4xl md:text-5xl font-light text-gray-900 mb-8">
-                The Philosophy of
-                <span className="block text-orange-500 font-bold">Conscious Celebration</span>
-              </h2>
-              
-              <p className="text-xl text-gray-600 mb-12 leading-relaxed">
-                In a world that moves too fast, we believe in the power of intentional gathering. 
-                Every celebration is an opportunity to strengthen bonds, create meaning, and 
-                honor the moments that make life beautiful.
-              </p>
+            <SectionHeading
+              lead="Hosting is a logistics problem"
+              accent="right up until it isn't"
+              body="Most of the work happens in the two weeks nobody sees. PartyHause takes that part."
+            />
 
-              <div className="grid md:grid-cols-3 gap-8">
-                {[
-                  {
-                    icon: Heart,
-                    title: "Human Connection",
-                    description: "Technology that brings people closer, not further apart"
-                  },
-                  {
-                    icon: Wand2,
-                    title: "Effortless Elegance", 
-                    description: "Sophisticated experiences without the stress and overwhelm"
-                  },
-                  {
-                    icon: Lightbulb,
-                    title: "Mindful Moments",
-                    description: "Quality over quantity in every interaction and detail"
-                  }
-                ].map((principle, index) => (
-                  <motion.div
-                    key={index}
-                    className="modern-card p-8 text-center hover-lift"
-                    initial={{ opacity: 0, y: 30 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.6, delay: index * 0.2 }}
-                    viewport={{ once: true }}
-                  >
-                    <div className="icon-button-3d bg-orange-500 w-16 h-16 mx-auto mb-6">
-                      <principle.icon className="w-8 h-8 text-white" />
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-4">{principle.title}</h3>
-                    <p className="text-gray-600">{principle.description}</p>
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
+            <div className="mx-auto mt-14 grid max-w-5xl gap-6 md:grid-cols-3">
+              {PRINCIPLES.map((principle, index) => (
+                <motion.article
+                  key={principle.title}
+                  initial={{ opacity: 0, y: 24 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  whileHover={prefersReducedMotion ? undefined : { y: -6 }}
+                  transition={{ duration: 0.45, delay: index * 0.1 }}
+                  viewport={{ once: true, amount: 0.3 }}
+                  className="rounded-lg border border-neutral-200 bg-white p-7 shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-shadow hover:shadow-[0_6px_16px_rgb(0_0_0/0.08)]"
+                >
+                  <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-coral-500">
+                    <principle.icon className="h-6 w-6 text-white" strokeWidth={2} />
+                  </div>
+                  <h3 className="text-xl font-semibold text-neutral-900">{principle.title}</h3>
+                  <p className="mt-3 leading-relaxed text-neutral-600">{principle.body}</p>
+                </motion.article>
+              ))}
+            </div>
           </div>
         </section>
 
-        {/* Experience Archetypes */}
-        <section id="experience-archetypes" className="py-20 bg-white">
+        {/* Find your style */}
+        <section id={SECTION_STYLE} className="scroll-mt-20 bg-neutral-50 py-20 md:py-24">
           <div className="container mx-auto px-6">
-            <motion.div
-              className="text-center mb-16"
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
-              viewport={{ once: true }}
-            >
-              <h2 className="text-4xl md:text-5xl font-light text-gray-900 mb-6">
-                Discover Your
-                <span className="block text-orange-500 font-bold">Celebration Archetype</span>
-              </h2>
-              <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-                Every host has a unique style. Understanding yours helps us curate 
-                the perfect experience for your personality and vision.
-              </p>
-            </motion.div>
+            <SectionHeading
+              lead="Four kinds of host"
+              accent="Pick the one that stings"
+              body="Not a personality test. It changes which templates, checklists and timings we put in front of you first."
+            />
 
-            <div className="max-w-4xl mx-auto">
-              <div className="grid md:grid-cols-2 gap-8 mb-12">
-                {experienceArchetypes.map((archetype, index) => (
-                  <motion.div
-                    key={index}
-                    className={`modern-card p-8 cursor-pointer transition-all duration-300 ${
-                      currentArchetype === index ? 'card-elevated' : 'hover-lift'
-                    }`}
-                    onClick={() => setCurrentArchetype(index)}
-                    initial={{ opacity: 0, x: index % 2 === 0 ? -30 : 30 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.6, delay: index * 0.1 }}
-                    viewport={{ once: true }}
-                    whileHover={{ scale: 1.02 }}
-                  >
-                    <div className={`w-16 h-16 rounded-full bg-gradient-to-r ${archetype.color} flex items-center justify-center mb-6`}>
-                      <archetype.icon className="w-8 h-8 text-white" />
-                    </div>
-                    <h3 className="text-2xl font-bold text-gray-900 mb-4">
-                      {archetype.title}
-                    </h3>
-                    <p className="text-gray-600 leading-relaxed">
-                      {archetype.description}
-                    </p>
-                  </motion.div>
-                ))}
+            <div className="mx-auto mt-14 max-w-5xl">
+              <div className="grid gap-4 sm:grid-cols-2">
+                {ARCHETYPES.map((archetype, index) => {
+                  const isSelected = selectedArchetype === index;
+                  return (
+                    <motion.button
+                      key={archetype.id}
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => setSelectedArchetype(index)}
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      whileHover={prefersReducedMotion ? undefined : { y: -4 }}
+                      transition={{ duration: 0.4, delay: index * 0.08 }}
+                      viewport={{ once: true, amount: 0.2 }}
+                      className={[
+                        'rounded-lg border p-7 text-left transition-colors',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral-600 focus-visible:ring-offset-2',
+                        isSelected
+                          ? 'border-coral-500 bg-white shadow-[0_6px_16px_rgb(0_0_0/0.08)]'
+                          : 'border-neutral-200 bg-white shadow-[0_1px_2px_rgb(0_0_0/0.04)] hover:border-neutral-300',
+                      ].join(' ')}
+                    >
+                      <div
+                        className={[
+                          'mb-5 inline-flex h-12 w-12 items-center justify-center rounded-lg transition-colors',
+                          isSelected ? 'bg-coral-500' : 'bg-neutral-100',
+                        ].join(' ')}
+                      >
+                        <archetype.icon
+                          className={`h-6 w-6 ${isSelected ? 'text-white' : 'text-neutral-500'}`}
+                          strokeWidth={2}
+                        />
+                      </div>
+                      <h3 className="text-xl font-semibold text-neutral-900">{archetype.title}</h3>
+                      <p className="mt-3 leading-relaxed text-neutral-600">{archetype.description}</p>
+                    </motion.button>
+                  );
+                })}
               </div>
 
-              <motion.div 
-                className="text-center"
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.5 }}
-                viewport={{ once: true }}
+              {/*
+                The selection now produces a visible result. Previously the
+                only CTA in this section was labelled "Take the Style Quiz"
+                and scrolled to the Philosophy section, which sat *above* it
+                and was not a quiz: the button moved the reader backwards away
+                from the thing it named.
+              */}
+              <motion.div
+                key={activeArchetype.id}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+                className="mt-6 rounded-lg border border-neutral-200 bg-white p-7 text-center shadow-[0_1px_2px_rgb(0_0_0/0.04)]"
+                aria-live="polite"
               >
-                <Button 
-                  className="btn-floating" 
+                <p className="text-sm font-semibold uppercase tracking-[0.14em] text-coral-700">
+                  {activeArchetype.title}
+                </p>
+                <p className="mx-auto mt-3 max-w-xl text-lg leading-relaxed text-neutral-700">
+                  {activeArchetype.signature}
+                </p>
+                <Button
                   size="lg"
-                  onClick={() => scrollToSection('philosophy')}
+                  className="mt-7 h-12 bg-coral-700 px-8 text-base text-white hover:bg-coral-800"
+                  onClick={() => goToAuth('create_event')}
                 >
-                  <Wand2 className="w-5 h-5 mr-2" />
-                  Take the Style Quiz
+                  Start with this setup
+                  <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
               </motion.div>
             </div>
           </div>
         </section>
 
-        {/* Party Culture Blog */}
-        <section id="culture" className="py-20 bg-gradient-to-b from-orange-50 to-white">
+        {/* Party culture */}
+        <section id={SECTION_CULTURE} className="scroll-mt-20 border-y border-neutral-200 bg-white py-20 md:py-24">
           <div className="container mx-auto px-6">
-            <motion.div
-              className="text-center mb-16"
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
-              viewport={{ once: true }}
-            >
-              <div className="flex items-center justify-center mb-6">
-                <BookOpen className="w-8 h-8 text-orange-500 mr-3" />
-                <span className="text-orange-500 font-semibold text-lg">Party Culture Blog</span>
+            <div className="mx-auto max-w-2xl text-center">
+              <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-coral-50 px-4 py-1.5">
+                <BookOpen className="h-4 w-4 text-coral-700" strokeWidth={2} />
+                <span className="text-sm font-semibold text-coral-700">Party culture</span>
               </div>
-              <h2 className="text-4xl md:text-5xl font-light text-gray-900 mb-6">
-                Inspiration for
-                <span className="block text-orange-500 font-bold">Conscious Celebration</span>
+              <h2 className="text-3xl font-semibold tracking-tight text-neutral-900 md:text-4xl">
+                Notes from people who
+                <span className="block text-coral-500">host on purpose</span>
               </h2>
-              <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-                Explore the art and science of meaningful gathering through our 
-                curated insights on celebration culture, design, and human connection.
+              <p className="mt-5 text-lg leading-relaxed text-neutral-600">
+                Short pieces on what actually makes a gathering work. No listicles.
               </p>
-            </motion.div>
+            </div>
 
-            <div className="grid md:grid-cols-3 gap-8">
-              {blogPreviews.map((post, index) => (
+            <div className="mx-auto mt-14 grid max-w-5xl gap-6 md:grid-cols-3">
+              {BLOG_PREVIEWS.map((post, index) => (
                 <motion.article
-                  key={index}
-                  className="modern-card overflow-hidden hover-lift cursor-pointer"
-                  initial={{ opacity: 0, y: 30 }}
+                  key={post.title}
+                  initial={{ opacity: 0, y: 24 }}
                   whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: index * 0.1 }}
-                  viewport={{ once: true }}
-                  whileHover={{ y: -8 }}
+                  whileHover={prefersReducedMotion ? undefined : { y: -6 }}
+                  transition={{ duration: 0.45, delay: index * 0.1 }}
+                  viewport={{ once: true, amount: 0.2 }}
+                  className="flex flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-shadow hover:shadow-[0_6px_16px_rgb(0_0_0/0.08)]"
                 >
-                  <div className="aspect-[16/9] bg-gradient-to-br from-orange-200 to-pink-200 relative overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-br from-orange-400/20 to-pink-400/20" />
-                    <div className="absolute top-4 left-4">
-                      <span className="text-xs font-semibold text-orange-600 bg-white/90 px-2 py-1 rounded-full">
-                        {post.category}
-                      </span>
-                    </div>
+                  {/*
+                    A gradient panel, not an <img>. Each preview used to carry
+                    an `image` path (/images/blog-*.jpg); none of the three
+                    files exist, and the component never read the field, so it
+                    was three lines of data describing nothing. The field is
+                    gone rather than pointed at a stock photo.
+                  */}
+                  <div
+                    className="relative aspect-[16/9] w-full"
+                    style={{ backgroundImage: 'var(--gradient-brand)' }}
+                    aria-hidden="true"
+                  >
+                    <div className="absolute inset-0 bg-neutral-950/10" />
                   </div>
-                  
-                  <div className="p-6">
-                    <h3 className="text-xl font-bold text-gray-900 mb-3 line-clamp-2">
+
+                  <div className="flex flex-1 flex-col p-6">
+                    <span className="text-xs font-semibold uppercase tracking-[0.12em] text-coral-700">
+                      {post.category}
+                    </span>
+                    <h3 className="mt-3 text-lg font-semibold leading-snug text-neutral-900">
                       {post.title}
                     </h3>
-                    <p className="text-gray-600 mb-4 line-clamp-3">
-                      {post.excerpt}
-                    </p>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-500">{post.readTime}</span>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="text-orange-500 hover:text-orange-600"
-                        onClick={navigateToBlog}
+                    <p className="mt-2 flex-1 leading-relaxed text-neutral-600">{post.excerpt}</p>
+                    <div className="mt-5 flex items-center justify-between border-t border-neutral-100 pt-4">
+                      <span className="text-sm text-neutral-500">{post.readTime}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-coral-700 hover:bg-coral-50 hover:text-coral-800"
+                        onClick={goToBlog}
                       >
-                        Read More <ArrowRight className="w-4 h-4 ml-1" />
+                        Read
+                        <ArrowRight className="ml-1 h-4 w-4" />
                       </Button>
                     </div>
                   </div>
@@ -531,69 +690,118 @@ export const LandingPageCreative = ({ onStartAuth }: LandingPageCreativeProps) =
               ))}
             </div>
 
-            <motion.div 
-              className="text-center mt-12"
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-              viewport={{ once: true }}
-            >
-              <Button 
-                className="btn-floating" 
+            <div className="mt-12 text-center">
+              <Button
+                variant="outline"
                 size="lg"
-                onClick={navigateToBlog}
+                className="h-12 border-neutral-300 px-8 text-base text-neutral-800 hover:bg-neutral-50"
+                onClick={goToBlog}
               >
-                <BookOpen className="w-5 h-5 mr-2" />
-                Explore All Articles
+                <BookOpen className="mr-2 h-5 w-5" />
+                Read every article
               </Button>
-            </motion.div>
+            </div>
           </div>
         </section>
 
-        {/* Call to Action */}
-        <section className="py-20 bg-gradient-to-r from-orange-500 to-pink-500 text-white">
-          <div className="container mx-auto px-6 text-center">
+        {/* Closing band. The brand gradient as a surface, which BRAND.md
+            permits; the buttons on it are solid, which is the part it does
+            not permit to be gradient. */}
+        <section
+          className="py-20 text-white md:py-24"
+          style={{ backgroundImage: 'var(--gradient-brand)' }}
+        >
+          <div className="container mx-auto px-6">
             <motion.div
-              className="max-w-3xl mx-auto"
-              initial={{ opacity: 0, y: 30 }}
+              className="mx-auto max-w-2xl text-center"
+              initial={{ opacity: 0, y: 24 }}
               whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
-              viewport={{ once: true }}
+              transition={{ duration: 0.5 }}
+              viewport={{ once: true, amount: 0.3 }}
             >
-              <h2 className="text-4xl md:text-5xl font-light mb-6">
-                Ready to Curate Your
-                <span className="block font-bold">Next Experience?</span>
+              <h2 className="text-3xl font-semibold tracking-tight md:text-4xl">
+                Your next one is already
+                <span className="block">further along than you think</span>
               </h2>
-              
-              <p className="text-xl mb-12 opacity-90">
-                Join thousands of conscious celebrators who have transformed 
-                their approach to gathering and connection.
+              <p className="mt-5 text-lg leading-relaxed text-white/90">
+                Set the date, paste the guest list, send the invites. The rest of the
+                plan builds itself around those three things.
               </p>
 
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button 
-                  size="lg" 
-                  variant="secondary"
-                  className="bg-white text-orange-500 hover:bg-gray-100 text-lg px-8 py-4 h-auto"
-                  onClick={() => navigateToAuth()}
-                >
-                  <Sparkles className="w-5 h-5 mr-2" />
-                  Start Creating Event
-                </Button>
-                
-                <Button 
-                  variant="outline" 
+              <div className="mt-10 flex flex-col justify-center gap-3 sm:flex-row">
+                <Button
                   size="lg"
-                  className="border-white/30 text-white hover:bg-white/10 text-lg px-8 py-4 h-auto"
-                  onClick={navigateToApp}
+                  className="h-12 bg-white px-8 text-base text-coral-700 hover:bg-white/90"
+                  onClick={() => goToAuth('create_event')}
                 >
-                  <Calendar className="w-5 h-5 mr-2" />
-                  Explore Platform
+                  <CalendarCheck className="mr-2 h-5 w-5" />
+                  Create your event
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="h-12 border-white/50 bg-transparent px-8 text-base text-white hover:bg-white/15 hover:text-white"
+                  onClick={() => goToAuth('explore_features')}
+                >
+                  Look around first
+                  <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
               </div>
             </motion.div>
           </div>
         </section>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Footer                                                            */}
+        {/*                                                                   */}
+        {/* There was no footer at all. public/privacy.html, terms.html and    */}
+        {/* support.html are built, served by nginx with their own cache       */}
+        {/* rules, and were reachable only by typing the URL.                  */}
+        {/* ---------------------------------------------------------------- */}
+        <footer className="border-t border-neutral-200 bg-white">
+          <div className="container mx-auto px-6 py-12">
+            <div className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
+              <div className="max-w-sm">
+                <div className="flex items-center gap-2.5">
+                  <BrandMark tone="onLight" size={28} />
+                  <span className="text-lg font-bold tracking-tight text-neutral-900">
+                    PartyHause
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-relaxed text-neutral-600">
+                  Plan. Party. Perfect. Everything a gathering needs, from the first
+                  invite to the last thank you.
+                </p>
+              </div>
+
+              <nav aria-label="Footer" className="flex flex-wrap gap-x-8 gap-y-3">
+                {NAV_LINKS.map((link) => (
+                  <button
+                    key={link.label}
+                    type="button"
+                    onClick={() => scrollToSection(link.id)}
+                    className="rounded text-sm font-medium text-neutral-600 transition-colors hover:text-coral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral-600 focus-visible:ring-offset-2"
+                  >
+                    {link.label}
+                  </button>
+                ))}
+                {FOOTER_LEGAL.map((item) => (
+                  <a
+                    key={item.label}
+                    href={item.href}
+                    className="rounded text-sm font-medium text-neutral-600 transition-colors hover:text-coral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral-600 focus-visible:ring-offset-2"
+                  >
+                    {item.label}
+                  </a>
+                ))}
+              </nav>
+            </div>
+
+            <p className="mt-10 border-t border-neutral-100 pt-6 text-sm text-neutral-500">
+              &copy; {new Date().getFullYear()} PartyHause. All rights reserved.
+            </p>
+          </div>
+        </footer>
       </div>
     </div>
   );

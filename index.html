@@ -15,7 +15,7 @@
          manifest in the same document, and its static source in public/
          disagreed with the generated one on scope and icons. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
-    <meta name="theme-color" content="#6366F1" />
+    <meta name="theme-color" content="#FF5233" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="PartyHause" />
@@ -25,25 +25,39 @@
     <meta name="description" content="Create unforgettable events with friends. Manage guest lists, send invitations, track RSVPs, and create lasting memories." />
     <meta name="author" content="PartyHause" />
 
+    <!--
+      og:image and twitter:image are absolute and point at a PNG.
+
+      They previously pointed at /placeholder.svg. Two things were wrong with
+      that. No major crawler renders SVG as a share image, so the card fell
+      back to a bare link on every platform; and a root-relative path is not
+      reliably resolved by crawlers that fetch the tag without the page
+      context. The card below is a real 1200x630 PNG that already shipped in
+      public/brand/icons and was never referenced.
+    -->
+    <meta property="og:site_name" content="PartyHause" />
+    <meta property="og:url" content="https://partyhause.com/" />
     <meta property="og:title" content="PartyHause - Create Unforgettable Events" />
     <meta property="og:description" content="Create unforgettable events with friends. Manage guest lists, send invitations, track RSVPs, and create lasting memories." />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="/placeholder.svg" />
+    <meta property="og:image" content="https://partyhause.com/brand/icons/social-card-1200x630.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="PartyHause. Plan. Party. Perfect." />
 
     <meta name="twitter:card" content="summary_large_image" />
     <!--
-      twitter:site is intentionally absent. It must name an X handle the brand
-      actually controls, and neither spelling is ours: @partyhause belongs to an
-      account named "Non Stop" and @partyhaus to one named "jaae". Pointing at
-      either credits a stranger on every shared link. Twitter/X renders
-      summary_large_image cards fine without this tag, so omitting it is the
-      correct state until a handle is registered. @partyhausapp,
-      @partyhauseapp, @getpartyhause and @partyhausehq were all free as of
-      2026-08-30.
+      twitter:site is intentionally absent. The tag must name an X handle the
+      brand controls, and no handle has been registered yet; pointing it at an
+      unregistered or lookalike handle credits a stranger on every shared
+      link. summary_large_image cards render without it, so omitting it is the
+      correct state until a handle exists.
     -->
     <meta name="twitter:title" content="PartyHause - Create Unforgettable Events" />
     <meta name="twitter:description" content="Create unforgettable events with friends. Manage guest lists, send invitations, track RSVPs, and create lasting memories." />
-    <meta name="twitter:image" content="/placeholder.svg" />
+    <meta name="twitter:image" content="https://partyhause.com/brand/icons/social-card-1200x630.png" />
+    <meta name="twitter:image:alt" content="PartyHause. Plan. Party. Perfect." />
   </head>
 
   <body>
