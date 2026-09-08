@@ -500,7 +500,22 @@ router.post('/reset-password', credentialLimiter, async (req, res) => {
     });
 
     const authToken = signToken(user);
-    res.json({ success: true, message: 'Password reset successfully', token: authToken });
+
+    // `user` is returned alongside the token, matching the login response.
+    //
+    // It was previously token-only, and the web client stores the token and
+    // the cached user under two separate keys, hydrating the store only when
+    // BOTH are present (src/hooks/use-auth.ts). A caller given a token and no
+    // user therefore had a valid session it could not present: the reset
+    // succeeded, the token was written, and the app rendered as signed out.
+    // Handing back both makes "the reset signs you in" true rather than
+    // merely intended.
+    res.json({
+      success: true,
+      message: 'Password reset successfully',
+      user: { id: user.id, email: user.email, name: user.name, email_verified: true },
+      token: authToken,
+    });
   } catch (err) {
     console.error('Reset password error:', err);
     res.status(500).json({ error: 'Internal server error' });
