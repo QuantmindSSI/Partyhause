@@ -128,8 +128,9 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =
         return res.status(400).json({ error: 'target_user_id required' });
       }
 
-      // Self-follow corrupts the trigger-maintained counters (the DB CHECK
-      // from the Supabase migration is comment-only under prisma db push).
+      // Self-follow corrupts the trigger-maintained counters. The DB CHECK
+      // that would have refused it is documented but not created, because
+      // `prisma db push` does not emit CHECK constraints.
       if (target_user_id === userId) {
         return res.status(400).json({ error: 'Cannot follow yourself' });
       }

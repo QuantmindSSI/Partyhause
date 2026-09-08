@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import type { AccountInfo } from '@azure/msal-browser';
 import { usePartyStore, type User } from '@/store/usePartyStore';
 import { authService } from '@/lib/auth';
-import { getStoredToken, getStoredUser, setStoredUser, clearAuth, isSupabaseConfigured } from '@/lib/supabase';
+import { getStoredToken, getStoredUser, setStoredUser, clearAuth } from '@/lib/auth-storage';
 import { isMsalConfigured, msalGetAccount, msalLogin, msalLogout } from '@/lib/msal';
 
 // Previously a local `NormalizedUser` interface duplicated the store's `User`

@@ -199,8 +199,9 @@ router.post('/', async (req: AuthenticatedRequest, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Grounded in the polls table CHECK constraints
-    // (supabase/migrations/20251107_polls_feature.sql).
+    // This list is the enforcement point for the poll_type vocabulary. The
+    // CHECK constraint documented on the polls table is not created by
+    // `prisma db push`, so nothing below the API validates it.
     const VALID_POLL_TYPES = ['single-choice', 'multiple-choice', 'ranking'];
     if (!VALID_POLL_TYPES.includes(poll_type)) {
       return res.status(400).json({

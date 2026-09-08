@@ -24,11 +24,12 @@ dev-dist
 *.sln
 *.sw?
 # Environment files. The previous list named only `.env` and `.env.local`, so
-# `.env.vercel` was committed in Oct 2025 carrying a live Supabase
-# service_role key (valid to 2035), a MailerSend token and a Resend key. All
-# three are now dead and that Supabase project is deleted, but the blob is
-# still reachable in git history. Match the whole family, and keep the
-# checked-in example explicitly allowed.
+# `.env.vercel` was committed in Oct 2025 carrying three live third-party
+# credentials, one of them valid to 2035. All three have since been revoked,
+# but the blob is still reachable in git history. That is the reason this
+# pattern matches the whole family instead of naming individual files: a new
+# `.env.<something>` must be ignored by default, not by remembering to add it.
+# The checked-in example is allowed back explicitly.
 .env
 .env.*
 !.env.example

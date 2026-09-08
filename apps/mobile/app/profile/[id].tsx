@@ -28,11 +28,9 @@ export default function ProfileScreen() {
 
   React.useEffect(() => {
     const getUserId = async () => {
-      // Reads the cached session from AsyncStorage. The previous version went
-      // through the Supabase stub, which is null on mobile because no
-      // EXPO_PUBLIC_SUPABASE_* values are configured, so this always bailed and
-      // currentUserId stayed null: the profile could never be recognised as
-      // the viewer's own.
+      // Reads the cached session from AsyncStorage. currentUserId decides
+      // whether this profile renders as the viewer's own, so a null here is
+      // not cosmetic: it hides every owner-only control on the screen.
       const user = await api.auth.getCachedUser();
       setCurrentUserId(user?.id ?? null);
     };

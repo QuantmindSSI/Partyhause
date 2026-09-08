@@ -12,8 +12,8 @@ export default function HomeScreen() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
-  // The previous implementation subscribed to Supabase's onAuthStateChange.
-  // There is no event stream now: the JWT lives in AsyncStorage and changes
+  // There is deliberately no auth-state subscription here.
+  // There is no event stream: the JWT lives in AsyncStorage and changes
   // only when this app signs in or out, both of which are local actions we
   // already observe. Checking once on mount is sufficient and removes a
   // subscription that returned a no-op unsubscribe anyway.

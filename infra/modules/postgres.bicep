@@ -1,5 +1,5 @@
 // modules/postgres.bicep — Azure Database for PostgreSQL Flexible Server
-// Replaces Supabase Postgres. PostgreSQL-compatible so existing SQL migrations
+// PostgreSQL-compatible so existing SQL
 // can be reused with minimal changes.
 //
 // NOTE: Originally specified as Cosmos DB for PostgreSQL (serverGroupV2 / Citus),

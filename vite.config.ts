@@ -17,7 +17,6 @@ export default defineConfig({
         'icons/icon-512.png',
         'icons/icon-maskable-192.png',
         'icons/icon-maskable-512.png',
-        'placeholder.svg',
         'robots.txt'
       ],
       manifest: {

@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { getStoredToken } from '@/lib/auth-storage';
 import { apiRequest } from '../api/client';
 import { Creator } from '../types';
 
@@ -21,9 +21,9 @@ export function useSuggestedUsers(limit: number = 20): UseSuggestedUsersResult {
   const [error, setError] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const token = getStoredToken();
     
-    if (!session?.access_token) {
+    if (!token) {
       setIsLoading(false);
       return;
     }

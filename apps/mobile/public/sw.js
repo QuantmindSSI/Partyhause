@@ -59,11 +59,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Skip Supabase requests - always use network
-  if (url.hostname.includes('supabase.co')) {
-    return;
-  }
-
   // API calls - network first, cache fallback
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(

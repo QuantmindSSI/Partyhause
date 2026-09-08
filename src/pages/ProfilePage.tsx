@@ -27,7 +27,7 @@ import {
   Edit,
   LogOut,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { getStoredUser } from '@/lib/auth-storage';
 import { usePartyStore } from '@/store/usePartyStore';
 import { useAuth } from '@/hooks/use-auth';
 
@@ -40,14 +40,15 @@ export default function ProfilePage() {
   // If no URL param, use the logged-in user's id from the store
   const profileId = id || storeUser?.id || undefined;
   const { profile, isLoading, refetch } = useUserProfile(profileId);
+  // Read once on mount rather than on every render. This is a synchronous
+  // localStorage read now, but it still belongs in state: the value decides
+  // `isOwnProfile`, and recomputing it inline would re-derive the owner check
+  // on every parent re-render for a value that cannot change without a
+  // navigation.
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    const getUserId = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setCurrentUserId(session?.user?.id || null);
-    };
-    getUserId();
+    setCurrentUserId(getStoredUser()?.id ?? null);
   }, []);
 
   const handleLogout = async () => {

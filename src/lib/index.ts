@@ -1,4 +1,4 @@
 export * from './events';
-export * from './supabase';
+export * from './auth-storage';
 export * from './utils';
 export * from './animations';

@@ -1,5 +1,5 @@
 // modules/storage.bicep — Azure Storage Account + Blob container
-// Replaces Supabase Storage (event-invites bucket).
+// Blob storage for the event-invites container.
 
 @description('Azure region')
 param location string

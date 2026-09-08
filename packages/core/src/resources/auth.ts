@@ -1,10 +1,9 @@
 /**
  * Authentication resource.
  *
- * This is the piece the mobile app never had. `AuthScreen.tsx` called
- * `supabase.auth.signInWithPassword`, a method that does not exist on the
- * Supabase stub, so there was no sign-in path at all. Session persistence is
- * handled here so both platforms store the token identically.
+ * Session persistence lives here rather than in each caller, so both platforms
+ * write the same two keys with the same shapes. Sign-in and sign-out are the
+ * only two operations permitted to touch stored credentials.
  */
 
 import type { Transport } from '../http/transport';

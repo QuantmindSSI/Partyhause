@@ -7,7 +7,7 @@ vi.mock('@/hooks/use-auth', async () => {
 });
 
 import { useAuth } from '@/hooks/use-auth';
-import { getStoredToken, setStoredToken, setStoredUser, clearAuth } from '@/lib/supabase';
+import { getStoredToken, setStoredToken, setStoredUser, clearAuth } from '@/lib/auth-storage';
 import { usePartyStore } from '@/store/usePartyStore';
 import { eventService } from '@/lib/events';
 

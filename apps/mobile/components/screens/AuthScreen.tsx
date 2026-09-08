@@ -105,11 +105,9 @@ export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) 
     setMessage(null);
 
     try {
-      // This previously called client.auth.signInWithPassword and
-      // client.auth.signUp on a Supabase stub that implemented neither,
-      // reached through requireSupabase(), which threw unconditionally because
-      // the credentials it demanded were removed from the project. Mobile had
-      // no working sign-in path at all.
+      // Both branches go through the shared client, which persists the
+      // token and the cached user together on success and writes nothing on
+      // failure.
       const result = isLogin
         ? await api.auth.signIn(email.trim(), password.trim())
         : await api.auth.signUp(
@@ -142,9 +140,10 @@ export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) 
         text: isLogin ? 'Welcome back!' : 'Account created. Signing you in...',
       });
 
-      // The old code relied on a Supabase auth-state listener to navigate.
-      // No listener exists now, and onAuthSuccess was never invoked, so a
-      // successful login left the user sitting on this screen. The client has
+      // Navigation is explicit. There is no auth-state event stream to
+      // subscribe to: the token changes only when this screen signs in or
+      // out, both local actions, so a listener would be a slower way to
+      // observe something already known here. The client has
       // already persisted the token to AsyncStorage by this point, so the
       // session is durable before we hand control back.
       onAuthSuccess();

@@ -10,27 +10,7 @@ vi.mock('qrcode.react', () => ({
   QRCodeCanvas: () => <div data-testid="qr-code">QR Code</div>,
 }));
 
-// Mock Supabase
-vi.mock('@/lib/supabase', () => ({
-  supabase: {
-    auth: {
-      signUp: vi.fn(),
-      signInWithPassword: vi.fn(),
-      signOut: vi.fn(),
-      getSession: vi.fn(),
-      onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
-      updateUser: vi.fn(),
-    },
-    from: vi.fn(() => ({
-      upsert: vi.fn(),
-      select: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          maybeSingle: vi.fn()
-        }))
-      }))
-    }))
-  },
-  isSupabaseConfigured: false,
+vi.mock('@/lib/auth-storage', () => ({
   getStoredToken: vi.fn(),
   setStoredToken: vi.fn(),
   getStoredUser: vi.fn(),

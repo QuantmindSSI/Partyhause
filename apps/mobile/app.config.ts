@@ -1,9 +1,10 @@
 import { ConfigContext, ExpoConfig } from "expo/config";
 
 export default ({ config }: ConfigContext): ExpoConfig => {
-  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
-  const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
-
+  // `extra` is deliberately absent. The two keys it used to carry were read
+  // from unset environment variables, so every build manifest shipped empty
+  // strings that nothing ever read back via Constants.expoConfig.extra.
+  // `eas init` writes `extra.eas.projectId` here when the EAS project exists.
   return {
     ...config,
     name: "PartyHause",
@@ -78,10 +79,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     experiments: {
       typedRoutes: true,
       reactCompiler: true
-    },
-    extra: {
-      supabaseUrl,
-      supabaseAnonKey
     }
   };
 };

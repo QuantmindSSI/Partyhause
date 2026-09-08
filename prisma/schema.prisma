@@ -1,20 +1,23 @@
 // ============================================================================
 // PartyHause Prisma Schema
 // ============================================================================
-// Generated from 25 SQL migration files in supabase/migrations/ plus
-// supabase/schema.sql. All migrations applied in chronological order.
+// This file is the single source of truth for the database schema. It is
+// applied with `prisma db push`; there is no prisma/migrations/ directory and
+// therefore no migration history.
 //
 // IMPORTANT NOTES:
-// - All `auth.users(id)` foreign keys are modeled as plain String columns
-//   (no Prisma relation). After migration to Entra External ID / Azure AD
-//   B2C, these columns will hold Entra user object IDs instead of Supabase
-//   auth UUIDs. No AuthUser Prisma model is created because `auth.users` is
-//   a Supabase-internal table that will not exist in the Azure PostgreSQL
-//   database.
-// - RLS policies and Supabase trigger functions are NOT included here.
-//   RLS is Supabase-specific and will be replaced by application-level
-//   authorization. Trigger functions (update_updated_at_column, count
-//   maintenance, etc.) will be reimplemented at the application level.
+// - User foreign keys are plain String columns rather than Prisma relations.
+//   Ids are TEXT holding `gen_random_uuid()` output, not the uuid type, so a
+//   raw SQL predicate comparing one to a uuid fails with "operator does not
+//   exist: text = uuid". See server/sql/azure-pg-functions.sql.
+// - Row-level-security policies are NOT declared here and are not created by
+//   `prisma db push`. Authorization is enforced in the API; the matrix lives
+//   in server/lib/event-access.ts, which is the only thing enforcing it.
+// - CHECK constraints written as comments below are documentation, not
+//   enforcement, for the same reason. The API validates those vocabularies.
+// - Trigger functions (update_updated_at_column, count maintenance) are not
+//   emitted by `prisma db push` either; they are applied separately from
+//   server/sql/azure-pg-functions.sql.
 // - PostgreSQL CHECK constraints are documented in comments since Prisma
 //   does not support CHECK constraints directly.
 // - Database RPC functions are documented at the bottom of this file.
@@ -65,8 +68,10 @@ enum PriceTier {
 // LEGACY TABLES
 // ============================================================================
 
-// Users table — stores auth + profile data. Replaces Supabase auth.users.
-// Password hash stored for local auth; can be null for SSO/OAuth users.
+// Users table. Holds credentials and the verification/reset token state for
+// the self-hosted JWT auth in server/routes/auth.ts. password_hash is nullable
+// so an SSO row can exist without one; login refuses those rather than
+// comparing against null.
 model User {
   id                            String   @id @default(dbgenerated("gen_random_uuid()"))
   email                         String   @unique

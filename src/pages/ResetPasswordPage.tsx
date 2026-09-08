@@ -13,7 +13,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiUrl } from '@/lib/apiBase';
-import { setStoredToken } from '@/lib/supabase';
+import { setStoredToken } from '@/lib/auth-storage';
 
 const MIN_PASSWORD = 8;
 

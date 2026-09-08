@@ -1,9 +1,10 @@
 // server/lib/event-access.ts — event-scoped authorization helper.
 //
-// Ports the Supabase RLS policies (the documented business rules) to the
-// Express layer. Ground truth:
-//   supabase/migrations/20251022000001_template_implementation_rls.sql
-//   supabase/migrations/20251107_polls_feature.sql
+// This module is the ground truth for event-scoped authorization. The rules
+// below were originally enforced by database row-level-security policies; they
+// now live here because the schema is applied with `prisma db push`, which
+// does not create policies, so a rule left in SQL would be a rule enforced
+// nowhere. Changing the matrix below changes the product's access control.
 //
 // Matrix:
 //   events   READ:   public | host | co-host | invited guest (email match)

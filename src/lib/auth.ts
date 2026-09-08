@@ -1,4 +1,4 @@
-import { getStoredToken, setStoredToken, getStoredUser, setStoredUser, clearAuth } from './supabase';
+import { getStoredToken, setStoredToken, getStoredUser, setStoredUser, clearAuth } from './auth-storage';
 import { apiUrl } from './apiBase';
 
 export interface AuthResponse {

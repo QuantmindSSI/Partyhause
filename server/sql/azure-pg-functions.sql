@@ -5,16 +5,16 @@
 --
 -- WHY THIS FILE EXISTS
 --   `prisma db push` materializes tables with TEXT id columns and does NOT
---   create functions or triggers. The originals in supabase/migrations/ are
---   typed for the old Supabase schema (uuid id columns): applied verbatim to
---   a prisma-pushed database, `convert_guest_to_crew`, `is_following`,
+--   create functions or triggers. The originals were typed for uuid id
+--   columns: applied verbatim to a prisma-pushed database (TEXT ids),
+--   `convert_guest_to_crew`, `is_following`,
 --   `is_mutual_crew` and `get_mutual_crew_count` fail with
 --   "operator does not exist: text = uuid" (SQL-language bodies may even fail
 --   at CREATE time). This file keeps the UUID parameter signatures (server
 --   call sites cast arguments with ::uuid) but compares via ::text so the
 --   bodies bind against TEXT columns.
 --
--- FIXES INCLUDED (also applied to supabase/migrations/20251103_guest_crew_features.sql):
+-- FIXES INCLUDED (defects carried over from the original definitions):
 --   * convert_guest_to_crew: v_event_host was declared but never assigned —
 --     the duplicate-crew check never matched and the INSERT wrote NULL
 --     following_id (the endpoint 500'd on every call).
@@ -33,7 +33,7 @@
 -- ============================================
 
 -- CREATE OR REPLACE cannot rename function parameters ("cannot change name
--- of input parameter"), and databases provisioned from the original Supabase
+-- of input parameter"), and databases provisioned from the original
 -- migrations carry these functions with p_-prefixed parameter names. Drop by
 -- exact signature first (idempotent; no dependent objects — trigger
 -- functions are separate and RPC callers bind at call time).

@@ -2,8 +2,8 @@
  * Adapters between the API's wire shapes and the mobile app's local types.
  *
  * These two models do not agree, and pretending otherwise with a type
- * assertion would hide live defects. `types/event.ts` was written against the
- * old Supabase schema and requires `title`, `template_type` and `status`. The
+ * assertion would hide live defects. `types/event.ts` predates the current
+ * API and requires `title`, `template_type` and `status`. The
  * Express API returns `name` and neither of the other two, so a UI reading
  * `event.title` renders undefined today.
  *

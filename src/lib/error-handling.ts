@@ -75,9 +75,10 @@ export class ErrorHandler {
       return new ValidationError('Validation failed', fieldErrors);
     }
 
-    // Handle Supabase errors
+    // Anything carrying a `code` is treated as a database error. Reached via
+    // PostgreSQL SQLSTATE codes surfaced through Prisma.
     if (error && typeof error === 'object' && 'code' in error) {
-      return this.handleSupabaseError(error as any);
+      return this.handlePostgresError(error as any);
     }
 
     // Handle network errors
@@ -93,21 +94,35 @@ export class ErrorHandler {
     return new AppError('An unexpected error occurred', 'UNKNOWN_ERROR');
   }
 
-  private static handleSupabaseError(error: any): AppError {
+  /**
+   * Maps a PostgreSQL SQLSTATE code to a typed application error.
+   *
+   * This used to also match `PGRST116` and `PGRST301`. Those are PostgREST
+   * codes, emitted by an HTTP layer this system no longer has, never by
+   * PostgreSQL itself. They are dropped rather than kept "just in case",
+   * because an unreachable case in a dispatch table is a claim about the
+   * system that is not true.
+   *
+   * The three that remain are raw SQLSTATE values and are still reachable:
+   * Prisma surfaces them on constraint and permission failures.
+   *
+   * @param error An object carrying a `code`, and optionally a `message`.
+   * @returns The most specific `AppError` subclass for that code, or a generic
+   *   `DATABASE_ERROR` when the code is unrecognised. Never throws.
+   */
+  private static handlePostgresError(error: { code?: unknown; message?: unknown }): AppError {
     const code = error.code;
-    const message = error.message || 'Database operation failed';
+    const message = typeof error.message === 'string' && error.message
+      ? error.message
+      : 'Database operation failed';
 
     switch (code) {
-      case 'PGRST116':
-        return new NotFoundError('Record');
-      case '23505':
+      case '23505': // unique_violation
         return new ValidationError('A record with this information already exists');
-      case '23503':
+      case '23503': // foreign_key_violation
         return new ValidationError('Referenced record does not exist');
-      case '42501':
+      case '42501': // insufficient_privilege
         return new AuthorizationError('Permission denied');
-      case 'PGRST301':
-        return new AuthenticationError('Authentication required');
       default:
         return new AppError(message, 'DATABASE_ERROR');
     }

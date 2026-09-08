@@ -1,10 +1,13 @@
 /**
  * @partyhause/core
  *
- * The shared API client consumed by both the Vite web app and the Expo mobile
- * app. Replaces the Supabase stub this package previously exported, which was
- * dead on both platforms: it had no `from()` method (13 mobile screens called
- * it) and read `localStorage`, which does not exist in React Native.
+ * The shared API client. It is written against a storage adapter rather than
+ * against `localStorage` directly, because React Native has no `localStorage`
+ * and any client that assumes one is web-only by construction.
+ *
+ * Note that the web app does not consume this package today; it runs a second
+ * client at src/lib/api-client.ts. Treat any API contract change as a
+ * two-site change until they are unified.
  */
 
 export { createApiClient } from './client';

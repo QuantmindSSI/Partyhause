@@ -10,7 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { supabase } from '@/lib/supabase';
+import { getStoredToken } from '@/lib/auth-storage';
 import { apiUrl } from '@/lib/apiBase';
 
 interface Event {
@@ -56,14 +56,12 @@ export function JoinEventPage() {
     }
   }, [token, isAuthenticated]);
 
-  const checkAuth = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      setIsAuthenticated(!!session);
-    } catch (error) {
-      console.error('Auth check failed:', error);
-      setIsAuthenticated(false);
-    }
+  const checkAuth = () => {
+    // A stored token means "has a session to present", not "is signed in".
+    // The distinction matters here: an expired token still lets the join
+    // attempt through, and the server decides. Guessing locally would refuse
+    // a valid session whose clock skew we cannot see.
+    setIsAuthenticated(getStoredToken() !== null);
   };
 
   const joinEvent = async (addToCrew: boolean = false) => {
@@ -74,16 +72,14 @@ export function JoinEventPage() {
     setError(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = getStoredToken();
 
       // Express endpoint (the old /api/join-event was a deleted Vercel fn).
       const response = await fetch(apiUrl('/api/invites/join'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(session?.access_token && {
-            'Authorization': `Bearer ${session.access_token}`,
-          }),
+          ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}),
         },
         body: JSON.stringify({
           token,

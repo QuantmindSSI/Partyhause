@@ -1,6 +1,6 @@
 // src/hooks/use-realtime.ts
 //
-// Realtime subscriptions via Azure Web PubSub (replaces Supabase Realtime).
+// Realtime subscriptions via Azure Web PubSub.
 //
 // On mount the hook calls GET /api/realtime/negotiate to obtain a Web PubSub
 // connection URL, then connects with a NATIVE WebSocket using the

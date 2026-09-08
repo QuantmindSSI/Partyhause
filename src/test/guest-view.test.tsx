@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { GuestView } from '@/components/GuestView';
-import { supabase } from '@/lib/supabase';
 import { usePartyStore } from '@/store/usePartyStore';
 import { eventService } from '@/lib/events';
 
@@ -9,10 +8,12 @@ vi.mock('qrcode.react', () => ({
   QRCodeCanvas: () => <div data-testid="qr-code">QR Code</div>,
 }));
 
-vi.mock('@/lib/supabase', () => ({
-  supabase: {
-    from: vi.fn(),
-  },
+vi.mock('@/lib/auth-storage', () => ({
+  getStoredToken: vi.fn(),
+  setStoredToken: vi.fn(),
+  getStoredUser: vi.fn(),
+  setStoredUser: vi.fn(),
+  clearAuth: vi.fn(),
 }));
 
 vi.mock('@/lib/events', () => ({
@@ -35,21 +36,7 @@ const resetStore = () => {
   });
 };
 
-const createSelectChain = (resolver: () => Promise<any>) => ({
-  select: () => ({
-    eq: () => ({
-      maybeSingle: resolver,
-    }),
-  }),
-});
-
-const flushPromises = async () => {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-};
-
 describe('GuestView Component', () => {
-  const supabaseFrom = supabase.from as any;
-
   beforeEach(() => {
     vi.clearAllMocks();
     resetStore();
@@ -61,8 +48,8 @@ describe('GuestView Component', () => {
   });
 
   it('should show loading when fetching guest data', () => {
-    supabaseFrom.mockImplementation(() => createSelectChain(() => new Promise(() => {})));
-
+    // No guest in the store and no resolved fetch: the component must show
+    // its spinner rather than an empty invite card.
     render(<GuestView guestId="guest-123" />);
 
     expect(document.querySelector('.animate-spin')).toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { getStoredToken, clearAuth } from './supabase';
+import { getStoredToken, clearAuth } from './auth-storage';
 import { apiUrl } from './apiBase';
 import { recordApiCall } from '@/mcp/monitor';
 

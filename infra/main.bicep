@@ -1,12 +1,12 @@
-// main.bicep — PartyHause infrastructure (Azure-native, post-Supabase migration)
+// main.bicep - PartyHause infrastructure (Azure-native)
 // Subscription-scope orchestrator: creates the resource group, then delegates
 // to resources.bicep (resource-group scope) which provisions:
 //   - Log Analytics Workspace
 //   - Key Vault (secrets)
 //   - Azure Container Registry
-//   - Cosmos DB for PostgreSQL cluster (replaces Supabase Postgres)
-//   - Storage Account + Blob containers (replaces Supabase Storage)
-//   - Azure Web PubSub (replaces Supabase Realtime)
+//   - Azure Database for PostgreSQL Flexible Server
+//   - Storage Account + Blob containers
+//   - Azure Web PubSub (realtime fan-out)
 //   - Container Apps Environment
 //   - Web Container App (PWA, nginx)
 //   - API Container App (Express) with managed identity + AcrPull

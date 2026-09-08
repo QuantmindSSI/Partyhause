@@ -33,8 +33,8 @@ export const DashboardScreen = ({ userId, userEmail, onSignOut }: DashboardScree
       // clauses are redundant here.
       //
       // Behaviour change worth knowing: the server scopes with
-      // OR[host_id, co-host, invited guest], where the Supabase query matched
-      // host_id alone. The dashboard now also shows events the user was
+      // OR[host_id, co-host, invited guest], where the previous direct query
+      // matched host_id alone. The dashboard now also shows events the user was
       // invited to, which matches the web app.
       const { data, error } = await api.events.list();
 

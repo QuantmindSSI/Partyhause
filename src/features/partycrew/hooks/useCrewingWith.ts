@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { getStoredToken, getStoredUser } from '@/lib/auth-storage';
 import { apiRequest } from '../api/client';
 import { Creator } from '../types';
 
@@ -30,14 +30,22 @@ export function useCrewingWith(
 
   const fetchCreators = useCallback(async (reset: boolean = false) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session?.access_token) {
+      const token = getStoredToken();
+
+      if (!token) {
         setIsLoading(false);
         return;
       }
 
-      const targetUserId = userId || session.user.id;
+      // Falling back to the stored user is what makes `useCrewingWith()` with
+      // no argument mean "the signed-in user". The token alone cannot answer
+      // that without decoding its `sub` claim, which the client has no reason
+      // to do when the id is already cached alongside it.
+      const targetUserId = userId || getStoredUser()?.id;
+      if (!targetUserId) {
+        setIsLoading(false);
+        return;
+      }
       const currentOffset = reset ? 0 : offset;
 
       const data = await apiRequest<{

@@ -1,20 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { usePartyStore, type Event } from '@/store/usePartyStore';
-import { clearAuth } from '@/lib/supabase';
+import { clearAuth } from '@/lib/auth-storage';
 
-// Mock Supabase
-vi.mock('@/lib/supabase', () => ({
-  supabase: {
-    auth: {
-      signOut: vi.fn(),
-      getSession: vi.fn(),
-      onAuthStateChange: vi.fn(() => ({
-        data: { subscription: { unsubscribe: vi.fn() } }
-      })),
-      updateUser: vi.fn(),
-    }
-  },
-  isSupabaseConfigured: false,
+vi.mock('@/lib/auth-storage', () => ({
   getStoredToken: vi.fn(),
   setStoredToken: vi.fn(),
   getStoredUser: vi.fn(),
@@ -101,7 +89,8 @@ describe('Logout Functionality Tests', () => {
     expect(state.currentEvent).toBeNull();
     expect(state.guests).toEqual([]);
 
-    // Verify stored auth credentials were cleared (post-Supabase-migration behavior)
+    // The store reset is not enough on its own: localStorage must be cleared
+    // too, or a reload rehydrates the session that was just discarded.
     expect(clearAuth).toHaveBeenCalled();
   });
 

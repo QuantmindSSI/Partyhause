@@ -6,18 +6,7 @@ import { validateEvent, validateGuest, eventSchema, guestSchema } from '../lib/v
 import { sanitizeText, sanitizeEmail, sanitizeUrl, rateLimiter } from '../lib/sanitization';
 
 // Mock dependencies
-vi.mock('@/lib/supabase', () => ({
-  supabase: {
-    auth: {
-      signInWithPassword: vi.fn(),
-      signUp: vi.fn(),
-      signOut: vi.fn(),
-      getSession: vi.fn(),
-      onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
-      updateUser: vi.fn(),
-    },
-  },
-  isSupabaseConfigured: false,
+vi.mock('@/lib/auth-storage', () => ({
   getStoredToken: vi.fn(),
   setStoredToken: vi.fn(),
   getStoredUser: vi.fn(),
@@ -79,16 +68,34 @@ describe('Error Handling', () => {
       });
     });
 
-    it('should handle Supabase errors', () => {
-      const supabaseError = {
-        code: 'PGRST116',
-        message: 'Not found',
-      };
+    // These are PostgreSQL SQLSTATE values, reached through Prisma. The suite
+    // previously asserted `PGRST116 -> NOT_FOUND`, a PostgREST code that no
+    // layer in this system emits; it passed while testing an unreachable path.
+    it('maps a unique-violation SQLSTATE to a validation error', () => {
+      const result = ErrorHandler.handle({ code: '23505', message: 'duplicate key value' });
 
-      const result = ErrorHandler.handle(supabaseError);
+      expect(result).toBeInstanceOf(ValidationError);
+      expect(result.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('maps a foreign-key violation to a validation error', () => {
+      const result = ErrorHandler.handle({ code: '23503', message: 'violates foreign key' });
+
+      expect(result).toBeInstanceOf(ValidationError);
+    });
+
+    it('maps insufficient privilege to an authorization error', () => {
+      const result = ErrorHandler.handle({ code: '42501', message: 'permission denied' });
+
+      expect(result.code).toBe('AUTHORIZATION_ERROR');
+    });
+
+    it('falls back to a generic database error for an unrecognised code', () => {
+      const result = ErrorHandler.handle({ code: '08006', message: 'connection failure' });
 
       expect(result).toBeInstanceOf(AppError);
-      expect(result.code).toBe('NOT_FOUND');
+      expect(result.code).toBe('DATABASE_ERROR');
+      expect(result.message).toBe('connection failure');
     });
 
     it('should handle network errors', () => {

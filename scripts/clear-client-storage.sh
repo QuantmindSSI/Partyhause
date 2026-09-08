@@ -182,20 +182,27 @@ clear_dev_environment() {
 clear_dev_environment
 
 # ============================================================================
-# SECTION 4: Supabase Local Storage Keys
+# SECTION 4: Session Storage Keys
 # ============================================================================
+#
+# These three names are the real ones, taken from src/lib/auth-storage.ts and
+# src/store/usePartyStore.ts. This section previously listed key names from a
+# vendor SDK the product has never shipped, so an operator who followed it
+# cleared nothing and concluded the session was un-clearable.
 
 echo ""
-echo -e "${YELLOW}🔑 Section 4: Supabase Storage Keys${NC}"
+echo -e "${YELLOW}🔑 Section 4: Session Storage Keys${NC}"
 echo ""
 
-echo "Common Supabase localStorage keys to clear:"
-echo "  - sb-<project-ref>-auth-token"
-echo "  - supabase.auth.token"
-echo "  - supabase.auth.session"
+echo "localStorage keys that hold a session:"
+echo "  - partyhause_auth_token   (the HS256 JWT)"
+echo "  - partyhause_auth_user    (cached id/email/name)"
+echo "  - party-store             (persisted zustand state, incl. the user)"
 echo ""
-echo "These are automatically cleared when you clear localStorage"
-echo "in your browser's DevTools (Section 1)"
+echo "All three must go together. Clearing only the token leaves party-store"
+echo "rehydrating as signed in while every API call answers 401."
+echo ""
+echo "These are cleared by clearing localStorage in DevTools (Section 1)."
 
 # ============================================================================
 # SECTION 5: Verification
@@ -245,7 +252,7 @@ echo -e "${GREEN}║     Client Storage Cleanup Complete!                  ║${
 echo -e "${GREEN}╚════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${BLUE}Next Steps:${NC}"
-echo "  1. Run the SQL cleanup script in Supabase Dashboard"
+echo "  1. Run the SQL cleanup script against the Postgres database"
 echo "  2. Clear browser storage (DevTools → Application)"
 echo "  3. Reinstall Expo Go app on mobile devices"
 echo "  4. Test fresh login flow"

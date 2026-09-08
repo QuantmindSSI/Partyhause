@@ -48,45 +48,7 @@ vi.mock('@/lib/events', () => ({
   },
 }));
 
-// Mock Supabase
-vi.mock('@/lib/supabase', () => ({
-  supabase: {
-    auth: {
-      signInWithPassword: vi.fn(),
-      signUp: vi.fn(),
-      signOut: vi.fn(() => Promise.resolve({ error: null })),
-      getSession: vi.fn(),
-      onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
-      updateUser: vi.fn(),
-    },
-    from: vi.fn(() => ({
-      select: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          single: vi.fn(),
-          order: vi.fn(),
-        })),
-        insert: vi.fn(() => ({
-          select: vi.fn(() => ({
-            single: vi.fn(),
-          })),
-        })),
-        update: vi.fn(() => ({
-          eq: vi.fn(() => ({
-            select: vi.fn(() => ({
-              single: vi.fn(),
-            })),
-          })),
-        })),
-        delete: vi.fn(() => ({
-          eq: vi.fn(),
-        })),
-      })),
-      upsert: vi.fn(() => ({
-        select: vi.fn(),
-      })),
-    })),
-  },
-  isSupabaseConfigured: false,
+vi.mock('@/lib/auth-storage', () => ({
   getStoredToken: vi.fn(),
   setStoredToken: vi.fn(),
   getStoredUser: vi.fn(),

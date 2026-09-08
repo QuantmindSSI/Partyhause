@@ -20,7 +20,5 @@ packages/core/node_modules
 packages/core/dist
 bun.lockb
 netlify
-supabase
 scripts
 LICENSE
-schema.sql

@@ -1,8 +1,8 @@
 // Express route: /api/storage
 // Image upload/delete/SAS endpoints backed by Azure Blob Storage.
 //
-// Replaces the old Supabase Storage (`supabase.storage.from('event-invites')`)
-// flow. The frontend now POSTs multipart/form-data to /api/storage/upload and
+// Uploads are server-side by design: the browser holds no storage
+// credential. The frontend POSTs multipart/form-data to /api/storage/upload and
 // the API uploads the file server-side to the `event-invites` container, which
 // has anonymous (public) read access so invite images can be embedded in
 // emails and rendered in the browser without a SAS token.
