@@ -33,11 +33,28 @@ engineering reference.
 
 ### Two corrections to long-standing claims
 
-**Supabase is gone.** `@supabase/supabase-js` is absent from every `package.json`, absent from both
-lockfiles, and not installed in `node_modules`. Documentation describing Supabase as live or
-"transitional" is wrong. `src/lib/supabase.ts` survives as a hand-written localStorage token store
-that kept the module name; it contains no SDK and its database methods throw. Renaming it is
-outstanding cleanup, not a migration.
+**Supabase is gone, including the name.** The SDK was never installed: it is absent from every
+`package.json`, from both lockfiles, and from `node_modules`. The last references were removed on
+2026-09-08. `src/lib/supabase.ts` is now `src/lib/auth-storage.ts` and exports only the five
+localStorage helpers; the object it also exported, which mimicked a database client so that
+pre-migration call sites kept compiling, is deleted rather than renamed. That stub was a liability:
+`from().select().order()` resolved to `{ data: [] }`, an empty result indistinguishable from a real
+empty table, so a caller that reached for the database got silence instead of an error. Seven
+`auth.getSession()` call sites now read `getStoredToken()` directly.
+
+Also removed in that change: the `supabase/` directory (26 migrations that could never run on Azure,
+since they declare `supabase_vault` and `auth.users`), the root `schema.sql`, `src/lib/env-server.ts`,
+a false subprocessor list in `public/privacy.html`, an unreachable branch in `ErrorBoundary` that
+shipped an outbound vendor link in every production bundle, and thirteen scripts importing an
+uninstalled package. A case-insensitive search for the vendor name now returns nothing outside
+`docs/`, where the historical set is deliberately unedited.
+
+**The two localStorage keys are a compatibility surface.** `partyhause_auth_token` and
+`partyhause_auth_user` are written by `src/lib/auth-storage.ts` and, independently, by
+`packages/core/src/http/adapters.ts:73-74` for mobile. They survived the rename on purpose. Changing
+either name signs out every existing user, and a session is the conjunction of both:
+`src/hooks/use-auth.ts` hydrates only when the token and the cached user are both present, so any
+path that writes one without the other produces a valid session the app renders as signed out.
 
 **Realtime is a native `WebSocket`, not socket.io.** `src/hooks/use-realtime.ts:163` constructs
 `new WebSocket(url, 'json.webpubsub.azure.v1')`. `socket.io-client` is not a dependency.
@@ -67,7 +84,7 @@ npm workspaces are `apps/*` and `packages/*` (`package.json:10-13`).
 | `apps/mobile/` | Expo Router app. Own lockfile, `app.config.ts`, `eas.json`, `ios/` |
 | `prisma/` | `schema.prisma` (1231 lines, 39 models) and `seed.ts` |
 | `infra/` | Bicep. `main.bicep` (subscription scope), `resources.bicep`, `modules/` (5) |
-| `scripts/` | 28 operational scripts, mixed languages. Four are wired to npm scripts; the rest are run by hand, including `e2e-partyboard.mjs` |
+| `scripts/` | 18 operational scripts, down from 29. Three are wired to npm scripts; the rest are run by hand, including the three `e2e-*.mjs` database suites. Twelve were deleted on 2026-09-08 for importing a package that is not installed or targeting a database that no longer exists, and one was added |
 | `docs/` | 88 markdown files, all current, historical or non-technical. 97 stale ones were deleted on 2026-09-04. Index at [`docs/README.md`](./docs/README.md) |
 
 **`packages/core` is consumed by mobile only.** `rg "@partyhause/core" src/` returns nothing. The
@@ -451,32 +468,52 @@ the cache expires.
 
 ## Testing
 
-19 files in `src/test/`, 252 passing and 5 skipped. Vitest with jsdom.
+22 files in `src/test/`, 343 passing and 5 skipped. Vitest with jsdom.
 
 Notable suites: `bundle-chunk-graph.test.ts` guards the emitted Rollup chunk graph against import
 cycles, which once shipped a white screen that returned HTTP 200, and asserts PWA manifest icons
 resolve to real correctly-sized PNGs. `email-verification-gate.test.ts` covers the three auth
 gates. `core-api-client.test.ts` covers transport retry bounds and 401 handling.
 `partyboard-contract.test.ts` covers the board's validation and per-viewer vote projection.
+`auth-session-roundtrip.test.tsx` pins the two-key session invariant at every site that mints one.
+`landing-page.test.tsx` asserts that every call to action on the landing page reaches a destination,
+which is the class of defect that page shipped with and nobody caught, because it had no coverage
+at all until 2026-09-08.
 
 The skipped 5 are live email E2E tests requiring a running API.
 
 ### Tests that need a database
 
 Vitest runs under jsdom with no Postgres, so route-level authorization and persistence cannot be
-asserted there. `scripts/e2e-partyboard.mjs` boots the real Express app against a real database and
-drives all seven `/api/partyboard` routes plus their authorization, 56 checks. **It truncates
-users, events, guests and the partyboard tables**, so point it at a scratch database only.
+asserted there. Three scripts boot the real Express app against a real database. Each sets
+`NODE_ENV=test` rather than `production`, which is what makes the server print auth links to its
+log; that is how they obtain real tokens with no mail provider configured, and it is suppressed in
+production on purpose.
+
+| Script | Covers | Checks | Deletes |
+|---|---|---|---|
+| `e2e-auth-journey.mjs` | signup, storage, the verification gate, verification, login, `/api/auth/me`, `/api/users/:id`, profile update, a second viewer, logout | 109 | two `journey.*@partyhause.local` accounts |
+| `e2e-account-recovery.mjs` | the user who never confirms and forgets their password | 22 | one `never-confirmed@recovery.local` account |
+| `e2e-partyboard.mjs` | all seven `/api/partyboard` routes plus authorization | 56 | **truncates** users, events, guests, partyboard tables |
+
+Only `e2e-partyboard.mjs` truncates. The other two delete their own named accounts and nothing
+else. Point all three at a scratch database regardless.
 
 ```bash
 brew services start postgresql@18
 createdb partyhause_dev
 DATABASE_URL="postgresql://$USER@localhost:5432/partyhause_dev?schema=public" npx prisma db push
+npx tsx scripts/e2e-auth-journey.mjs
+npx tsx scripts/e2e-account-recovery.mjs
 npx tsx scripts/e2e-partyboard.mjs
 ```
 
 The connection string needs an explicit username. Omitting it makes Prisma answer `P1010: User was
 denied access`, which reads like a permissions problem and is not one.
+
+`e2e-auth-journey.mjs` deletes `AUTH_BYPASS` from the environment before importing the server. The
+bypass is enabled by `dev-api.ts` and would admit unauthenticated requests as the synthetic dev
+user, making every authorization check in the script pass for the wrong reason.
 
 ---
 
@@ -489,36 +526,72 @@ Ranked by consequence.
    each with file:line evidence. Several are now fixed and the file has not been re-run. Verify any
    entry against the code before acting on it; that is the standing rule for this whole repository,
    and this document is no longer the exception it used to be.
-2. **8,637 lines of mobile TypeScript are unreachable**, 31% of the app, including the entire
-   `components/partyhub/` poll and idea subsystem (2,481 lines across 7 files) and a checked-in
-   `PollSticky.backup.tsx`. This supersedes the old "about 2,900 lines" figure, which was measured
-   before `PartyCrewFeedScreen` became reachable and was low regardless.
-3. **Three mobile screens push to routes that do not exist**: `/events/:id/games`
-   (`events/[id]/index.tsx:714`, moved to `_deferred/`), `planning` (declared in
-   `events/[id]/_layout.tsx:46`, no directory), and `/settings/profile` (`profile/[id].tsx:75`, no
-   `app/settings/`).
-4. **Six empty `onPress` handlers ship on tappable UI** in `events/[id]/index.tsx` and
-   `events/[id]/activities.tsx`.
-5. **`CorporateForm` is unselectable.** `TemplateForm.tsx:64` handles `case 'corporate'`, but the
-   wizard's `TEMPLATES` array in `events/create/index.tsx` has no `corporate` entry.
-6. **Two HTTP clients**, described under Repository layout.
-7. **Web routing is split** between React Router, which owns 8 paths, and a `currentPage` string
+2. **About 3,600 lines of mobile TypeScript are unreachable**, 15% of the app's 23,491 lines, across
+   19 files. The largest are `components/screens/GuestManagementScreen.tsx` (722),
+   `components/EventPlanningBoard.tsx` (672), `components/screens/EventCreationScreen.tsx` (438),
+   `constants/design-system.ts` (429) and `components/screens/EventDetailsScreen.tsx` (405), each
+   superseded by a route under `app/`. The figure was 8,637 until 2026-09-08, when the
+   `components/partyhub/` poll and idea subsystem, its `PollSticky.backup.tsx`, the `_deferred/`
+   games screens and an unreferenced `BirthdayForm.tsx` were deleted. Measured by walking imports
+   from every file under `app/`, since expo-router treats each as an entry point. Platform-variant
+   files (`*.ios.tsx`, `*.web.ts`) and build configs are excluded, because that walk cannot see the
+   loader that reaches them.
+3. **One mobile screen still pushes to a route that does not exist**: `/settings/profile`
+   (`profile/[id].tsx:73`), and there is no `app/settings/`. The other two went on 2026-09-08:
+   `/events/:id/games` and `planning` were removed from `events/[id]/_layout.tsx` along with the
+   card and the screens behind them.
+4. **Three empty `onPress` handlers ship on tappable UI**: `events/[id]/activities.tsx:226` and
+   `:259`, and the Edit event control at `events/[id]/index.tsx:568`. Three others were closed on
+   2026-09-08, Cancel Event by implementing it and the Media and Vendors cards by deletion, since
+   the server mounts no router for either.
+5. **Two HTTP clients**, described under Repository layout.
+6. **Web routing is split** between React Router, which owns 8 paths, and a `currentPage` string
    state machine behind `path="*"`. The state type ends in `| string`, so the literal set is not
    enforced. Four handled keys have no setter: `logout`, `guest-view-*`, `role-selection` and
    `games`. Six vendor keys were removed on 2026-09-07 when the buttons that set them were deleted.
-8. **Five routers have no web consumer**: `timeline`, `event-templates`, `connections`,
+7. **Five routers have no web consumer**: `timeline`, `event-templates`, `connections`,
    `cost-split` and, on mobile only, `ai`. `cost-split` has full CRUD and no UI on either client.
    `timeline` is bypassed deliberately and `src/lib/timeline.ts:17` explains why.
-9. **503 lint warnings**, mostly `no-explicit-any`.
-10. **`build.target` is `esnext`**, so nothing is downlevelled. `Object.hasOwn` (Safari 15.4+) is
-    already present in two eagerly loaded chunks.
-11. **`Dockerfile:26` mutates `tsconfig.json`** during the web build, so the image build differs
+8. **458 lint warnings**, mostly `no-explicit-any`. Zero errors.
+9. **`build.target` is `esnext`**, so nothing is downlevelled. `Object.hasOwn` (Safari 15.4+) is
+   already present in two eagerly loaded chunks.
+10. **`Dockerfile:26` mutates `tsconfig.json`** during the web build, so the image build differs
     from a local `npm run build:web`.
-12. **`src/lib/env-server.ts` is orphaned**: Node `process.env` inside the client tree, no importers.
-13. **`app.set('trust proxy', 1)` is called twice** in `server/index.ts`.
-14. **`apps/mobile/app.json` and `app.config.ts` conflict.** `app.config.ts` spreads `...config`
+11. **`app.set('trust proxy', 1)` is called twice** in `server/index.ts`.
+12. **`apps/mobile/app.json` and `app.config.ts` conflict.** `app.config.ts` spreads `...config`
     then overrides name, slug and scheme, and replaces the plugin list wholesale, which silently
     drops `react-native-reanimated/plugin` declared in `app.json`.
+
+### Fixed on 2026-09-08
+
+`POST /api/auth/reset-password` now returns `user` alongside `token`, matching the login response.
+It was token-only, and the web client stores the token and the cached user under two separate keys
+and hydrates only when both are present, so a successful password reset wrote a valid session the
+app rendered as signed out. The comment above the call read "sign the user in" and it did not.
+`src/pages/ResetPasswordPage.tsx` now writes both halves.
+
+The landing page was rebuilt against `docs/BRAND.md`. Two of its calls to action were inert: they
+called `setCurrentPage('dashboard')`, which for a signed-out visitor matches no branch in
+`App.tsx`'s mode effect, so the page re-rendered itself. Below the `md` breakpoint the navigation
+was `hidden md:flex` with no alternative, so every destination in the header was unreachable on a
+phone. There was no footer, so `privacy.html`, `terms.html` and `support.html` could only be
+reached by typing the URL. `.hover-lift` was applied in three places and is defined nowhere in the
+repository. Every call to action produced the `create_event` intent, so two thirds of `AuthScreen`'s
+intent-specific copy was unreachable from the only page that can reach it.
+
+On mobile, Cancel Event now writes. Its confirmation dialog warned the action "cannot be undone"
+and then ran an empty `onPress`. It writes `archived` rather than `cancelled`, because the CHECK
+constraint on `events.status` does not accept the latter, and it is guarded against a double tap.
+`CorporateForm` became reachable: `TemplateForm.tsx` had routed `case 'corporate'` to a complete
+form since the forms were written, but the wizard's `TEMPLATES` array carried no `corporate` entry,
+and that array drives both the rendered choices and the lookup.
+
+The Media and Vendors cards were deleted rather than wired, and the Games card with them. The first
+two had empty handlers and no route to call, since the server mounts no `/api/media` or
+`/api/vendors`; the third pushed to `/events/:id/games`, whose screens sat in `_deferred/`. A card
+that reports a count and does nothing when tapped reads as a loading bug, not an unbuilt feature.
+`app.config.ts` no longer publishes an `extra` block holding two empty strings read from unset
+environment variables.
 
 ### Fixed on 2026-09-07, listed so nobody re-reports them
 

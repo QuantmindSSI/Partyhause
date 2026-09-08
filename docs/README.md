@@ -71,8 +71,9 @@ Read the date in the header before the body. If one contradicts `AGENTS.md`, `AG
 `docs/testing/mailltest.md` (empty, 0 bytes, safe to delete)
 
 Some of these carry a git date of 2026-08-30 that means nothing. That commit was a repo-wide
-`PartyHaus` to `PartyHause` spelling replacement which rewrote text without reading it. Trust the
-date written inside the document, not the one git reports.
+find-and-replace correcting the spelling of the product name, applied to 103 occurrences across 53
+files without reading any of them. Trust the date written inside the document, not the one git
+reports.
 
 ---
 
