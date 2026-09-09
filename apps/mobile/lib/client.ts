@@ -8,14 +8,33 @@
  * evaluated to null for the same reason, so `supabase.auth.getSession()` threw
  * a TypeError. Every screen touching auth or data crashed on mount.
  *
- * One instance, created once at module load. The token lives in AsyncStorage
- * and is attached by the transport, so no call site handles Authorization
- * headers by hand any more.
+ * One instance, created once at module load. Native credentials live in
+ * SecureStore and are attached by the transport, so no call site handles
+ * Authorization headers by hand any more.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createApiClient, createAsyncStorage, type ApiClient } from '@partyhause/core';
+import {
+  createMvpApiClient,
+  createSecureStoreStorage,
+  type MvpApiClient,
+} from '@partyhause/core/mvp';
+import * as SecureStore from 'expo-secure-store';
 import { getApiBaseUrl } from './api';
+
+type SessionRejectedHandler = (rejectedToken?: string) => void | Promise<void>;
+
+let sessionRejectedHandler: SessionRejectedHandler | null = null;
+
+const authStorage = createSecureStoreStorage(SecureStore, { legacyStorage: AsyncStorage });
+
+/** Register the mounted session provider as the sole runtime 401 observer. */
+export function subscribeToSessionRejection(handler: SessionRejectedHandler): () => void {
+  sessionRejectedHandler = handler;
+  return () => {
+    if (sessionRejectedHandler === handler) sessionRejectedHandler = null;
+  };
+}
 
 /**
  * Called when the API rejects a request with 401.
@@ -23,30 +42,21 @@ import { getApiBaseUrl } from './api';
  * The transport has already cleared the stored token and user by this point.
  * Navigation is deliberately not performed here: expo-router's imperative API
  * is not safe to call before the root layout mounts, and a failed redirect
- * must never mask the 401 from the caller. Screens observe
- * `api.auth.isAuthenticated()` and route accordingly.
+ * must never mask the 401 from the caller. The mounted AuthSessionProvider
+ * subscribes here and owns the navigation gate.
  */
-function handleUnauthorized(): void {
+async function handleUnauthorized(rejectedToken?: string): Promise<void> {
+  if (sessionRejectedHandler) {
+    await sessionRejectedHandler(rejectedToken);
+    return;
+  }
   if (__DEV__) {
     console.warn('[api] session rejected (401); stored credentials cleared');
   }
 }
 
-export const api: ApiClient = createApiClient({
+export const api: MvpApiClient = createMvpApiClient({
   baseUrl: getApiBaseUrl(),
-  storage: createAsyncStorage(AsyncStorage),
+  storage: authStorage,
   onUnauthorized: handleUnauthorized,
 });
-
-/**
- * Bearer token for the few call sites that still build requests by hand.
- *
- * Prefer the typed resources on `api`, which attach this automatically. This
- * exists so migration can proceed incrementally without leaving a screen
- * half-converted.
- *
- * @returns The stored JWT, or null when signed out.
- */
-export function getAccessToken(): Promise<string | null> {
-  return api.auth.getToken();
-}

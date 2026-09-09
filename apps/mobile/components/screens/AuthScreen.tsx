@@ -1,214 +1,424 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import {
+  CURRENT_PRIVACY_VERSION,
+  CURRENT_TERMS_VERSION,
+  LEGAL_URLS,
+  MINIMUM_ACCOUNT_AGE,
+} from '@partyhause/core/mvp';
+
 import { api } from '@/lib/client';
+
+type AuthMode = 'sign-in' | 'sign-up' | 'check-email' | 'forgot-password';
+type FormMessage = { type: 'success' | 'error'; text: string };
 
 interface AuthScreenProps {
   onBackToLanding: () => void;
-  onAuthSuccess: () => void;
+  onAuthSuccess: () => void | Promise<void>;
+  initialMode?: 'sign-in' | 'sign-up';
 }
 
-export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) => {
-  const [isLogin, setIsLogin] = useState(true);
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const RESET_ACKNOWLEDGEMENT =
+  'If an active account exists and delivery succeeds, reset instructions will arrive shortly.';
+const BRAND_MARK = require('../../assets/images/splash-icon.png');
+
+export function AuthScreen({ onBackToLanding, onAuthSuccess, initialMode = 'sign-in' }: AuthScreenProps) {
+  const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState('');
+  const [pendingEmail, setPendingEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [ageEligible, setAgeEligible] = useState(false);
+  const [legalAccepted, setLegalAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [message, setMessage] = useState<FormMessage | null>(null);
 
-  const handleAuth = async () => {
-    if (!email.trim() || !password.trim()) {
-      setMessage({ type: 'error', text: 'Please enter email and password' });
-      return;
-    }
-
-    if (!isLogin && !name.trim()) {
-      setMessage({ type: 'error', text: 'Please enter your name' });
-      return;
-    }
-
-    setLoading(true);
+  function showMode(nextMode: AuthMode): void {
+    setMode(nextMode);
     setMessage(null);
+  }
 
-    try {
-      // This previously called client.auth.signInWithPassword and
-      // client.auth.signUp on a Supabase stub that implemented neither,
-      // reached through requireSupabase(), which threw unconditionally because
-      // the credentials it demanded were removed from the project. Mobile had
-      // no working sign-in path at all.
-      const result = isLogin
-        ? await api.auth.signIn(email.trim(), password.trim())
-        : await api.auth.signUp(
-            email.trim(),
-            password.trim(),
-            name.trim() || email.split('@')[0],
-          );
+  function validatedEmail(): string | null {
+    const value = email.trim();
+    if (!EMAIL_PATTERN.test(value)) {
+      setMessage({ type: 'error', text: 'Enter a valid email address.' });
+      return null;
+    }
+    return value;
+  }
 
-      if (result.error) {
-        setMessage({ type: 'error', text: result.error.message });
-        return;
-      }
+  async function submitSignIn(): Promise<void> {
+    const submittedEmail = validatedEmail();
+    if (!submittedEmail || !password) {
+      if (submittedEmail) setMessage({ type: 'error', text: 'Enter your password.' });
+      return;
+    }
 
-      setMessage({
-        type: 'success',
-        text: isLogin ? 'Welcome back!' : 'Account created. Signing you in...',
-      });
+    const result = await api.auth.signIn(submittedEmail, password);
+    if (result.error?.code === 'EMAIL_NOT_VERIFIED') {
+      setPendingEmail(submittedEmail);
+      setPassword('');
+      showMode('check-email');
+      return;
+    }
+    if (result.error) {
+      setMessage({ type: 'error', text: result.error.message });
+      return;
+    }
 
-      // The old code relied on a Supabase auth-state listener to navigate.
-      // No listener exists now, and onAuthSuccess was never invoked, so a
-      // successful login left the user sitting on this screen. The client has
-      // already persisted the token to AsyncStorage by this point, so the
-      // session is durable before we hand control back.
-      onAuthSuccess();
-    } catch (error: unknown) {
+    setMessage({ type: 'success', text: 'Welcome back.' });
+    await onAuthSuccess();
+  }
+
+  async function submitSignUp(): Promise<void> {
+    const submittedEmail = validatedEmail();
+    if (!submittedEmail) return;
+    if (name.trim().length < 2) {
+      setMessage({ type: 'error', text: 'Enter your name.' });
+      return;
+    }
+    if (password.length < 8) {
+      setMessage({ type: 'error', text: 'Password must be at least 8 characters.' });
+      return;
+    }
+    if (!ageEligible || !legalAccepted) {
       setMessage({
         type: 'error',
-        text: error instanceof Error
-          ? error.message
-          : `Failed to ${isLogin ? 'sign in' : 'sign up'}`,
+        text: 'Confirm your age eligibility and accept the current Terms and Privacy Policy.',
+      });
+      return;
+    }
+
+    const result = await api.auth.signUp(submittedEmail, password, name.trim(), {
+      ageEligible: true,
+      termsVersion: CURRENT_TERMS_VERSION,
+      privacyVersion: CURRENT_PRIVACY_VERSION,
+    });
+    if (result.error) {
+      setMessage({ type: 'error', text: result.error.message });
+      return;
+    }
+
+    setPendingEmail(submittedEmail);
+    setPassword('');
+    setMode('check-email');
+    setMessage({
+      type: 'success',
+      text: result.data?.message || 'Check your email for a confirmation link.',
+    });
+  }
+
+  async function submitForgotPassword(): Promise<void> {
+    const submittedEmail = validatedEmail();
+    if (!submittedEmail) return;
+
+    const result = await api.auth.forgotPassword(submittedEmail);
+    if (result.error) {
+      setMessage({ type: 'error', text: result.error.message });
+      return;
+    }
+    setMessage({ type: 'success', text: RESET_ACKNOWLEDGEMENT });
+  }
+
+  async function resendVerification(): Promise<void> {
+    if (!pendingEmail) {
+      showMode('sign-in');
+      setMessage({ type: 'error', text: 'Enter your email again to request a new link.' });
+      return;
+    }
+
+    const result = await api.auth.resendVerification(pendingEmail);
+    setMessage(result.error
+      ? { type: 'error', text: result.error.message }
+      : {
+          type: 'success',
+          text: result.data?.message || 'If confirmation is needed, a new link is on the way.',
+        });
+  }
+
+  async function openLegalUrl(url: string): Promise<void> {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setMessage({ type: 'error', text: 'The browser could not be opened.' });
+    }
+  }
+
+  async function run(action: () => Promise<void>): Promise<void> {
+    setLoading(true);
+    setMessage(null);
+    try {
+      await action();
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'The request could not be completed.',
       });
     } finally {
       setLoading(false);
     }
-  };
+  }
 
+  if (mode === 'check-email') {
+    return (
+      <ScreenFrame onBack={onBackToLanding}>
+        <View style={styles.header}>
+          <Image
+            source={BRAND_MARK}
+            style={styles.logo}
+            accessibilityLabel="PartyHause"
+            accessibilityIgnoresInvertColors
+          />
+          <Text style={styles.title}>Check your email</Text>
+          <Text style={styles.subtitle}>
+            We sent a confirmation link to {pendingEmail}. Confirm it, then return here to sign in.
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={() => { void run(resendVerification); }}
+          disabled={loading}
+        >
+          {loading
+            ? <ActivityIndicator color="#FFFFFF" />
+            : <Text style={styles.buttonText}>Resend Confirmation</Text>}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.switchButton}
+          onPress={() => {
+            setEmail(pendingEmail);
+            showMode('sign-in');
+          }}
+          disabled={loading}
+        >
+          <Text style={styles.switchTextBold}>Back to Sign In</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.switchButton}
+          onPress={() => {
+            setEmail('');
+            setPendingEmail('');
+            showMode('sign-up');
+          }}
+          disabled={loading}
+        >
+          <Text style={styles.switchText}>Use a different email</Text>
+        </TouchableOpacity>
+        <MessageBox message={message} />
+      </ScreenFrame>
+    );
+  }
+
+  const isSignUp = mode === 'sign-up';
+  const isForgotPassword = mode === 'forgot-password';
+  const title = isSignUp ? 'Create your account' : isForgotPassword ? 'Reset your password' : 'Welcome back';
+  const subtitle = isSignUp
+    ? 'Start planning your next event.'
+    : isForgotPassword
+      ? 'Enter your email and we will send reset instructions.'
+      : 'Sign in to continue.';
+  const submit = isSignUp ? submitSignUp : isForgotPassword ? submitForgotPassword : submitSignIn;
+  const buttonLabel = isSignUp ? 'Create Account' : isForgotPassword ? 'Send Reset Link' : 'Sign In';
+
+  return (
+    <ScreenFrame onBack={onBackToLanding}>
+      <View style={styles.header}>
+        <Image
+          source={BRAND_MARK}
+          style={styles.logo}
+          accessibilityLabel="PartyHause"
+          accessibilityIgnoresInvertColors
+        />
+        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.subtitle}>{subtitle}</Text>
+      </View>
+
+      <View style={styles.form}>
+        {isSignUp && (
+          <>
+            <Text style={styles.label}>Name</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Your name"
+              placeholderTextColor="#666666"
+              value={name}
+              onChangeText={setName}
+              maxLength={100}
+              autoCapitalize="words"
+              autoCorrect={false}
+              editable={!loading}
+            />
+          </>
+        )}
+
+        <Text style={styles.label}>Email Address</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="your@email.com"
+          placeholderTextColor="#666666"
+          value={email}
+          onChangeText={setEmail}
+          maxLength={254}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="email-address"
+          editable={!loading}
+        />
+
+        {!isForgotPassword && (
+          <>
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              style={styles.input}
+              placeholder={isSignUp ? 'At least 8 characters' : 'Enter your password'}
+              placeholderTextColor="#666666"
+              value={password}
+              onChangeText={setPassword}
+              maxLength={128}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!loading}
+            />
+          </>
+        )}
+
+        {isSignUp && (
+          <View style={styles.consentGroup}>
+            <TouchableOpacity
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: ageEligible }}
+              style={styles.consentRow}
+              onPress={() => setAgeEligible((current) => !current)}
+              disabled={loading}
+            >
+              <View style={[styles.checkbox, ageEligible && styles.checkboxChecked]}>
+                <Text style={styles.checkmark}>{ageEligible ? 'x' : ''}</Text>
+              </View>
+              <Text style={styles.consentText}>
+                I confirm I am at least {MINIMUM_ACCOUNT_AGE} years old.
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: legalAccepted }}
+              style={styles.consentRow}
+              onPress={() => setLegalAccepted((current) => !current)}
+              disabled={loading}
+            >
+              <View style={[styles.checkbox, legalAccepted && styles.checkboxChecked]}>
+                <Text style={styles.checkmark}>{legalAccepted ? 'x' : ''}</Text>
+              </View>
+              <Text style={styles.consentText}>I accept the current legal terms.</Text>
+            </TouchableOpacity>
+            <View style={styles.legalLinks}>
+              <Text
+                accessibilityRole="link"
+                style={styles.legalLink}
+                onPress={() => { void openLegalUrl(LEGAL_URLS.terms); }}
+              >
+                Terms of Service
+              </Text>
+              <Text style={styles.legalSeparator}>and</Text>
+              <Text
+                accessibilityRole="link"
+                style={styles.legalLink}
+                onPress={() => { void openLegalUrl(LEGAL_URLS.privacy); }}
+              >
+                Privacy Policy
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {!isSignUp && !isForgotPassword && (
+          <TouchableOpacity
+            style={styles.forgotButton}
+            onPress={() => showMode('forgot-password')}
+            disabled={loading}
+          >
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={() => { void run(submit); }}
+          disabled={loading}
+        >
+          {loading
+            ? <ActivityIndicator color="#FFFFFF" />
+            : <Text style={styles.buttonText}>{buttonLabel}</Text>}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.switchButton}
+          onPress={() => showMode(isSignUp ? 'sign-in' : isForgotPassword ? 'sign-in' : 'sign-up')}
+          disabled={loading}
+        >
+          <Text style={styles.switchText}>
+            {isSignUp
+              ? 'Already have an account? '
+              : isForgotPassword
+                ? 'Remembered your password? '
+                : "Don't have an account? "}
+            <Text style={styles.switchTextBold}>
+              {isSignUp || isForgotPassword ? 'Sign In' : 'Sign Up'}
+            </Text>
+          </Text>
+        </TouchableOpacity>
+
+        <MessageBox message={message} />
+      </View>
+    </ScreenFrame>
+  );
+}
+
+function ScreenFrame({ children, onBack }: { children: React.ReactNode; onBack: () => void }) {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <TouchableOpacity style={styles.backButton} onPress={onBackToLanding}>
-          <Text style={styles.backText}>← Back</Text>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <TouchableOpacity style={styles.backButton} onPress={onBack}>
+          <Text style={styles.backText}>{'< Back'}</Text>
         </TouchableOpacity>
-
-        <View style={styles.header}>
-          <Text style={styles.logo}>🎉</Text>
-          <Text style={styles.title}>
-            {isLogin ? 'Welcome Back!' : 'Join PartyHause'}
-          </Text>
-          <Text style={styles.subtitle}>
-            {isLogin ? 'Sign in to continue' : 'Create your account to get started'}
-          </Text>
-        </View>
-
-        <View style={styles.form}>
-          {!isLogin && (
-            <>
-              <Text style={styles.label}>Name</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Your name"
-                placeholderTextColor="#666"
-                value={name}
-                onChangeText={setName}
-                autoCapitalize="words"
-                autoCorrect={false}
-                editable={!loading}
-              />
-            </>
-          )}
-
-          <Text style={styles.label}>Email Address</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="your@email.com"
-            placeholderTextColor="#666"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            editable={!loading}
-          />
-
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your password"
-            placeholderTextColor="#666"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!loading}
-          />
-
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleAuth}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>
-                {isLogin ? 'Sign In' : 'Create Account'}
-              </Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.switchButton}
-            onPress={() => {
-              setIsLogin(!isLogin);
-              setMessage(null);
-            }}
-            disabled={loading}
-          >
-            <Text style={styles.switchText}>
-              {isLogin ? "Don't have an account? " : 'Already have an account? '}
-              <Text style={styles.switchTextBold}>
-                {isLogin ? 'Sign Up' : 'Sign In'}
-              </Text>
-            </Text>
-          </TouchableOpacity>
-
-          {message && (
-            <View style={[
-              styles.messageBox,
-              message.type === 'success' ? styles.successBox : styles.errorBox
-            ]}>
-              <Text style={[
-                styles.messageText,
-                message.type === 'success' ? styles.successText : styles.errorText
-              ]}>
-                {message.text}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.info}>
-          <Text style={styles.infoTitle}>
-            {isLogin ? 'First time here?' : 'Why create an account?'}
-          </Text>
-          {isLogin ? (
-            <>
-              <Text style={styles.infoItem}>• Create and manage events</Text>
-              <Text style={styles.infoItem}>• Invite guests and track RSVPs</Text>
-              <Text style={styles.infoItem}>• Access collaborative planning tools</Text>
-            </>
-          ) : (
-            <>
-              <Text style={styles.infoItem}>• Free to use, no credit card required</Text>
-              <Text style={styles.infoItem}>• Organize unlimited events</Text>
-              <Text style={styles.infoItem}>• Collaborate with co-hosts</Text>
-            </>
-          )}
-          <Text style={styles.infoNote}>
-            Your data is secure and never shared with third parties.
-          </Text>
-        </View>
+        {children}
       </ScrollView>
     </KeyboardAvoidingView>
   );
-};
+}
+
+function MessageBox({ message }: { message: FormMessage | null }) {
+  if (!message) return null;
+  const success = message.type === 'success';
+  return (
+    <View style={[styles.messageBox, success ? styles.successBox : styles.errorBox]}>
+      <Text style={[styles.messageText, success ? styles.successText : styles.errorText]}>
+        {message.text}
+      </Text>
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0f',
+    backgroundColor: '#181311',
   },
   scrollContent: {
     flexGrow: 1,
@@ -220,28 +430,31 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   backText: {
-    color: '#6C63FF',
+    color: '#FFA694',
     fontSize: 16,
     fontWeight: '600',
   },
   header: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 36,
   },
   logo: {
-    fontSize: 64,
+    width: 72,
+    height: 72,
+    resizeMode: 'contain',
     marginBottom: 16,
   },
   title: {
     fontSize: 28,
     fontWeight: '800',
-    color: '#fff',
+    color: '#FFFFFF',
     marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
-    color: '#a8a8b3',
+    lineHeight: 23,
+    color: '#A8A8B3',
     textAlign: 'center',
   },
   form: {
@@ -250,50 +463,106 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
+    color: '#FFFFFF',
     marginBottom: 8,
   },
   input: {
-    backgroundColor: '#1a1a24',
+    backgroundColor: '#1A1A24',
     borderWidth: 2,
-    borderColor: '#2a2a3a',
+    borderColor: '#2A2A3A',
     borderRadius: 12,
     paddingVertical: 16,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: '#fff',
+    color: '#FFFFFF',
     marginBottom: 16,
   },
+  forgotButton: {
+    alignSelf: 'flex-end',
+    paddingBottom: 16,
+  },
+  consentGroup: {
+    gap: 12,
+    marginBottom: 20,
+  },
+  consentRow: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#837771',
+    borderRadius: 6,
+  },
+  checkboxChecked: {
+    borderColor: '#FF7D66',
+    backgroundColor: '#C02A16',
+  },
+  checkmark: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  consentText: {
+    flex: 1,
+    color: '#D8D2CF',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  legalLinks: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  legalLink: {
+    color: '#FFA694',
+    fontSize: 14,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+  },
+  legalSeparator: {
+    color: '#A8A8B3',
+    fontSize: 14,
+  },
+  forgotText: {
+    color: '#FFA694',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   button: {
-    backgroundColor: '#6C63FF',
+    backgroundColor: '#C02A16',
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
-    shadowColor: '#6C63FF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   buttonText: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
   },
   switchButton: {
-    marginTop: 16,
-    paddingVertical: 12,
+    marginTop: 12,
+    paddingVertical: 10,
     alignItems: 'center',
   },
   switchText: {
-    color: '#a8a8b3',
+    color: '#A8A8B3',
     fontSize: 14,
+    textAlign: 'center',
   },
   switchTextBold: {
-    color: '#6C63FF',
+    color: '#FFA694',
     fontWeight: '700',
   },
   messageBox: {
@@ -303,46 +572,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   successBox: {
-    backgroundColor: '#0f3a2e',
-    borderColor: '#10b981',
+    backgroundColor: '#0F3A2E',
+    borderColor: '#10B981',
   },
   errorBox: {
-    backgroundColor: '#3a0f0f',
-    borderColor: '#ef4444',
+    backgroundColor: '#3A0F0F',
+    borderColor: '#EF4444',
   },
   messageText: {
     fontSize: 14,
     lineHeight: 20,
   },
   successText: {
-    color: '#10b981',
+    color: '#34D399',
   },
   errorText: {
-    color: '#ef4444',
-  },
-  info: {
-    backgroundColor: '#1a1a24',
-    borderRadius: 16,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: '#2a2a3a',
-  },
-  infoTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 12,
-  },
-  infoItem: {
-    fontSize: 14,
-    color: '#a8a8b3',
-    marginBottom: 8,
-    paddingLeft: 8,
-  },
-  infoNote: {
-    fontSize: 13,
-    color: '#6C63FF',
-    marginTop: 12,
-    lineHeight: 18,
+    color: '#F87171',
   },
 });

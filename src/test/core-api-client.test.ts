@@ -17,7 +17,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   createApiClient,
   createMemoryStorage,
+  createSecureStoreStorage,
   createWebStorage,
+  SECURE_STORE_MIGRATION_KEY,
   STORAGE_KEYS,
   type ApiCallRecord,
 } from '../../packages/core/src/index';
@@ -128,6 +130,58 @@ describe('shared API client transport', () => {
     expect(await storage.getItem(STORAGE_KEYS.token)).toBeNull();
     expect(await storage.getItem(STORAGE_KEYS.user)).toBeNull();
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(onUnauthorized).toHaveBeenCalledWith('stale');
+  });
+
+  it('does not clear a session after an anonymous 401', async () => {
+    const storage = createMemoryStorage();
+    await storage.setItem(STORAGE_KEYS.token, 'existing-session');
+    const onUnauthorized = vi.fn();
+    const client = createApiClient({ baseUrl: BASE, storage, onUnauthorized });
+    fetchMock.mockResolvedValue(jsonResponse(401, { error: 'Invalid email or password' }));
+
+    const result = await client.auth.signIn('person@example.com', 'wrong-password');
+
+    expect(result.error?.message).toBe('Invalid email or password');
+    expect(await storage.getItem(STORAGE_KEYS.token)).toBe('existing-session');
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
+  it('does not clear a newer token when an old authenticated request returns 401', async () => {
+    const storage = createMemoryStorage();
+    await storage.setItem(STORAGE_KEYS.token, 'old-token');
+    const onUnauthorized = vi.fn();
+    const client = createApiClient({ baseUrl: BASE, storage, onUnauthorized });
+    let resolveResponse: (response: Response) => void = () => undefined;
+    fetchMock.mockImplementation(() => new Promise((resolve) => { resolveResponse = resolve; }));
+
+    const request = client.events.list();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await storage.setItem(STORAGE_KEYS.token, 'new-token');
+    resolveResponse(jsonResponse(401, { error: 'expired' }));
+    const result = await request;
+
+    expect(result.error?.status).toBe(401);
+    expect(await storage.getItem(STORAGE_KEYS.token)).toBe('new-token');
+    expect(onUnauthorized).toHaveBeenCalledWith('old-token');
+  });
+
+  it('returns a bounded error and clears the current token when a 401 body read fails', async () => {
+    const storage = createMemoryStorage();
+    await storage.setItem(STORAGE_KEYS.token, 'stale-token');
+    const onUnauthorized = vi.fn();
+    const client = createApiClient({ baseUrl: BASE, storage, onUnauthorized });
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: vi.fn().mockRejectedValue(new Error('socket closed')),
+    } as unknown as Response);
+
+    const result = await client.events.list();
+
+    expect(result.error).toMatchObject({ status: 401, message: 'socket closed' });
+    expect(await storage.getItem(STORAGE_KEYS.token)).toBeNull();
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
 
   it('still returns to the caller when onUnauthorized throws', async () => {
@@ -156,6 +210,22 @@ describe('shared API client transport', () => {
 
     fetchMock.mockResolvedValueOnce(new Response('', { status: 418 }));
     expect((await client.events.list()).error?.message).toBe('HTTP error! status: 418');
+  });
+
+  it('preserves a machine-readable API error code', async () => {
+    const client = createApiClient({ baseUrl: BASE, storage: createMemoryStorage() });
+    fetchMock.mockResolvedValue(jsonResponse(403, {
+      error: 'Email address not confirmed',
+      code: 'EMAIL_NOT_VERIFIED',
+    }));
+
+    const response = await client.auth.signIn('person@example.com', 'password');
+
+    expect(response.error).toEqual({
+      message: 'Email address not confirmed',
+      status: 403,
+      code: 'EMAIL_NOT_VERIFIED',
+    });
   });
 
   it('reports telemetry without letting a throwing sink break the request', async () => {
@@ -211,6 +281,25 @@ describe('auth resource', () => {
     expect(await client.auth.isAuthenticated()).toBe(false);
   });
 
+  it('does not persist a tokenless signup response', async () => {
+    const storage = createMemoryStorage();
+    const client = createApiClient({ baseUrl: BASE, storage });
+    fetchMock.mockResolvedValue(jsonResponse(201, {
+      user: { id: 'u1', email: 'a@b.c', email_verified: false },
+      message: 'Check your email',
+    }));
+
+    const result = await client.auth.signUp('a@b.c', 'password', 'A', {
+      ageEligible: true,
+      termsVersion: '2026-09-06',
+      privacyVersion: '2026-09-06',
+    });
+
+    expect(result.data?.user.id).toBe('u1');
+    expect(await storage.getItem(STORAGE_KEYS.token)).toBeNull();
+    expect(await storage.getItem(STORAGE_KEYS.user)).toBeNull();
+  });
+
   it('clears the local session on sign out even if the server call fails', async () => {
     const storage = createMemoryStorage();
     await storage.setItem(STORAGE_KEYS.token, 'jwt');
@@ -220,6 +309,7 @@ describe('auth resource', () => {
 
     await client.auth.signOut();
 
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).get('Authorization')).toBe('Bearer jwt');
     expect(await storage.getItem(STORAGE_KEYS.token)).toBeNull();
     expect(await storage.getItem(STORAGE_KEYS.user)).toBeNull();
   });
@@ -258,6 +348,247 @@ describe('storage adapters', () => {
     await s.removeItem('k');
     expect(await s.getItem('k')).toBeNull();
   });
+
+  it('moves legacy auth values to secure storage once and removes every plaintext copy', async () => {
+    const secureValues = new Map<string, string>();
+    const legacyValues = new Map<string, string>([
+      [STORAGE_KEYS.token, 'legacy-token'],
+      [STORAGE_KEYS.user, '{"id":"u1"}'],
+    ]);
+    const secureStore = {
+      isAvailableAsync: vi.fn().mockResolvedValue(true),
+      getItemAsync: vi.fn(async (key: string) => secureValues.get(key) ?? null),
+      setItemAsync: vi.fn(async (key: string, value: string) => { secureValues.set(key, value); }),
+      deleteItemAsync: vi.fn(async (key: string) => { secureValues.delete(key); }),
+    };
+    const legacyStorage = {
+      getItem: vi.fn(async (key: string) => legacyValues.get(key) ?? null),
+      setItem: vi.fn(async (key: string, value: string) => { legacyValues.set(key, value); }),
+      removeItem: vi.fn(async (key: string) => { legacyValues.delete(key); }),
+    };
+    const storage = createSecureStoreStorage(secureStore, { legacyStorage });
+
+    expect(await storage.getItem(STORAGE_KEYS.token)).toBe('legacy-token');
+    expect(secureValues.get(STORAGE_KEYS.user)).toBe('{"id":"u1"}');
+    expect(secureValues.get(SECURE_STORE_MIGRATION_KEY)).toBe('complete');
+    expect(legacyValues.has(STORAGE_KEYS.token)).toBe(false);
+    expect(legacyValues.has(STORAGE_KEYS.user)).toBe(false);
+
+    const legacyReadCount = legacyStorage.getItem.mock.calls.length;
+    await storage.getItem(STORAGE_KEYS.user);
+    expect(legacyStorage.getItem).toHaveBeenCalledTimes(legacyReadCount);
+  });
+
+  it('keeps an existing secure value and removes the stale legacy value', async () => {
+    const secureValues = new Map<string, string>([[STORAGE_KEYS.token, 'secure-token']]);
+    const legacyValues = new Map<string, string>([[STORAGE_KEYS.token, 'legacy-token']]);
+    const storage = createSecureStoreStorage({
+      getItemAsync: async (key) => secureValues.get(key) ?? null,
+      setItemAsync: async (key, value) => { secureValues.set(key, value); },
+      deleteItemAsync: async (key) => { secureValues.delete(key); },
+    }, {
+      legacyStorage: {
+        getItem: async (key) => legacyValues.get(key) ?? null,
+        setItem: async (key, value) => { legacyValues.set(key, value); },
+        removeItem: async (key) => { legacyValues.delete(key); },
+      },
+    });
+
+    expect(await storage.getItem(STORAGE_KEYS.token)).toBe('secure-token');
+    expect(legacyValues.has(STORAGE_KEYS.token)).toBe(false);
+  });
+
+  it('retains the legacy value and retries when a secure migration write fails', async () => {
+    const secureValues = new Map<string, string>();
+    const legacyValues = new Map<string, string>([[STORAGE_KEYS.token, 'legacy-token']]);
+    let failWrite = true;
+    const storage = createSecureStoreStorage({
+      getItemAsync: async (key) => secureValues.get(key) ?? null,
+      setItemAsync: async (key, value) => {
+        if (failWrite && key === STORAGE_KEYS.token) throw new Error('keychain locked');
+        secureValues.set(key, value);
+      },
+      deleteItemAsync: async (key) => { secureValues.delete(key); },
+    }, {
+      legacyStorage: {
+        getItem: async (key) => legacyValues.get(key) ?? null,
+        setItem: async (key, value) => { legacyValues.set(key, value); },
+        removeItem: async (key) => { legacyValues.delete(key); },
+      },
+    });
+
+    await expect(storage.getItem(STORAGE_KEYS.token)).rejects.toThrow('keychain locked');
+    expect(legacyValues.get(STORAGE_KEYS.token)).toBe('legacy-token');
+    expect(secureValues.has(SECURE_STORE_MIGRATION_KEY)).toBe(false);
+
+    failWrite = false;
+    await expect(storage.getItem(STORAGE_KEYS.token)).resolves.toBe('legacy-token');
+    expect(legacyValues.has(STORAGE_KEYS.token)).toBe(false);
+  });
+
+  it('does not mark migration complete until legacy credential removal succeeds', async () => {
+    const secureValues = new Map<string, string>();
+    const legacyValues = new Map<string, string>([[STORAGE_KEYS.token, 'legacy-token']]);
+    let failRemoval = true;
+    const storage = createSecureStoreStorage({
+      getItemAsync: async (key) => secureValues.get(key) ?? null,
+      setItemAsync: async (key, value) => { secureValues.set(key, value); },
+      deleteItemAsync: async (key) => { secureValues.delete(key); },
+    }, {
+      legacyStorage: {
+        getItem: async (key) => legacyValues.get(key) ?? null,
+        setItem: async (key, value) => { legacyValues.set(key, value); },
+        removeItem: async (key) => {
+          if (failRemoval) throw new Error('plaintext removal failed');
+          legacyValues.delete(key);
+        },
+      },
+    });
+
+    await expect(storage.getItem(STORAGE_KEYS.token)).rejects.toThrow('plaintext removal failed');
+    expect(legacyValues.get(STORAGE_KEYS.token)).toBe('legacy-token');
+    expect(secureValues.get(STORAGE_KEYS.token)).toBe('legacy-token');
+    expect(secureValues.has(SECURE_STORE_MIGRATION_KEY)).toBe(false);
+
+    failRemoval = false;
+    await expect(storage.getItem(STORAGE_KEYS.token)).resolves.toBe('legacy-token');
+    expect(legacyValues.has(STORAGE_KEYS.token)).toBe(false);
+    expect(secureValues.get(SECURE_STORE_MIGRATION_KEY)).toBe('complete');
+  });
+
+  it('fails closed and leaves plaintext untouched when SecureStore is unavailable', async () => {
+    const legacyValues = new Map<string, string>([[STORAGE_KEYS.token, 'legacy-token']]);
+    const secureWrite = vi.fn();
+    const storage = createSecureStoreStorage({
+      isAvailableAsync: async () => false,
+      getItemAsync: async () => null,
+      setItemAsync: secureWrite,
+      deleteItemAsync: async () => undefined,
+    }, {
+      legacyStorage: {
+        getItem: async (key) => legacyValues.get(key) ?? null,
+        setItem: async (key, value) => { legacyValues.set(key, value); },
+        removeItem: async (key) => { legacyValues.delete(key); },
+      },
+    });
+
+    await expect(storage.getItem(STORAGE_KEYS.token)).rejects.toThrow(
+      'Secure credential storage is unavailable',
+    );
+    expect(legacyValues.get(STORAGE_KEYS.token)).toBe('legacy-token');
+    expect(secureWrite).not.toHaveBeenCalled();
+  });
+
+  it('removes a stale plaintext copy after every secure write', async () => {
+    const secureValues = new Map<string, string>([[SECURE_STORE_MIGRATION_KEY, 'complete']]);
+    const legacyValues = new Map<string, string>([[STORAGE_KEYS.token, 'stale-token']]);
+    const storage = createSecureStoreStorage({
+      getItemAsync: async (key) => secureValues.get(key) ?? null,
+      setItemAsync: async (key, value) => { secureValues.set(key, value); },
+      deleteItemAsync: async (key) => { secureValues.delete(key); },
+    }, {
+      legacyStorage: {
+        getItem: async (key) => legacyValues.get(key) ?? null,
+        setItem: async (key, value) => { legacyValues.set(key, value); },
+        removeItem: async (key) => { legacyValues.delete(key); },
+      },
+    });
+
+    await storage.setItem(STORAGE_KEYS.token, 'new-token');
+
+    expect(secureValues.get(STORAGE_KEYS.token)).toBe('new-token');
+    expect(legacyValues.has(STORAGE_KEYS.token)).toBe(false);
+  });
+
+  it('removes secure and plaintext copies without migrating on sign-out', async () => {
+    const secureValues = new Map<string, string>([[STORAGE_KEYS.token, 'secure-token']]);
+    const legacyValues = new Map<string, string>([[STORAGE_KEYS.token, 'legacy-token']]);
+    const secureWrite = vi.fn();
+    const storage = createSecureStoreStorage({
+      getItemAsync: async (key) => secureValues.get(key) ?? null,
+      setItemAsync: secureWrite,
+      deleteItemAsync: async (key) => { secureValues.delete(key); },
+    }, {
+      legacyStorage: {
+        getItem: async (key) => legacyValues.get(key) ?? null,
+        setItem: async (key, value) => { legacyValues.set(key, value); },
+        removeItem: async (key) => { legacyValues.delete(key); },
+      },
+    });
+
+    await storage.removeItem(STORAGE_KEYS.token);
+
+    expect(secureValues.has(STORAGE_KEYS.token)).toBe(false);
+    expect(legacyValues.has(STORAGE_KEYS.token)).toBe(false);
+    expect(secureWrite).not.toHaveBeenCalled();
+  });
+
+  it('serializes sign-out behind an in-flight plaintext migration', async () => {
+    const secureValues = new Map<string, string>();
+    const legacyValues = new Map<string, string>([[STORAGE_KEYS.token, 'legacy-token']]);
+    let releaseWrite: () => void = () => undefined;
+    let signalWriteStarted: () => void = () => undefined;
+    const writeStarted = new Promise<void>((resolve) => { signalWriteStarted = resolve; });
+    const writeReleased = new Promise<void>((resolve) => { releaseWrite = resolve; });
+    const storage = createSecureStoreStorage({
+      getItemAsync: async (key) => secureValues.get(key) ?? null,
+      setItemAsync: async (key, value) => {
+        if (key === STORAGE_KEYS.token) {
+          signalWriteStarted();
+          await writeReleased;
+        }
+        secureValues.set(key, value);
+      },
+      deleteItemAsync: async (key) => { secureValues.delete(key); },
+    }, {
+      legacyStorage: {
+        getItem: async (key) => legacyValues.get(key) ?? null,
+        setItem: async (key, value) => { legacyValues.set(key, value); },
+        removeItem: async (key) => { legacyValues.delete(key); },
+      },
+    });
+
+    const migration = storage.getItem(STORAGE_KEYS.token);
+    await writeStarted;
+    const signOut = storage.removeItem(STORAGE_KEYS.token);
+    releaseWrite();
+    await Promise.all([migration, signOut]);
+
+    expect(secureValues.has(STORAGE_KEYS.token)).toBe(false);
+    expect(legacyValues.has(STORAGE_KEYS.token)).toBe(false);
+  });
+
+  it('serializes a replacement login after conditional session clearing', async () => {
+    const secureValues = new Map<string, string>([
+      [SECURE_STORE_MIGRATION_KEY, 'complete'],
+      [STORAGE_KEYS.token, 'old-token'],
+      [STORAGE_KEYS.user, '{"id":"old-user"}'],
+    ]);
+    let releaseDelete: () => void = () => undefined;
+    let signalDeleteStarted: () => void = () => undefined;
+    const deleteStarted = new Promise<void>((resolve) => { signalDeleteStarted = resolve; });
+    const deleteReleased = new Promise<void>((resolve) => { releaseDelete = resolve; });
+    const storage = createSecureStoreStorage({
+      getItemAsync: async (key) => secureValues.get(key) ?? null,
+      setItemAsync: async (key, value) => { secureValues.set(key, value); },
+      deleteItemAsync: async (key) => {
+        if (key === STORAGE_KEYS.token) {
+          signalDeleteStarted();
+          await deleteReleased;
+        }
+        secureValues.delete(key);
+      },
+    });
+
+    const clearing = storage.clearSessionIfToken?.('old-token');
+    await deleteStarted;
+    const replacement = storage.setItem(STORAGE_KEYS.token, 'new-token');
+    releaseDelete();
+
+    await expect(clearing).resolves.toBe(true);
+    await replacement;
+    expect(await storage.getItem(STORAGE_KEYS.token)).toBe('new-token');
+  });
 });
 
 describe('response envelope unwrapping', () => {
@@ -290,6 +621,19 @@ describe('response envelope unwrapping', () => {
     const res = await client.guests.listForEvent('e1');
 
     expect(res.data).toEqual([{ id: 'g1' }]);
+  });
+
+  it('normalizes legacy confirmed RSVP rows to accepted for MVP clients', async () => {
+    const client = createApiClient({ baseUrl: BASE, storage: createMemoryStorage() });
+    fetchMock.mockResolvedValue(jsonResponse(200, {
+      guests: [{ id: 'g1', rsvp_status: 'confirmed' }],
+      stats: { accepted: 1 },
+    }));
+
+    const result = await client.guests.listForEventWithStats('e1');
+
+    expect(result.data?.guests[0].rsvp_status).toBe('accepted');
+    expect(result.data?.stats.accepted).toBe(1);
   });
 
   it('lifts {blocks} and {polls} and {notifications}', async () => {

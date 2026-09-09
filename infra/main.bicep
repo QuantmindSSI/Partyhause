@@ -56,6 +56,11 @@ param RESEND_FROM_EMAIL string
 @secure()
 param jwtSecret string
 
+@description('HMAC key for deterministic invitation tokens (secret, required)')
+@secure()
+@minLength(32)
+param invitationTokenSecret string
+
 // ===== Auth (Microsoft Entra External ID / Azure AD B2C) =====
 @description('Entra External ID (B2C) tenant id')
 param entraTenantId string = ''
@@ -101,6 +106,7 @@ module resources 'resources.bicep' = {
     RESEND_API_KEY: RESEND_API_KEY
     RESEND_FROM_EMAIL: RESEND_FROM_EMAIL
     jwtSecret: jwtSecret
+    invitationTokenSecret: invitationTokenSecret
     entraTenantId: entraTenantId
     entraApiClientId: entraApiClientId
     entraApiClientSecret: entraApiClientSecret

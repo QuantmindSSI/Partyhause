@@ -76,7 +76,7 @@ function NotificationRow({ notification }: { notification: AppNotification }) {
             variant="ghost"
             size="sm"
             aria-label="Mark as read"
-            disabled={markRead.isLoading}
+            disabled={markRead.isPending}
             onClick={() => markRead.mutate({ ids: [notification.id] })}
           >
             <CheckCheck className="h-4 w-4" aria-hidden="true" />
@@ -105,7 +105,7 @@ export default function NotificationsPage() {
           <Button
             variant="outline"
             size="sm"
-            disabled={markRead.isLoading}
+            disabled={markRead.isPending}
             onClick={() => markRead.mutate({ all: true })}
           >
             <CheckCheck className="h-4 w-4 mr-1" aria-hidden="true" />

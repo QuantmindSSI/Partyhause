@@ -39,54 +39,54 @@ export const BORDER_RADIUS = {
  */
 export const COLORS = {
   primary: {
-    main: '#6366F1',    // Indigo 500
-    light: '#818CF8',   // Indigo 400
-    dark: '#4F46E5',    // Indigo 600
+    main: '#C02A16',
+    light: '#FF7D66',
+    dark: '#972317',
     contrast: '#FFFFFF',
   },
   success: {
-    main: '#10B981',    // Green 500
-    light: '#34D399',   // Green 400
-    dark: '#059669',    // Green 600
+    main: '#0B835B',
+    light: '#34D399',
+    dark: '#076247',
     contrast: '#FFFFFF',
   },
   error: {
-    main: '#EF4444',    // Red 500
-    light: '#F87171',   // Red 400
-    dark: '#DC2626',    // Red 600
+    main: '#E12D33',
+    light: '#F87171',
+    dark: '#B91C24',
     contrast: '#FFFFFF',
   },
   warning: {
-    main: '#F59E0B',    // Amber 500
-    light: '#FBBF24',   // Amber 400
-    dark: '#D97706',    // Amber 600
+    main: '#A26907',
+    light: '#FBBF24',
+    dark: '#7A4F05',
     contrast: '#FFFFFF',
   },
   neutral: {
-    50: '#F9FAFB',
-    100: '#F3F4F6',
-    200: '#E5E7EB',
-    300: '#D1D5DB',
-    400: '#9CA3AF',
-    500: '#6B7280',
-    600: '#4B5563',
-    700: '#374151',
-    800: '#1F2937',
-    900: '#111827',
+    50: '#FBFAF9',
+    100: '#F6F4F3',
+    200: '#EBE7E5',
+    300: '#D8D2CF',
+    400: '#ABA09B',
+    500: '#847771',
+    600: '#6A5E58',
+    700: '#514743',
+    800: '#39312D',
+    900: '#26201D',
   },
   text: {
-    primary: '#1F2937',      // Gray 800 - 13.6:1 contrast on white
-    secondary: '#4B5563',    // Gray 600 - 7.0:1 contrast on white
-    tertiary: '#6B7280',     // Gray 500 - 4.6:1 contrast on white
-    disabled: '#9CA3AF',     // Gray 400
-    onDark: '#F9FAFB',       // Gray 50
+    primary: '#26201D',
+    secondary: '#514743',
+    tertiary: '#6A5E58',
+    disabled: '#ABA09B',
+    onDark: '#FBFAF9',
     inverse: '#FFFFFF',
   },
   background: {
     primary: '#FFFFFF',
-    secondary: '#F9FAFB',
-    tertiary: '#F3F4F6',
-    dark: '#111827',
+    secondary: '#FBFAF9',
+    tertiary: '#F6F4F3',
+    dark: '#181311',
   },
 } as const;
 
@@ -106,10 +106,10 @@ export const Colors = {
   dark: {
     text: COLORS.text.onDark,
     background: COLORS.background.dark,
-    tint: COLORS.text.onDark,
+    tint: COLORS.primary.light,
     icon: COLORS.neutral[400],
     tabIconDefault: COLORS.neutral[400],
-    tabIconSelected: COLORS.text.onDark,
+    tabIconSelected: COLORS.primary.light,
   },
 };
 

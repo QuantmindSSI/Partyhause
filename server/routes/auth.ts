@@ -3,10 +3,12 @@ import bcrypt from 'bcryptjs';
 import jwt, { type SignOptions } from 'jsonwebtoken';
 import crypto from 'crypto';
 import { rateLimit } from 'express-rate-limit';
+import { type PrismaClient } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { getJwtSecret } from '../lib/jwt-secret';
 import { sendEmail } from '../lib/email';
+import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from '../lib/legal';
 
 const router = Router();
 
@@ -51,27 +53,121 @@ function resolveExpiresIn(): SignOptions['expiresIn'] {
 
 const JWT_EXPIRES_IN = resolveExpiresIn();
 const APP_URL = process.env.VITE_APP_URL || 'http://localhost:5173';
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Normalize an email at every account lookup and write boundary. */
+export function normalizeEmail(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized.length <= 254 && EMAIL_PATTERN.test(normalized) ? normalized : null;
+}
+
+function findUserByEmail(email: string) {
+  return prisma.user.findFirst({
+    where: { email: { equals: email, mode: 'insensitive' } },
+  });
+}
+
+export interface SignupAccountInput {
+  email: string;
+  name: string;
+  displayName: string;
+  passwordHash: string;
+  ageEligible: true;
+  termsVersion: string;
+  privacyVersion: string;
+}
+
+/**
+ * Derive a profile username from the complete 128-bit UUID value.
+ *
+ * Base-36 keeps the full UUID entropy while satisfying the profile constraint
+ * of 3-30 alphanumeric/underscore characters. Two usernames collide only when
+ * their source UUIDs are identical.
+ */
+export function usernameFromUuid(userId: string): string {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+    throw new Error('usernameFromUuid: userId must be a UUID');
+  }
+  const hex = userId.replace(/-/g, '');
+  const username = `u_${BigInt(`0x${hex}`).toString(36)}`;
+  if (username.length < 3 || username.length > 30) {
+    throw new Error('usernameFromUuid: derived username violates the 3-30 character constraint');
+  }
+  return username;
+}
+
+/**
+ * Create the identity and its required profile in one database transaction.
+ * A profile failure rejects the transaction, so signup cannot leave an
+ * identity row that can never complete account setup.
+ */
+export async function createSignupAccount(
+  database: Pick<PrismaClient, '$transaction'>,
+  input: SignupAccountInput,
+  userId = crypto.randomUUID(),
+) {
+  const username = usernameFromUuid(userId);
+  return database.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: {
+        id: userId,
+        email: input.email,
+        name: input.name,
+        password_hash: input.passwordHash,
+        age_eligible: input.ageEligible,
+        terms_version: input.termsVersion,
+        privacy_version: input.privacyVersion,
+      },
+    });
+
+    await tx.userProfile.create({
+      data: {
+        id: user.id,
+        username,
+        display_name: input.displayName,
+      },
+    });
+    return user;
+  });
+}
+
+/** True when Prisma reports a unique conflict on the email field. */
+export function isDuplicateEmailError(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || (error as { code?: unknown }).code !== 'P2002') {
+    return false;
+  }
+
+  const target = (error as { meta?: { target?: unknown } }).meta?.target;
+  if (target === undefined || target === null) {
+    return true;
+  }
+  const fields = Array.isArray(target) ? target : [target];
+  return fields.some((field) => String(field).toLowerCase().includes('email'));
+}
 
 /**
  * Mint a session token.
  *
- * `email_verified` is carried as a claim so `requireAuth` can gate a request
- * without a database round trip.
- *
- * The claim is unconditionally true, which is safe ONLY because every caller
- * has established that fact first: login refuses unconfirmed accounts, and
- * password reset confirms the address as part of completing it, since the
- * single-use token was delivered to that mailbox. Signup mints no token at
- * all.
- *
- * Any new caller must uphold that invariant or set the column, otherwise it
- * hands out a token asserting something untrue.
+ * `token_version` binds the token to the current database session epoch.
+ * Middleware checks both it and the account state on every authenticated call.
  */
-function signToken(user: { id: string; email: string; name?: string | null }): string {
+export function signToken(user: {
+  id: string;
+  email: string;
+  name?: string | null;
+  token_version: number;
+}): string {
   return jwt.sign(
-    { sub: user.id, email: user.email, name: user.name, email_verified: true },
+    {
+      sub: user.id,
+      email: user.email,
+      name: user.name,
+      email_verified: true,
+      token_version: user.token_version,
+    },
     getJwtSecret(),
-    { expiresIn: JWT_EXPIRES_IN },
+    { algorithm: 'HS256', expiresIn: JWT_EXPIRES_IN },
   );
 }
 
@@ -91,7 +187,7 @@ async function sendAuthEmail(to: string, subject: string, html: string): Promise
   const result = await sendEmail({ to, subject, html });
   if (result.ok) return true;
   console.error(
-    `[auth] email "${subject}" to ${to} FAILED via ${result.provider}: ${result.error}`,
+    `[auth] email "${subject}" was rejected by ${result.provider}`,
   );
   return false;
 }
@@ -142,12 +238,12 @@ function verificationEmailHtml(verifyLink: string): string {
           Thanks for creating a PartyHause account. Confirm this address to finish setting it up and sign in.
         </td></tr>
         <tr><td align="center" style="padding-bottom:24px;">
-          <a href="${verifyLink}" style="display:inline-block;background:#6366F1;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:13px 28px;border-radius:8px;">Confirm email address</a>
+          <a href="${verifyLink}" style="display:inline-block;background:#C02A16;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:13px 28px;border-radius:8px;">Confirm email address</a>
         </td></tr>
         <tr><td style="font-size:13px;line-height:20px;color:#6b7280;padding-bottom:8px;">
           If the button does not work, paste this into your browser:
         </td></tr>
-        <tr><td style="font-size:12px;line-height:18px;color:#6366F1;word-break:break-all;padding-bottom:24px;">${verifyLink}</td></tr>
+        <tr><td style="font-size:12px;line-height:18px;color:#972317;word-break:break-all;padding-bottom:24px;">${verifyLink}</td></tr>
         <tr><td style="font-size:13px;line-height:20px;color:#6b7280;border-top:1px solid #e6e8ee;padding-top:16px;">
           This link expires in 24 hours. If you did not create a PartyHause account, you can ignore this email and nothing will happen.
         </td></tr>
@@ -163,7 +259,7 @@ function verificationEmailHtml(verifyLink: string): string {
  * and send (or log, in dev) the verification link. Failures are contained:
  * signup must never fail because the verification email could not be sent.
  */
-async function issueVerificationEmail(user: { id: string; email: string }): Promise<void> {
+async function issueVerificationEmail(user: { id: string; email: string }): Promise<boolean> {
   try {
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = await bcrypt.hash(rawToken, 10);
@@ -178,58 +274,75 @@ async function issueVerificationEmail(user: { id: string; email: string }): Prom
     const verifyLink = `${APP_URL}/auth/verify-email?token=${rawToken}&email=${encodeURIComponent(user.email)}`;
     logAuthLinkInDev('EMAIL VERIFICATION LINK', verifyLink);
 
-    await sendAuthEmail(
+    return await sendAuthEmail(
       user.email,
       'Confirm your PartyHause email address',
       verificationEmailHtml(verifyLink),
     );
   } catch (err) {
-    console.warn('Failed to issue verification email:', err);
+    const errorType = err instanceof Error ? err.name : 'UnknownError';
+    console.warn(`Failed to issue verification email: ${errorType}`);
+    return false;
   }
 }
 
 // POST /api/auth/signup
 router.post('/signup', credentialLimiter, async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name, ageEligible, termsVersion, privacyVersion } = req.body ?? {};
+    const normalizedEmail = normalizeEmail(email);
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+    if (!normalizedEmail || typeof password !== 'string') {
+      return res.status(400).json({ error: 'A valid email and password are required' });
     }
 
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    if (password.length < 8 || password.length > 128) {
+      return res.status(400).json({ error: 'Password must be between 8 and 128 characters' });
     }
 
-    const existing = await prisma.user.findUnique({ where: { email } });
+    if (name !== undefined && (typeof name !== 'string' || name.trim().length > 100)) {
+      return res.status(400).json({ error: 'Name must be 100 characters or fewer' });
+    }
+
+    if (
+      ageEligible !== true
+      || termsVersion !== CURRENT_TERMS_VERSION
+      || privacyVersion !== CURRENT_PRIVACY_VERSION
+    ) {
+      return res.status(400).json({
+        code: 'LEGAL_CONSENT_REQUIRED',
+        error: 'Current age eligibility, Terms, and Privacy consent are required',
+        legal: {
+          termsVersion: CURRENT_TERMS_VERSION,
+          privacyVersion: CURRENT_PRIVACY_VERSION,
+        },
+      });
+    }
+
+    const existing = await findUserByEmail(normalizedEmail);
     if (existing) {
       return res.status(409).json({ error: 'A user with this email already exists' });
     }
 
-    const password_hash = await bcrypt.hash(password, 12);
-
-    const user = await prisma.user.create({
-      data: {
-        email,
-        name: name || email.split('@')[0],
-        password_hash,
-      },
+    const passwordHash = await bcrypt.hash(password, 12);
+    const accountName = typeof name === 'string' && name.trim()
+      ? name.trim()
+      : normalizedEmail.split('@')[0];
+    const user = await createSignupAccount(prisma, {
+      email: normalizedEmail,
+      name: accountName,
+      displayName: accountName,
+      passwordHash,
+      ageEligible: true,
+      termsVersion: CURRENT_TERMS_VERSION,
+      privacyVersion: CURRENT_PRIVACY_VERSION,
     });
 
-    // Auto-create user_profile
-    const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '_');
-    await prisma.userProfile.create({
-      data: {
-        id: user.id,
-        username,
-        display_name: name || username,
-      },
-    });
-
-    // Fire the verification email after the account exists. Non-blocking
-    // for the response only in effect: we await so serverless-style runtimes
-    // don't drop the work, but failures inside are contained and logged.
-    await issueVerificationEmail({ id: user.id, email: user.email });
+    // createSignupAccount resolves only after its transaction commits. Issue
+    // verification after that boundary, and await it so serverless-style
+    // runtimes do not drop the work. Delivery failures remain contained and
+    // logged by the helper.
+    const verificationAccepted = await issueVerificationEmail({ id: user.id, email: user.email });
 
     // Deliberately NO token. Signup used to return one immediately, so an
     // address nobody controlled reached every authenticated route with a
@@ -237,9 +350,15 @@ router.post('/signup', credentialLimiter, async (req, res) => {
     // starts at login, which refuses unconfirmed accounts.
     res.status(201).json({
       user: { id: user.id, email: user.email, name: user.name, email_verified: false },
-      message: 'Account created. Check your email for a confirmation link before signing in.',
+      verificationDelivery: verificationAccepted ? 'accepted' : 'unavailable',
+      message: verificationAccepted
+        ? 'Account created. Check your email for a confirmation link before signing in.'
+        : 'Account created, but the confirmation email was not accepted. Use Resend Confirmation to try again.',
     });
   } catch (err) {
+    if (isDuplicateEmailError(err)) {
+      return res.status(409).json({ error: 'A user with this email already exists' });
+    }
     console.error('Signup error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -257,15 +376,17 @@ const VERIFY_FAILURE = {
 router.post('/verify-email', credentialLimiter, async (req, res) => {
   try {
     const { email, token } = req.body;
+    const normalizedEmail = normalizeEmail(email);
 
-    if (typeof email !== 'string' || typeof token !== 'string' || !email || !token) {
+    if (!normalizedEmail || typeof token !== 'string' || !token) {
       return res.status(400).json(VERIFY_FAILURE);
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await findUserByEmail(normalizedEmail);
     if (
       !user ||
       user.email_verified ||
+      user.account_status !== 'active' ||
       !user.verification_token ||
       !user.verification_token_expires ||
       new Date() > user.verification_token_expires
@@ -309,20 +430,21 @@ router.post('/verify-email', credentialLimiter, async (req, res) => {
 router.post('/resend-verification', credentialLimiter, async (req, res) => {
   const genericResponse = {
     success: true,
-    message: 'If that address needs confirming, a new link is on its way.',
+    message: 'If that address needs confirming and delivery succeeds, a new link will arrive shortly.',
   };
 
   try {
     const { email } = req.body ?? {};
-    if (typeof email !== 'string' || email.trim() === '') {
-      return res.status(400).json({ error: 'Email is required' });
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) {
+      return res.status(400).json({ error: 'A valid email is required' });
     }
 
-    const user = await prisma.user.findUnique({ where: { email: email.trim() } });
+    const user = await findUserByEmail(normalizedEmail);
 
     // No account, or already confirmed: same answer either way. Saying
     // "already verified" would confirm the address is registered.
-    if (!user || user.email_verified) {
+    if (!user || user.email_verified || user.account_status !== 'active') {
       return res.json(genericResponse);
     }
 
@@ -338,12 +460,13 @@ router.post('/resend-verification', credentialLimiter, async (req, res) => {
 router.post('/login', credentialLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
+    const normalizedEmail = normalizeEmail(email);
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+    if (!normalizedEmail || typeof password !== 'string' || !password || password.length > 128) {
+      return res.status(400).json({ error: 'A valid email and password are required' });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await findUserByEmail(normalizedEmail);
     if (!user || !user.password_hash) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
@@ -351,6 +474,13 @@ router.post('/login', credentialLimiter, async (req, res) => {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
       return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    if (user.account_status !== 'active') {
+      return res.status(403).json({
+        code: 'ACCOUNT_UNAVAILABLE',
+        error: 'This account is unavailable',
+      });
     }
 
     // Confirmed address required. Distinct from the 401 above on purpose: the
@@ -382,10 +512,17 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.id },
-      select: { id: true, email: true, name: true, created_at: true, email_verified: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        created_at: true,
+        email_verified: true,
+        account_status: true,
+      },
     });
 
-    if (!user) {
+    if (!user || user.account_status !== 'active') {
       return res.status(404).json({ error: 'User not found' });
     }
 
@@ -393,7 +530,14 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
       where: { id: user.id },
     });
 
-    res.json({ ...user, profile });
+    res.json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      created_at: user.created_at,
+      email_verified: user.email_verified,
+      profile,
+    });
   } catch (err) {
     console.error('Get user error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -404,17 +548,21 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
 router.post('/forgot-password', credentialLimiter, async (req, res) => {
   try {
     const { email } = req.body;
+    const normalizedEmail = normalizeEmail(email);
 
-    if (typeof email !== 'string' || !email) {
-      return res.status(400).json({ error: 'Email is required' });
+    if (!normalizedEmail) {
+      return res.status(400).json({ error: 'A valid email is required' });
     }
 
     // Uniform response whether or not the account exists — a distinct
     // "no account" answer lets anyone enumerate registered addresses.
-    const uniformResponse = { success: true, message: 'If an account exists, a reset link has been sent.' };
+    const uniformResponse = {
+      success: true,
+      message: 'If an active account exists and delivery succeeds, reset instructions will arrive shortly.',
+    };
 
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
+    const user = await findUserByEmail(normalizedEmail);
+    if (!user || user.account_status !== 'active') {
       return res.json(uniformResponse);
     }
 
@@ -430,16 +578,16 @@ router.post('/forgot-password', credentialLimiter, async (req, res) => {
       },
     });
 
-    const resetLink = `${APP_URL}/auth/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
+    const resetLink = `${APP_URL}/auth/reset-password?token=${resetToken}&email=${encodeURIComponent(user.email)}`;
     logAuthLinkInDev('PASSWORD RESET LINK', resetLink);
 
     await sendAuthEmail(
-      email,
+      user.email,
       'Reset your PartyHause password',
       `<p>Click <a href="${resetLink}">here</a> to reset your password. This link expires in 1 hour.</p>`,
     );
 
-    res.json(uniformResponse);
+    return res.json(uniformResponse);
   } catch (err) {
     console.error('Forgot password error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -450,21 +598,23 @@ router.post('/forgot-password', credentialLimiter, async (req, res) => {
 router.post('/reset-password', credentialLimiter, async (req, res) => {
   try {
     const { token, email, password } = req.body;
+    const normalizedEmail = normalizeEmail(email);
 
-    if (!token || !email || !password) {
+    if (typeof token !== 'string' || !token || !normalizedEmail || typeof password !== 'string') {
       return res.status(400).json({ error: 'Token, email, and password are required' });
     }
 
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    if (password.length < 8 || password.length > 128) {
+      return res.status(400).json({ error: 'Password must be between 8 and 128 characters' });
     }
 
     // Uniform failure response — see /verify-email for the enumeration rationale.
     const RESET_FAILURE = { error: 'Invalid or expired reset link. Request a new one.' };
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await findUserByEmail(normalizedEmail);
     if (
       !user ||
+      user.account_status !== 'active' ||
       !user.reset_token ||
       !user.reset_token_expires ||
       new Date() > user.reset_token_expires
@@ -489,27 +639,32 @@ router.post('/reset-password', credentialLimiter, async (req, res) => {
         // the verification link provides, so the address is confirmed here
         // too.
         //
-        // Without this the account is left inconsistent: signToken stamps
-        // email_verified into the claim, so the user is signed in immediately,
-        // while the column still says false and their NEXT login is refused
-        // with EMAIL_NOT_VERIFIED. Working now, locked out in seven days.
         email_verified: true,
         verification_token: null,
         verification_token_expires: null,
+        token_version: { increment: 1 },
       },
     });
 
-    const authToken = signToken(user);
-    res.json({ success: true, message: 'Password reset successfully', token: authToken });
+    res.json({ success: true, message: 'Password reset successfully. Sign in with your new password.' });
   } catch (err) {
     console.error('Reset password error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// POST /api/auth/logout — no-op for JWT, client discards token
-router.post('/logout', (_req, res) => {
-  res.json({ success: true });
+// POST /api/auth/logout - incrementing the epoch revokes every outstanding JWT.
+router.post('/logout', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    await prisma.user.update({
+      where: { id: req.user!.id },
+      data: { token_version: { increment: 1 } },
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Logout error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 export default router;

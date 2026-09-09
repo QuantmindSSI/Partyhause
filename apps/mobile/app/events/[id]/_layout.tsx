@@ -23,28 +23,9 @@ export default function EventIdLayout() {
         }}
       />
       <Stack.Screen
-        name="activities"
+        name="invitations"
         options={{
-          title: 'Activities',
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="games"
-        options={{
-          title: 'Games',
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="invites"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="planning"
-        options={{
+          title: 'Invitations',
           headerShown: false,
         }}
       />

@@ -6,8 +6,10 @@
  *   web    createApiClient({ baseUrl, storage: createWebStorage(),
  *                            telemetry: recordApiCall,
  *                            onUnauthorized: redirectToLogin })
- *   mobile createApiClient({ baseUrl, storage: createAsyncStorage(AsyncStorage),
- *                            onUnauthorized: () => router.replace('/') })
+ *   mobile createApiClient({ baseUrl,
+ *                            storage: createSecureStoreStorage(SecureStore,
+ *                              { legacyStorage: AsyncStorage }),
+ *                            onUnauthorized: rejectSession })
  */
 
 import type { ApiClientConfig } from './http/adapters';

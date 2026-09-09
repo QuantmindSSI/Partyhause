@@ -13,213 +13,22 @@
 
 import type { Transport, ApiResponse } from '../http/transport';
 import type {
-  PartyEvent, Guest, TimelineBlock, Poll, CrewMember, CrewMemberRow, CrewCreatorRow,
+  TimelineBlock, Poll, CrewMember, CrewMemberRow, CrewCreatorRow,
   Notification, UploadedBlob, UserProfileDetail, SuggestedUser,
   FeedContentType, CrewFeedPage,
 } from '../types';
+import { unwrapList, unwrapOne } from './envelopes';
 
-/**
- * Unwrap an envelope response into the value callers actually want.
- *
- * Every list and single-item route wraps its payload under a named key:
- * `{ events }`, `{ event, stats }`, `{ guests, stats }`, `{ blocks }`,
- * `{ polls }`, `{ notifications }`, `{ profile }`. Returning the envelope
- * would make `data` an object where callers expect an array, so
- * `data.map(...)` throws at runtime while the types look fine.
- *
- * @param res Raw transport result.
- * @param key Envelope property to lift.
- * @param fallback Value when the key is absent, so a list route that omits an
- *        empty array yields [] rather than null.
- */
-function unwrap<T>(res: ApiResponse<unknown>, key: string, fallback: T | null = null): ApiResponse<T> {
-  if (res.error) return { data: null, error: res.error };
-  const payload = res.data as Record<string, unknown> | null;
-  if (!payload || typeof payload !== 'object') {
-    return { data: fallback, error: null };
-  }
-  const value = payload[key];
-  return { data: (value === undefined ? fallback : value) as T, error: null };
-}
-
-/** Lift an envelope containing a list, defaulting to an empty array. */
-async function unwrapList<T>(p: Promise<ApiResponse<unknown>>, key: string): Promise<ApiResponse<T[]>> {
-  return unwrap<T[]>(await p, key, []);
-}
-
-/** Lift an envelope containing a single item. */
-async function unwrapOne<T>(p: Promise<ApiResponse<unknown>>, key: string): Promise<ApiResponse<T>> {
-  return unwrap<T>(await p, key);
-}
-
-/**
- * Server-computed counts returned alongside a single event.
- *
- * `timeline_blocks` here is a COUNT. The event object carries a field with the
- * same name that is the schedule array. They are not interchangeable.
- *
- * `guests_accepted` counts both 'accepted' and the legacy 'confirmed' status,
- * which is the reason to take this rather than count client-side.
- */
-export interface EventStats {
-  total_guests: number;
-  guests_accepted: number;
-  guests_declined: number;
-  guests_pending: number;
-  guests_checked_in: number;
-  timeline_blocks: number;
-  media_count: number;
-}
-
-export interface EventWithStats {
-  event: PartyEvent;
-  stats: EventStats;
-}
-
-export interface EventsResource {
-  list(): Promise<ApiResponse<PartyEvent[]>>;
-  get(id: string): Promise<ApiResponse<PartyEvent>>;
-  /** The same call as `get`, keeping the server-computed stats. */
-  getWithStats(id: string): Promise<ApiResponse<EventWithStats>>;
-  create(input: Partial<PartyEvent>): Promise<ApiResponse<PartyEvent>>;
-  update(id: string, input: Partial<PartyEvent>): Promise<ApiResponse<PartyEvent>>;
-  remove(id: string): Promise<ApiResponse<{ success: boolean }>>;
-}
-
-export function createEventsResource(t: Transport): EventsResource {
-  return {
-    list: () => unwrapList<PartyEvent>(t.request('/api/events', { method: 'GET' }), 'events'),
-    // Path parameter, not a query string. server/routes/events.ts declares
-    // `router.get('/:id?')` and reads `req.params.id`, so `/api/events?id=x`
-    // silently returns the full list instead of one event. Mobile did exactly
-    // that in two screens.
-    get: (id) => unwrapOne<PartyEvent>(t.request(`/api/events/${encodeURIComponent(id)}`, { method: 'GET' }), 'event'),
-    getWithStats: (id) =>
-      t.request<EventWithStats>(`/api/events/${encodeURIComponent(id)}`, { method: 'GET' }),
-    create: (input) => unwrapOne<PartyEvent>(t.request('/api/events', { method: 'POST', body: input }), 'event'),
-    update: (id, input) =>
-      unwrapOne<PartyEvent>(t.request(`/api/events/${encodeURIComponent(id)}`, { method: 'PUT', body: input }), 'event'),
-    remove: (id) =>
-      t.request<{ success: boolean }>(`/api/events/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  };
-}
-
-/**
- * Body accepted by PUT /api/guests/:id.
- *
- * Deliberately not `Partial<Guest>`. The route destructures a mixed-case set
- * of names and ignores anything else, so passing the row shape silently
- * discards the update. `checkedIn` maps to the `checked_in` column and also
- * sets `checked_in_at`.
- *
- * Note the Guest model carries a legacy `is_checked_in` column alongside
- * `checked_in`. The API reads and writes only `checked_in`; anything written
- * to the legacy column is invisible to both this API and the web app.
- */
-export interface GuestUpdateInput {
-  name?: string;
-  email?: string;
-  phone?: string;
-  rsvpStatus?: 'pending' | 'accepted' | 'declined' | 'maybe' | 'confirmed';
-  plusOnes?: number;
-  dietaryRestrictions?: string;
-  customFields?: Record<string, unknown>;
-  checkedIn?: boolean;
-  email_status?: string;
-  last_email_sent_at?: string;
-  email_log_id?: string | null;
-}
-
-/** One guest in a bulk create. The route takes an array, never a single row. */
-/**
- * Per-guest payload for POST /api/guests.
- *
- * camelCase, unlike the Guest row that comes back, which is snake_case. The
- * route reads `guest.plusOnes` and `guest.dietaryRestrictions`; sending the
- * snake_case column names instead is silently accepted and dropped, so every
- * guest lands with plus_ones 0 and no dietary restrictions.
- *
- * The route also ignores any other key, including `eventDetails` and
- * `sendInvitations`. It creates guests and nothing else; it sends no email.
- */
-export interface GuestCreateInput {
-  name: string;
-  email?: string;
-  phone?: string;
-  plusOnes?: number;
-  dietaryRestrictions?: string[];
-  ticketType?: string;
-  customFields?: Record<string, unknown>;
-  role?: string;
-}
-
-/**
- * Server-computed guest counts returned alongside the list.
- *
- * Worth taking rather than re-deriving: `accepted` counts both 'accepted' and
- * the legacy 'confirmed' status, so a client that filters on 'accepted' alone
- * silently undercounts every guest created before the invite-join unification.
- *
- * Note `checkedIn` is camelCase here while the Guest row uses `checked_in`.
- */
-export interface GuestStats {
-  total: number;
-  accepted: number;
-  declined: number;
-  maybe: number;
-  pending: number;
-  checkedIn: number;
-}
-
-export interface GuestsPage {
-  guests: Guest[];
-  stats: GuestStats;
-}
-
-export interface GuestsResource {
-  listForEvent(eventId: string): Promise<ApiResponse<Guest[]>>;
-  /** The same call as `listForEvent`, keeping the server-computed stats. */
-  listForEventWithStats(eventId: string): Promise<ApiResponse<GuestsPage>>;
-  /**
-   * Add one guest.
-   *
-   * POST /api/guests is a bulk endpoint: it requires `{ eventId, guests: [] }`
-   * and answers `{ guests, success, count }`. Sending a single flat guest, as
-   * this client originally did, fails validation with "eventId is required".
-   * This wraps the single case and lifts the first row back out.
-   */
-  create(eventId: string, guest: GuestCreateInput): Promise<ApiResponse<Guest>>;
-  /** Add several guests in one request. */
-  createMany(eventId: string, guests: GuestCreateInput[]): Promise<ApiResponse<Guest[]>>;
-  update(id: string, input: GuestUpdateInput): Promise<ApiResponse<Guest>>;
-  remove(id: string): Promise<ApiResponse<{ success: boolean }>>;
-}
-
-export function createGuestsResource(t: Transport): GuestsResource {
-  return {
-    listForEvent: (eventId) => unwrapList<Guest>(t.request('/api/guests', { method: 'GET', query: { eventId } }), 'guests'),
-    listForEventWithStats: (eventId) =>
-      t.request<GuestsPage>('/api/guests', { method: 'GET', query: { eventId } }),
-    create: async (eventId, guest) => {
-      const res = await unwrapList<Guest>(
-        t.request('/api/guests', { method: 'POST', body: { eventId, guests: [guest] } }),
-        'guests',
-      );
-      if (res.error) return { data: null, error: res.error };
-      const first = (res.data ?? [])[0];
-      return first
-        ? { data: first, error: null }
-        : { data: null, error: { message: 'Guest was created but the server returned no row' } };
-    },
-    createMany: (eventId, guests) =>
-      unwrapList<Guest>(t.request('/api/guests', { method: 'POST', body: { eventId, guests } }), 'guests'),
-    // PUT /:id, not PATCH with a query string. The mobile app had this wrong.
-    update: (id, input) =>
-      unwrapOne<Guest>(t.request(`/api/guests/${encodeURIComponent(id)}`, { method: 'PUT', body: input }), 'guest'),
-    remove: (id) =>
-      t.request<{ success: boolean }>(`/api/guests/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  };
-}
+export { createEventsResource } from './legacy-events';
+export type { EventStats, EventWithStats, EventsResource } from './legacy-events';
+export { createGuestsResource } from './legacy-guests';
+export type {
+  GuestCreateInput,
+  GuestStats,
+  GuestsPage,
+  GuestsResource,
+  GuestUpdateInput,
+} from './legacy-guests';
 
 /**
  * The /api/timeline TABLE endpoints.

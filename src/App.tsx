@@ -12,7 +12,7 @@ import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 import { motion, AnimatePresence } from "framer-motion";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { HardenedErrorBoundary } from '@/components/HardenedErrorBoundary';
-import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { initializeAuthStateListener } from '@/lib/auth';
 import { RoleGuard } from "@/components/RoleGuard";
 
@@ -71,15 +71,10 @@ const queryClient = new QueryClient({
   },
 });
 
-const GuestRoute = () => {
-  const { eventId, guestId } = useParams<{ eventId: string; guestId: string }>();
-  return <GuestView guestId={guestId || ''} eventId={eventId || ''} />;
-};
-
 /** Full-screen branded fallback while a lazy page chunk loads. */
 const PageFallback = () => <Loading fullScreen size="lg" />;
 
-const App = () => {
+const AuthenticatedApplication = () => {
   // Always read currentPage and user from the store (not cached)
   const currentPage = usePartyStore((s) => s.currentPage);
   const user = usePartyStore((s) => s.user);
@@ -254,8 +249,6 @@ const App = () => {
             <div className="min-h-screen bg-background text-foreground">
               <Suspense fallback={<PageFallback />}>
                 <Routes>
-                  <Route path="/join/:token" element={<JoinEventPage />} />
-                  <Route path="/event/:eventId/guest/:guestId" element={<GuestRoute />} />
                   {/* Email deep links — must resolve outside the state machine
                       or the emailed URLs dead-end on the default screen. */}
                   <Route path="/auth/verify-email" element={<VerifyEmailPage />} />
@@ -292,6 +285,24 @@ const App = () => {
       </QueryClientProvider>
     </BrowserRouter>
   );
+};
+
+const App = () => {
+  if (/^\/join(?:\/|$)/.test(window.location.pathname)) {
+    return (
+      <BrowserRouter>
+        <HardenedErrorBoundary>
+          <Suspense fallback={<PageFallback />}>
+            <Routes>
+              <Route path="/join/:token" element={<JoinEventPage />} />
+              <Route path="/join/*" element={<JoinEventPage />} />
+            </Routes>
+          </Suspense>
+        </HardenedErrorBoundary>
+      </BrowserRouter>
+    );
+  }
+  return <AuthenticatedApplication />;
 };
 
 export default App;

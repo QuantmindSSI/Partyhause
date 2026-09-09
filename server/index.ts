@@ -5,7 +5,7 @@
 
 import express from 'express';
 import cors from 'cors';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
@@ -17,10 +17,12 @@ const __dirname = path.dirname(__filename);
 // Route imports
 import sanitizeHtml from 'sanitize-html';
 import { assertJwtSecretConfigured } from './lib/jwt-secret';
+import { assertInvitationTokenSecretConfigured } from './lib/invitation-token';
 import { sendEmail, emailTransportStatus } from './lib/email';
 import { prisma } from './lib/prisma';
 import { requireAuth, type AuthenticatedRequest } from './middleware/auth';
 import { getEventAccess, canReadEvent, canInviteGuests } from './lib/event-access';
+import { startRetentionSweeper } from './lib/retention';
 
 /** Upper bound on a single send. Bulk invitations page through this. */
 const MAX_EMAIL_RECIPIENTS = 100;
@@ -122,6 +124,9 @@ import emailLogsRouter from './routes/email-logs';
 import storageRouter from './routes/storage';
 import realtimeRouter from './routes/realtime';
 import notificationsRouter from './routes/notifications';
+import mvpRouter, { mvpInputErrorHandler } from './routes/mvp';
+import rsvpRouter, { rsvpInputErrorHandler } from './routes/rsvp';
+import accountRouter, { accountInputErrorHandler, accountService } from './routes/account';
 
 // Load environment variables
 dotenv.config();
@@ -187,7 +192,14 @@ const emailLimiter = rateLimit({
   limit: 20,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  keyGenerator: (req) => (req as AuthenticatedRequest).user?.id ?? req.ip ?? 'unknown',
+  keyGenerator: (req) =>
+    // `req.ip` alone is an IPv6 bypass: a caller with a /64 has 2^64 addresses
+    // and each one is a fresh bucket. `ipKeyGenerator` collapses an IPv6 address
+    // to its /64 prefix so the whole allocation shares one limit, and passes
+    // IPv4 through unchanged. express-rate-limit v8 raises ERR_ERL_KEY_GEN_IPV6
+    // for the naive form, but only when NODE_ENV is not 'production', so the
+    // deployed API started cleanly while the bypass was live.
+    (req as AuthenticatedRequest).user?.id ?? ipKeyGenerator(req.ip ?? '') ?? 'unknown',
   message: { error: 'Too many email sends. Try again shortly.' },
 });
 
@@ -332,8 +344,17 @@ app.post('/api/send-email', emailLimiter, requireAuth, async (req: Authenticated
 });
 
 // ===== API Routes =====
+// RSVP is anonymous and carries its own tighter limiter. Mount it before the
+// umbrella limiter so every response, including a 429, retains no-store and
+// no-referrer privacy headers.
+app.use('/api/rsvp', rsvpInputErrorHandler);
+app.use('/api/rsvp', rsvpRouter);
 app.use('/api', apiLimiter);
 app.use('/api/auth', authRouter);
+app.use('/api/mvp/account', accountInputErrorHandler);
+app.use('/api/mvp/account', accountRouter);
+app.use('/api/mvp', mvpInputErrorHandler);
+app.use('/api/mvp', mvpRouter);
 app.use('/api/events', eventsRouter);
 app.use('/api/guests', guestsRouter);
 app.use('/api/timeline', timelineRouter);
@@ -356,6 +377,23 @@ app.use('/api/notifications', notificationsRouter);
 // Serve built static files from dist/ when present (local preview / combined mode)
 const distPath = path.resolve(__dirname, '../dist');
 if (fs.existsSync(distPath)) {
+  app.use('/join/:token', (_request, response, next) => {
+    response.set('Cache-Control', 'no-store');
+    response.set('Referrer-Policy', 'no-referrer');
+    response.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    next();
+  });
+
+  app.use(/^\/(privacy|terms|support)\.html$/, (_request, response, next) => {
+    response.set('Cache-Control', 'no-cache, no-store, max-age=0');
+    response.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+    response.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+    response.set('Referrer-Policy', 'no-referrer');
+    response.set('X-Content-Type-Options', 'nosniff');
+    response.set('X-Frame-Options', 'DENY');
+    next();
+  });
+
   // Browser auto-requests /favicon.ico; serve the 32x32 PNG as fallback
   app.get('/favicon.ico', (_req, res) => {
     res.sendFile(path.join(distPath, 'icons', 'favicon-32x32.png'));
@@ -375,19 +413,22 @@ app.use('/api', (_req, res) => {
 });
 
 // Global error handler
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  void next;
   console.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error', message: err?.message });
+  const message = err instanceof Error ? err.message : undefined;
+  res.status(500).json({ error: 'Internal server error', message });
 });
 
-// Fail closed before binding the listener. A missing or default JWT_SECRET in
-// production means every token is forgeable by anyone who can read this
-// repository, so refusing to start is the only safe outcome. Crashing here is
-// visible in Container Apps revision health; serving traffic would not be.
+// Fail closed before binding the listener. Authentication and invitation
+// credentials are security boundaries, so an unsafe production secret must
+// make the Container Apps revision visibly fail instead of serving traffic.
 try {
   assertJwtSecretConfigured();
+  assertInvitationTokenSecretConfigured();
+  startRetentionSweeper(prisma, () => accountService.retryInterruptedDeletions());
 } catch (err) {
-  console.error('FATAL: refusing to start with an unsafe JWT signing key.');
+  console.error('FATAL: refusing to start with unsafe secret configuration.');
   console.error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 }
@@ -395,7 +436,7 @@ try {
 app.listen(port, '0.0.0.0', () => {
   console.log(`PartyHause API server running at http://localhost:${port}`);
   console.log(`CORS allowed origins: ${allowedOrigins.length ? allowedOrigins.join(', ') : '(any)'}`);
-}).on('error', (err: any) => {
+}).on('error', (err: NodeJS.ErrnoException) => {
   console.error('Server failed to start:', err);
   if (err.code === 'EADDRINUSE') {
     console.error(`Port ${port} is already in use!`);

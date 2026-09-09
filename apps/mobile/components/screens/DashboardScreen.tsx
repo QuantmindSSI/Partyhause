@@ -1,418 +1,296 @@
-import { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, ImageBackground } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import { useQuery } from '@tanstack/react-query';
+import { router, type Href } from 'expo-router';
+import type { MvpEvent } from '@partyhause/core/mvp';
+
 import { api } from '@/lib/client';
-import { toLocalEvents } from '@/lib/mappers';
-import { EventCardCarousel } from '@/components/cards/EventCardCarousel';
-import { getTemplateBackground } from '@/utils/templateBackgrounds';
-import { Event } from '@/types/event';
 
 interface DashboardScreenProps {
   userId: string;
   userEmail: string;
-  onSignOut: () => void;
 }
 
-export const DashboardScreen = ({ userId, userEmail, onSignOut }: DashboardScreenProps) => {
-  const router = useRouter();
-  const [refreshing, setRefreshing] = useState(false);
-  const [currentEventIndex, setCurrentEventIndex] = useState(0);
-
-  const { data: events = [], isLoading, refetch } = useQuery<Event[]>({
-    queryKey: ['user-events', userId],
-    queryFn: async () => {
-      if (!userId) return [];
-
-      // The old query was .from('events').eq('host_id', userId)
-      // .order('start_date'). GET /api/events already scopes to the caller and
-      // orders by start_date ascending (server/routes/events.ts), so both
-      // clauses are redundant here.
-      //
-      // Behaviour change worth knowing: the server scopes with
-      // OR[host_id, co-host, invited guest], where the Supabase query matched
-      // host_id alone. The dashboard now also shows events the user was
-      // invited to, which matches the web app.
-      const { data, error } = await api.events.list();
-
-      if (error) {
-        console.error('[Dashboard] Error fetching events:', error.message);
-        throw new Error(error.message);
-      }
-
-      // toLocalEvents maps the API shape onto the local Event type, which
-      // requires `title` (the API returns `name`), `template_type` and
-      // `status`. See lib/mappers.ts for why that divergence exists.
-      return toLocalEvents(data);
-    },
-    enabled: !!userId,
-  });
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
+function eventDate(event: MvpEvent): string {
+  const date = new Date(event.start);
+  if (Number.isNaN(date.getTime())) return 'Date unavailable';
+  try {
+    return date.toLocaleString(undefined, {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
-      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: event.timezone || 'UTC',
     });
-  };
+  } catch {
+    return date.toISOString();
+  }
+}
 
-  const handleEventPress = (event: Event) => {
-    // Navigate to the new event details screen using dynamic route
-    router.push(`/events/${event.id}` as any);
-  };
+function EventRow({ event }: { event: MvpEvent }) {
+  return (
+    <TouchableOpacity
+      accessibilityRole="button"
+      style={styles.eventCard}
+      onPress={() => router.push(`/events/${event.id}`)}
+    >
+      <View style={styles.eventCopy}>
+        <View style={styles.eventMetaRow}>
+          <Text style={styles.eventDate}>{eventDate(event)}</Text>
+          <View style={styles.statusBadge}>
+            <Text style={styles.statusText}>{event.status}</Text>
+          </View>
+        </View>
+        <Text style={styles.eventTitle}>{event.name}</Text>
+        <View style={styles.locationRow}>
+          <Ionicons name="location-outline" size={16} color="#6A5E58" />
+          <Text numberOfLines={1} style={styles.locationText}>
+            {event.location || 'Location not set'}
+          </Text>
+        </View>
+      </View>
+      <Ionicons name="chevron-forward" size={22} color="#847771" />
+    </TouchableOpacity>
+  );
+}
 
-  const handleCreateEvent = () => {
-    router.push('/events/create');
-  };
-
-  // Transform events to match carousel component interface
-  const carouselEvents = events.map(event => ({
-    id: event.id,
-    title: event.name || event.title || 'Untitled Event',
-    description: event.description,
-    template_type: event.template_type || 'default',
-    start_date: event.start_date || event.event_date,
-    end_date: event.event_date,
-    location: event.venue || event.location,
-    // Cast matches the CHECK constraint on events.status; the previous cast
-    // asserted 'cancelled', which the column does not accept.
-    status: (event.status || 'published') as 'draft' | 'published' | 'active' | 'completed' | 'archived',
-    settings: {},
-  }));
-
-  // Get current event's template background for dashboard
-  const currentEventBackground = carouselEvents.length > 0 
-    ? getTemplateBackground(carouselEvents[currentEventIndex]?.template_type || 'default')
-    : null;
+export function DashboardScreen({ userId, userEmail }: DashboardScreenProps) {
+  const eventsQuery = useQuery({
+    queryKey: ['user-events', userId],
+    queryFn: async () => {
+      const result = await api.events.list();
+      if (result.error) throw new Error(result.error.message);
+      return result.data ?? [];
+    },
+  });
 
   return (
     <View style={styles.container}>
-      {/* Clean White/Off-White Background */}
-      <LinearGradient
-        colors={['#FAFAFA', '#FFFFFF', '#F5F5F7']}
-        style={StyleSheet.absoluteFill}
-      />
-
-      {/* Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Hey there! 👋</Text>
+        <View style={styles.headerCopy}>
+          <Text style={styles.kicker}>YOUR EVENTS</Text>
+          <Text style={styles.heading}>Make the next gathering easy.</Text>
           <Text style={styles.email}>{userEmail}</Text>
         </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity 
-            style={styles.profileButton} 
-            onPress={() => router.push(`/profile/${userId}` as any)}
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Open account"
+          style={styles.accountButton}
+          onPress={() => router.push('/account' as Href)}
+        >
+          <Ionicons name="person-circle-outline" size={30} color="#FFA694" />
+        </TouchableOpacity>
+      </View>
+
+      {eventsQuery.isLoading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#C02A16" />
+          <Text style={styles.supportingText}>Loading events...</Text>
+        </View>
+      ) : eventsQuery.isError ? (
+        <View style={styles.centered}>
+          <Ionicons name="cloud-offline-outline" size={42} color="#E12D33" />
+          <Text style={styles.emptyTitle}>Events could not be loaded</Text>
+          <Text style={styles.supportingText}>{eventsQuery.error.message}</Text>
+          <TouchableOpacity
+            accessibilityRole="button"
+            style={styles.retryButton}
+            onPress={() => { void eventsQuery.refetch(); }}
           >
-            <Ionicons name="person-circle-outline" size={24} color="#6366F1" />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.draftsButton} 
-            onPress={() => router.push('/events/drafts')}
-          >
-            <Ionicons name="document-text-outline" size={20} color="#6366F1" />
-            <Text style={styles.draftsButtonText}>Drafts</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.signOutButton} onPress={onSignOut}>
-            <Text style={styles.signOutText}>Sign Out</Text>
+            <Text style={styles.retryText}>Try Again</Text>
           </TouchableOpacity>
         </View>
-      </View>
-
-      {/* Content */}
-      <View style={styles.content}>
-        {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#6366F1" />
-            <Text style={styles.loadingText}>Loading your events...</Text>
-          </View>
-        ) : events.length === 0 ? (
-          <ScrollView
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366F1" />
-            }
-          >
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyIcon}>🎈</Text>
+      ) : (
+        <FlatList
+          data={eventsQuery.data}
+          keyExtractor={(event) => event.id}
+          renderItem={({ item }) => <EventRow event={item} />}
+          contentContainerStyle={eventsQuery.data?.length ? styles.list : styles.emptyList}
+          refreshing={eventsQuery.isRefetching}
+          onRefresh={() => { void eventsQuery.refetch(); }}
+          ListEmptyComponent={(
+            <View style={styles.centered}>
+              <View style={styles.emptyIcon}>
+                <Ionicons name="calendar-outline" size={36} color="#C02A16" />
+              </View>
               <Text style={styles.emptyTitle}>No events yet</Text>
-              <Text style={styles.emptyText}>
-                Create your first event and start inviting guests!
-              </Text>
-              <TouchableOpacity style={styles.createButton} onPress={handleCreateEvent}>
-                <Ionicons name="add-circle" size={20} color="#FFF" />
-                <Text style={styles.createButtonText}>Create Your First Event</Text>
-              </TouchableOpacity>
+              <Text style={styles.supportingText}>Save your first event draft to get started.</Text>
             </View>
-          </ScrollView>
-        ) : (
-          <>
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Your Events</Text>
-              <Text style={styles.sectionSubtitle}>
-                {events.length} {events.length === 1 ? 'event' : 'events'} • Swipe to navigate
-              </Text>
-            </View>
-            <View style={styles.carouselContainer}>
-              <EventCardCarousel
-                events={carouselEvents}
-                onEventPress={(event) => router.push(`/events/${event.id}` as any)}
-                onIndexChange={setCurrentEventIndex}
-                currentUserId={userId}
-              />
-            </View>
-          </>
-        )}
-      </View>
-
-      {/* Floating Create Button */}
-      {events.length > 0 && (
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={handleCreateEvent}
-          activeOpacity={0.8}
-        >
-          <LinearGradient
-            colors={['#6366F1', '#4F46E5']}
-            style={styles.fabGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <Ionicons name="add" size={28} color="#FFF" />
-          </LinearGradient>
-        </TouchableOpacity>
+          )}
+        />
       )}
+
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel="Create event"
+        style={styles.createButton}
+        onPress={() => router.push('/events/create')}
+      >
+        <Ionicons name="add" size={24} color="#FFFFFF" />
+      </TouchableOpacity>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#FBFAF9',
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 60,
-    paddingBottom: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.98)',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    paddingHorizontal: 22,
+    paddingTop: 62,
+    paddingBottom: 22,
+    backgroundColor: '#181311',
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
-  greeting: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 4,
+  headerCopy: {
+    paddingRight: 76,
+  },
+  kicker: {
+    color: '#FF7D66',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1.3,
+  },
+  heading: {
+    color: '#FBFAF9',
+    fontSize: 29,
+    lineHeight: 34,
+    fontWeight: '900',
+    letterSpacing: -0.7,
+    marginTop: 9,
   },
   email: {
-    fontSize: 14,
-    color: '#6B7280',
+    color: '#ABA09B',
+    fontSize: 13,
+    marginTop: 9,
   },
-  headerRight: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  },
-  profileButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#EEF2FF',
+  accountButton: {
+    position: 'absolute',
+    top: 58,
+    right: 18,
+    minHeight: 44,
     justifyContent: 'center',
-    alignItems: 'center',
+    paddingHorizontal: 8,
   },
-  draftsButton: {
+  list: {
+    padding: 18,
+    paddingBottom: 100,
+  },
+  emptyList: {
+    flexGrow: 1,
+  },
+  eventCard: {
+    minHeight: 112,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: '#EEF2FF',
+    padding: 17,
+    marginBottom: 12,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#EBE7E5',
   },
-  draftsButtonText: {
-    color: '#6366F1',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  signOutButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: '#F3F4F6',
-  },
-  signOutText: {
-    color: '#4B5563',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  content: {
+  eventCopy: {
     flex: 1,
   },
-  carouselContainer: {
-    flex: 1,
+  eventMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
-  section: {
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 28,
+  eventDate: {
+    color: '#972317',
+    fontSize: 12,
     fontWeight: '800',
-    color: '#111827',
-    marginBottom: 4,
   },
-  sectionSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
+  statusBadge: {
+    borderRadius: 999,
+    backgroundColor: '#F6F4F3',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
   },
-  loadingContainer: {
-    padding: 48,
+  statusText: {
+    color: '#514743',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'capitalize',
+  },
+  eventTitle: {
+    color: '#26201D',
+    fontSize: 19,
+    fontWeight: '800',
+  },
+  locationRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 5,
+    marginTop: 8,
   },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 14,
-    color: '#6B7280',
+  locationText: {
+    flex: 1,
+    color: '#6A5E58',
+    fontSize: 13,
   },
-  emptyState: {
-    paddingHorizontal: 24,
-    paddingVertical: 48,
+  centered: {
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    padding: 28,
   },
   emptyIcon: {
-    fontSize: 64,
+    width: 68,
+    height: 68,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 22,
+    backgroundColor: '#FFF2F0',
     marginBottom: 16,
   },
   emptyTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 15,
-    color: '#6B7280',
+    color: '#26201D',
+    fontSize: 20,
+    fontWeight: '800',
     textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 24,
+  },
+  supportingText: {
+    maxWidth: 300,
+    color: '#6A5E58',
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+    marginTop: 7,
+  },
+  retryButton: {
+    minHeight: 46,
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: '#C02A16',
+    paddingHorizontal: 22,
+    marginTop: 18,
+  },
+  retryText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
   },
   createButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#6366F1',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  createButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  fab: {
     position: 'absolute',
-    right: 24,
-    bottom: 24,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    overflow: 'hidden',
-    elevation: 8,
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-  },
-  fabGradient: {
-    width: '100%',
-    height: '100%',
+    right: 22,
+    bottom: 28,
+    width: 58,
+    height: 58,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  eventsList: {
-    paddingHorizontal: 24,
-    paddingBottom: 24,
-  },
-  eventCard: {
-    backgroundColor: '#1a1a24',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#2a2a3a',
-  },
-  eventHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  eventTitleContainer: {
-    flex: 1,
-    marginRight: 12,
-  },
-  eventName: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  eventVenue: {
-    fontSize: 13,
-    color: '#6C63FF',
-  },
-  eventBadge: {
-    backgroundColor: '#6C63FF20',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-  },
-  eventDateText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6C63FF',
-  },
-  eventDescription: {
-    fontSize: 14,
-    color: '#a8a8b3',
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  eventFooter: {
-    borderTopWidth: 1,
-    borderTopColor: '#2a2a3a',
-    paddingTop: 12,
-  },
-  eventAction: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6C63FF',
+    borderRadius: 20,
+    backgroundColor: '#C02A16',
+    shadowColor: '#46110B',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.24,
+    shadowRadius: 12,
+    elevation: 5,
   },
 });

@@ -24,6 +24,8 @@ export interface ApiError {
   message: string;
   /** Absent when the request never reached the server. */
   status?: number;
+  /** Stable machine-readable error identifier supplied by the API. */
+  code?: string;
 }
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -84,6 +86,12 @@ function messageFromBody(parsed: unknown, status: number): string {
   }
   if (typeof parsed === 'string' && parsed.length > 0) return parsed;
   return `HTTP error! status: ${status}`;
+}
+
+function codeFromBody(parsed: unknown): string | undefined {
+  if (!parsed || typeof parsed !== 'object') return undefined;
+  const code = (parsed as Record<string, unknown>).code;
+  return typeof code === 'string' && code.length > 0 ? code : undefined;
 }
 
 function now(): number {
@@ -167,12 +175,19 @@ export function createTransport(config: ApiClientConfig): Transport {
       Accept: 'application/json',
       ...(headers || {}),
     };
+    let requestToken: string | null = null;
     if (body !== undefined && body !== null) {
       finalHeaders['Content-Type'] = 'application/json';
     }
     if (!anonymous) {
-      const token = await storage.getItem(STORAGE_KEYS.token);
-      if (token) finalHeaders['Authorization'] = `Bearer ${token}`;
+      try {
+        requestToken = await storage.getItem(STORAGE_KEYS.token);
+        if (requestToken) finalHeaders['Authorization'] = `Bearer ${requestToken}`;
+      } catch {
+        const message = 'Secure credential storage is unavailable';
+        finish(null, false, message);
+        return { data: null, error: { message, code: 'STORAGE_UNAVAILABLE' } };
+      }
     }
 
     const url = buildUrl(baseUrl, path, query);
@@ -215,36 +230,61 @@ export function createTransport(config: ApiClientConfig): Transport {
       return { data: null, error: { message } };
     }
 
-    if (response.status === 401) {
-      finish(401, false, 'Unauthorized');
-      // Clear the dead session before handing control to the platform, so a
-      // rehydrated store cannot claim the user is still signed in.
-      await storage.removeItem(STORAGE_KEYS.token);
-      await storage.removeItem(STORAGE_KEYS.user);
-      if (onUnauthorized) {
+    let parsed: unknown = null;
+    let bodyReadError: string | null = null;
+    try {
+      const text = await response.text();
+      if (text) {
         try {
-          await onUnauthorized();
+          parsed = JSON.parse(text);
         } catch {
-          // A failing redirect must not mask the 401 from the caller.
+          parsed = text;
         }
       }
-      return { data: null, error: { message: 'Unauthorized', status: 401 } };
+    } catch (error) {
+      bodyReadError = error instanceof Error ? error.message : 'Response body could not be read';
     }
 
-    let parsed: unknown = null;
-    const text = await response.text();
-    if (text) {
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        parsed = text;
+    if (response.status === 401) {
+      const message = bodyReadError || messageFromBody(parsed, 401);
+      finish(401, false, message);
+      if (requestToken) {
+        try {
+          if (storage.clearSessionIfToken) {
+            await storage.clearSessionIfToken(requestToken);
+          } else if (await storage.getItem(STORAGE_KEYS.token) === requestToken) {
+            await storage.removeItem(STORAGE_KEYS.token);
+            await storage.removeItem(STORAGE_KEYS.user);
+          }
+        } catch {
+          // The platform observer below handles cleanup failure explicitly.
+        }
+        if (onUnauthorized) {
+          try {
+            await onUnauthorized(requestToken ?? undefined);
+          } catch {
+            // A failing navigation response must not mask the API result.
+          }
+        }
       }
+      return {
+        data: null,
+        error: { message, status: 401, code: codeFromBody(parsed) },
+      };
+    }
+
+    if (bodyReadError) {
+      finish(response.status, false, bodyReadError);
+      return { data: null, error: { message: bodyReadError, status: response.status } };
     }
 
     if (!response.ok) {
       const message = messageFromBody(parsed, response.status);
       finish(response.status, false, message);
-      return { data: null, error: { message, status: response.status } };
+      return {
+        data: null,
+        error: { message, status: response.status, code: codeFromBody(parsed) },
+      };
     }
 
     finish(response.status, true, null);

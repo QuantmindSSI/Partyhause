@@ -1,5 +1,7 @@
 import { getStoredToken, setStoredToken, getStoredUser, setStoredUser, clearAuth } from './supabase';
 import { apiUrl } from './apiBase';
+import type { SignupConsent } from './legal';
+export type { SignupConsent } from './legal';
 
 export interface AuthResponse {
   success: boolean;
@@ -37,10 +39,14 @@ export class AuthApiError extends Error {
   }
 }
 
-async function apiPostAuth<T>(path: string, body: unknown): Promise<T> {
+async function apiPostAuth<T>(path: string, body: unknown, authenticated = false): Promise<T> {
+  const token = authenticated ? getStoredToken() : null;
   const res = await fetch(apiUrl(path), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(body),
   });
   const data = await res.json();
@@ -60,7 +66,11 @@ async function apiGetAuth<T>(path: string): Promise<T> {
   return data as T;
 }
 
-export const handleAuthError = async (_error: any) => {
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Authentication request failed';
+}
+
+export const handleAuthError = async () => {
   clearAuth();
   window.location.href = '/auth/login';
   return true;
@@ -84,7 +94,7 @@ export const authService = {
       setStoredToken(data.token);
       setStoredUser(data.user);
       return { success: true, user: data.user };
-    } catch (error: any) {
+    } catch (error: unknown) {
       // An unconfirmed address is not a credential failure. Surfacing it as
       // one sends the user to password reset, which cannot help: the password
       // was correct.
@@ -95,7 +105,7 @@ export const authService = {
           error: error.message,
         };
       }
-      return { success: false, error: error.message };
+      return { success: false, error: errorMessage(error) };
     }
   },
 
@@ -107,12 +117,17 @@ export const authService = {
    * this did, now writes `undefined` and leaves a half-signed-in state that
    * every later request rejects.
    */
-  signUp: async (email: string, password: string, name?: string): Promise<AuthResponse> => {
+  signUp: async (
+    email: string,
+    password: string,
+    name: string,
+    consent: SignupConsent,
+  ): Promise<AuthResponse> => {
     try {
       const data = await apiPostAuth<{
         user: { id: string; email: string; name?: string };
         message: string;
-      }>('/api/auth/signup', { email, password, name });
+      }>('/api/auth/signup', { email, password, name, ...consent });
 
       return {
         success: true,
@@ -120,8 +135,8 @@ export const authService = {
         awaitingVerification: true,
         message: data.message ?? 'Check your email for a confirmation link before signing in.',
       };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      return { success: false, error: errorMessage(error) };
     }
   },
 
@@ -136,8 +151,8 @@ export const authService = {
         '/api/auth/resend-verification', { email },
       );
       return { success: true, message: data.message };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      return { success: false, error: errorMessage(error) };
     }
   },
 
@@ -146,25 +161,27 @@ export const authService = {
       // Requesting a reset link is /forgot-password; /reset-password is the
       // second step and requires { token, email, password }.
       await apiPostAuth('/api/auth/forgot-password', { email });
-      return { success: true, message: 'Password reset instructions sent to your email' };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+      return {
+        success: true,
+        message: 'If an active account exists and delivery succeeds, reset instructions will arrive shortly.',
+      };
+    } catch (error: unknown) {
+      return { success: false, error: errorMessage(error) };
     }
   },
 
   signOut: async (): Promise<AuthResponse> => {
     try {
-      await apiPostAuth('/api/auth/logout', {});
+      await apiPostAuth('/api/auth/logout', {}, true);
     } catch {
       // Ignore — discard token either way
     }
     clearAuth();
-    window.location.href = '/auth/login';
     return { success: true, message: 'Successfully signed out' };
   },
 
   getCurrentUser: async () => {
-    return getStoredUser() as any;
+    return getStoredUser();
   },
 
   getAccessToken: async (): Promise<string | null> => {
@@ -181,8 +198,8 @@ export const authService = {
         '/api/auth/verify-email', { email, token },
       );
       return { success: true, message: data.message };
-    } catch (error: any) {
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      return { success: false, error: errorMessage(error) };
     }
   },
 };

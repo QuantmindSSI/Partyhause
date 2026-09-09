@@ -24,7 +24,7 @@ cd "$PROJECT_ROOT/apps/mobile"
 # Check if node_modules exists
 if [ ! -d "node_modules" ]; then
   echo "📦 Installing dependencies..."
-  npm install --legacy-peer-deps
+  npm install
 fi
 
 echo "🔨 Exporting Expo web app..."

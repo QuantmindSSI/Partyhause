@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import type { AccountInfo } from '@azure/msal-browser';
 import { usePartyStore, type User } from '@/store/usePartyStore';
-import { authService } from '@/lib/auth';
-import { getStoredToken, getStoredUser, setStoredUser, clearAuth, isSupabaseConfigured } from '@/lib/supabase';
+import { authService, type SignupConsent } from '@/lib/auth';
+import { getStoredToken, getStoredUser } from '@/lib/supabase';
 import { isMsalConfigured, msalGetAccount, msalLogin, msalLogout } from '@/lib/msal';
 
 // Previously a local `NormalizedUser` interface duplicated the store's `User`
@@ -109,6 +109,7 @@ export const useAuth = () => {
         };
         await usePartyStore.getState().setUser(normalizedUser);
       }
+      usePartyStore.getState().setLoading(false);
       return { user: result.user, error: result.error ? new Error(result.error) : null };
     } catch (error) {
       usePartyStore.getState().setLoading(false);
@@ -116,7 +117,7 @@ export const useAuth = () => {
     }
   };
 
-  const signUp = async (email: string, password: string, name?: string) => {
+  const signUp = async (email: string, password: string, name: string, consent: SignupConsent) => {
     if (isMsalConfigured) {
       usePartyStore.getState().setLoading(true);
       await msalLogin();
@@ -124,15 +125,10 @@ export const useAuth = () => {
     }
     try {
       usePartyStore.getState().setLoading(true);
-      const result = await authService.signUp(email, password, name);
-      if (result.success && result.user) {
-        const normalizedUser: NormalizedUser = {
-          id: result.user.id,
-          email: result.user.email,
-          name: result.user.name,
-        };
-        await usePartyStore.getState().setUser(normalizedUser);
-      }
+      const result = await authService.signUp(email, password, name, consent);
+      // Signup returns an identity but no token. Keep the web store anonymous
+      // until a later login proves the email address has been confirmed.
+      usePartyStore.getState().setLoading(false);
       return { user: result.user, error: result.error ? new Error(result.error) : null };
     } catch (error) {
       usePartyStore.getState().setLoading(false);
@@ -155,7 +151,7 @@ export const useAuth = () => {
     }
     try {
       usePartyStore.getState().setLoading(true);
-      clearAuth();
+      await authService.signOut();
       usePartyStore.getState().logout();
     } catch (error) {
       console.error('Sign out failed:', error);

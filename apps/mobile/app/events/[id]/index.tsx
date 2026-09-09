@@ -1,1016 +1,371 @@
-import React, { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View,
-  Text,
+  ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
-  ActivityIndicator,
+  Text,
   TouchableOpacity,
-  Alert,
+  View,
 } from 'react-native';
-import { useLocalSearchParams, Stack, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { api } from '@/lib/client';
-import { Event, getEventLocation, getEventTitle } from '@/types/event';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  createMvpIdempotencyKey,
+  type MvpEvent,
+  type MvpGuestStats,
+} from '@partyhause/core/mvp';
 
-interface EventStats {
-  total_guests: number;
-  guests_accepted: number;
-  guests_declined: number;
-  guests_pending: number;
-  guests_checked_in: number;
-  timeline_blocks: number;
-  media_count: number;
+import { api } from '@/lib/client';
+
+type EventAction = 'publish' | 'cancel' | 'delete';
+type LoadState =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'ready'; event: MvpEvent; stats: MvpGuestStats | null };
+
+function formatEventDate(start: string, end: string, timezone: string): string {
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  const dateOptions: Intl.DateTimeFormatOptions = {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: timezone,
+  };
+  const timeOptions: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', timeZone: timezone };
+  try {
+    const startDay = startDate.toLocaleDateString(undefined, dateOptions);
+    const endDay = endDate.toLocaleDateString(undefined, dateOptions);
+    const startTime = startDate.toLocaleTimeString(undefined, timeOptions);
+    const endTime = endDate.toLocaleTimeString(undefined, timeOptions);
+    return startDay === endDay
+      ? `${startDay}, ${startTime} to ${endTime}`
+      : `${startDay}, ${startTime} to ${endDay}, ${endTime}`;
+  } catch {
+    return `${startDate.toISOString()} to ${endDate.toISOString()}`;
+  }
 }
 
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <View style={styles.statCard}>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function ActionButton({
+  destructive = false,
+  disabled,
+  icon,
+  label,
+  onPress,
+}: {
+  destructive?: boolean;
+  disabled: boolean;
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      accessibilityRole="button"
+      disabled={disabled}
+      onPress={onPress}
+      style={[styles.lifecycleButton, destructive && styles.destructiveButton, disabled && styles.disabledButton]}
+    >
+      <Ionicons name={icon} size={19} color={destructive ? '#A51D20' : '#972317'} />
+      <Text style={[styles.lifecycleButtonText, destructive && styles.destructiveButtonText]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
 
 export default function EventDetailsScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const [event, setEvent] = useState<Event | null>(null);
-  const [stats, setStats] = useState<EventStats>({
-    total_guests: 0,
-    guests_accepted: 0,
-    guests_declined: 0,
-    guests_pending: 0,
-    guests_checked_in: 0,
-    timeline_blocks: 0,
-    media_count: 0,
-  });
-  const [loading, setLoading] = useState(true);
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const queryClient = useQueryClient();
+  const commandKeys = useRef(new Map<string, string>());
+  const [state, setState] = useState<LoadState>({ status: 'loading' });
+  const [pendingAction, setPendingAction] = useState<EventAction | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (id) {
-      fetchEventDetails();
+  const loadEvent = useCallback(async () => {
+    if (!id) {
+      setState({ status: 'error', message: 'This event link is incomplete.' });
+      return;
     }
+    setState({ status: 'loading' });
+    const [eventResult, guestResult] = await Promise.all([
+      api.events.get(id),
+      api.guests.listForEventWithStats(id),
+    ]);
+    if (eventResult.error || !eventResult.data) {
+      setState({
+        status: 'error',
+        message: eventResult.error?.status === 404
+          ? 'This event does not exist or is no longer available.'
+          : eventResult.error?.message || 'The event could not be loaded.',
+      });
+      return;
+    }
+    setState({ status: 'ready', event: eventResult.data, stats: guestResult.data?.stats ?? null });
   }, [id]);
 
-  const fetchEventDetails = async () => {
-    try {
-      // Validate id parameter
-      if (!id) {
-        console.error('[Event Details] Event ID is missing');
-        Alert.alert('Error', 'Event ID is missing');
-        setLoading(false);
+  useEffect(() => {
+    void loadEvent();
+  }, [loadEvent]);
+
+  function commandKey(action: EventAction, event: MvpEvent): string {
+    const fingerprint = `${action}:${event.id}:${event.revision}`;
+    const existing = commandKeys.current.get(fingerprint);
+    if (existing) return existing;
+    const created = createMvpIdempotencyKey(`event-${action}`);
+    commandKeys.current.set(fingerprint, created);
+    return created;
+  }
+
+  async function runAction(action: EventAction, event: MvpEvent): Promise<void> {
+    setPendingAction(action);
+    setActionError(null);
+    const key = commandKey(action, event);
+    if (action === 'delete') {
+      const result = await api.events.remove(event.id, event.revision, key);
+      setPendingAction(null);
+      if (result.error) {
+        setActionError(result.error.code === 'REVISION_CONFLICT'
+          ? 'This event changed elsewhere. Refresh before trying again.'
+          : result.error.message);
+        if (result.error.code === 'REVISION_CONFLICT') void loadEvent();
         return;
       }
-
-      console.log('[Event Details] Fetching event:', id);
-
-      if (!(await api.auth.isAuthenticated())) {
-        Alert.alert(
-          'Authentication Required',
-          'Please sign in to view event details',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Sign In', onPress: () => router.push('/') }
-          ]
-        );
-        setLoading(false);
-        return;
-      }
-
-      // Was GET /api/events?id=<id>. The route takes the id from the path
-      // (/:id?) and ignores that query parameter, so this returned the
-      // caller's event LIST: data.event was undefined and the screen showed an
-      // empty event with zeroed stats.
-      const { data, error: apiError } = await api.events.getWithStats(id);
-
-      if (apiError) {
-        console.error('[Event Details] API error:', apiError.status, apiError.message);
-        if (apiError.status === 401 || apiError.status === 403) {
-          Alert.alert('Unauthorized', 'You do not have permission to view this event',
-            [{ text: 'OK', onPress: () => router.back() }]);
-        } else if (apiError.status === 404) {
-          Alert.alert('Event Not Found', 'This event does not exist or has been deleted',
-            [{ text: 'OK', onPress: () => router.back() }]);
-        } else {
-          Alert.alert('Error', `Failed to load event details. ${apiError.message}`);
-        }
-        setLoading(false);
-        return;
-      }
-
-      if (data?.event) {
-        setEvent(data.event);
-      }
-      if (data?.stats) {
-        setStats(data.stats);
-      }
-    } catch (error) {
-      console.error('[Event Details] Exception:', error);
-      Alert.alert(
-        'Error', 
-        'Failed to load event details. Please check your connection and try again.',
-        [
-          { text: 'Retry', onPress: () => fetchEventDetails() },
-          { text: 'Cancel', style: 'cancel' }
-        ]
-      );
-    } finally {
-      setLoading(false);
+      await queryClient.invalidateQueries({ queryKey: ['user-events'] });
+      router.replace('/');
+      return;
     }
-  };
-
-  // Cases match the CHECK constraint on events.status. 'cancelled' was handled
-  // here and is not a value the column accepts, while 'active' and 'archived'
-  // are and were falling through to the default grey.
-  const getStatusColor = (status?: string | null): string => {
-    switch (status) {
-      case 'published':
-        return '#10b981';
-      case 'active':
-        return '#3b82f6';
-      case 'draft':
-        return '#f59e0b';
-      case 'archived':
-        return '#ef4444';
-      case 'completed':
-        return '#6b7280';
-      default:
-        return '#6b7280';
+    const result = action === 'publish'
+      ? await api.events.publish(event.id, event.revision, key)
+      : await api.events.cancel(event.id, event.revision, key);
+    setPendingAction(null);
+    if (result.error) {
+      setActionError(result.error.code === 'REVISION_CONFLICT'
+        ? 'This event changed elsewhere. Refresh before trying again.'
+        : result.error.message);
+      if (result.error.code === 'REVISION_CONFLICT') void loadEvent();
+      return;
     }
-  };
-
-  // template_type is nullable, so this must accept its absence.
-  const getTemplateIcon = (template?: string | null): keyof typeof Ionicons.glyphMap => {
-    const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
-      birthday: 'gift',
-      'kids-birthday': 'balloon',
-      wedding: 'heart',
-      'product-launch': 'rocket',
-      fundraiser: 'cash',
-      festival: 'musical-notes',
-      conference: 'business',
-      travel: 'airplane',
-      'block-party': 'home',
-      class: 'school',
-      hackathon: 'code-slash',
-      corporate: 'briefcase',
-    };
-    return iconMap[template ?? ''] || 'calendar';
-  };
-
-  const renderBirthdayDetails = (settings: Record<string, any>) => {
-    if (!settings) return null;
-
-    return (
-      <View style={styles.templateDetailsSection}>
-        <Text style={styles.sectionTitle}>🎂 Birthday Party Details</Text>
-        
-        {/* Birthday Child Info */}
-        {settings.birthday_person && (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailCardTitle}>Birthday Child</Text>
-            <Text style={styles.detailCardValue}>
-              {settings.birthday_person}
-              {settings.age && ` (turning ${settings.age})`}
-            </Text>
-            {settings.milestone && (
-              <Text style={styles.detailCardSubtext}>{settings.milestone}</Text>
-            )}
-          </View>
-        )}
-
-        {/* Guest Info */}
-        {(settings.expected_guest_count || settings.age_range) && (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailCardTitle}>Guest Information</Text>
-            {settings.expected_guest_count && (
-              <Text style={styles.detailCardValue}>
-                Expected: {settings.expected_guest_count} guests
-              </Text>
-            )}
-            {settings.age_range && (
-              <Text style={styles.detailCardSubtext}>Ages: {settings.age_range}</Text>
-            )}
-          </View>
-        )}
-
-        {/* Venue & Theme */}
-        {(settings.venue_type || settings.theme) && (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailCardTitle}>Venue & Theme</Text>
-            {settings.venue_type && (
-              <Text style={styles.detailCardValue}>📍 {settings.venue_type}</Text>
-            )}
-            {settings.theme && (
-              <Text style={styles.detailCardValue}>🎨 Theme: {settings.theme}</Text>
-            )}
-            {settings.dress_code && (
-              <Text style={styles.detailCardSubtext}>Dress Code: {settings.dress_code}</Text>
-            )}
-            {settings.venue_package && (
-              <Text style={styles.detailCardSubtext}>Package: {settings.venue_package}</Text>
-            )}
-          </View>
-        )}
-
-        {/* Activities */}
-        {(settings.selected_activities?.length > 0 || settings.custom_activities) && (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailCardTitle}>🎉 Activities & Entertainment</Text>
-            {settings.selected_activities?.length > 0 && (
-              <View style={styles.chipContainer}>
-                {settings.selected_activities.map((activity: string, index: number) => (
-                  <View key={index} style={styles.activityChip}>
-                    <Text style={styles.activityChipText}>{activity}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-            {settings.custom_activities && (
-              <Text style={styles.detailCardSubtext}>{settings.custom_activities}</Text>
-            )}
-            {settings.entertainment_notes && (
-              <Text style={styles.detailCardSubtext}>📝 {settings.entertainment_notes}</Text>
-            )}
-          </View>
-        )}
-
-        {/* Food & Cake */}
-        {(settings.food_menu || settings.cake_details) && (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailCardTitle}>🍰 Food & Cake</Text>
-            {settings.food_menu && (
-              <Text style={styles.detailCardValue}>Menu: {settings.food_menu}</Text>
-            )}
-            {settings.cake_details && (
-              <Text style={styles.detailCardValue}>Cake: {settings.cake_details}</Text>
-            )}
-            {settings.allergy_notes && (
-              <View style={styles.alertBox}>
-                <Ionicons name="alert-circle" size={16} color="#ef4444" />
-                <Text style={styles.alertText}>Allergies: {settings.allergy_notes}</Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Gift Preferences */}
-        {settings.gift_preference && (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailCardTitle}>🎁 Gift Preferences</Text>
-            {settings.gift_preference === 'registry' && settings.registry_links?.length > 0 && (
-              <>
-                <Text style={styles.detailCardValue}>Gift Registry:</Text>
-                {settings.registry_links.map((link: string, index: number) => (
-                  <Text key={index} style={styles.linkText} numberOfLines={1}>
-                    {link}
-                  </Text>
-                ))}
-              </>
-            )}
-            {settings.gift_preference === 'no-gifts' && (
-              <Text style={styles.detailCardValue}>No gifts please 💝</Text>
-            )}
-            {settings.gift_preference === 'donation' && settings.donation_info && (
-              <Text style={styles.detailCardValue}>Donate to: {settings.donation_info}</Text>
-            )}
-            {settings.gift_preference === 'wishes' && settings.gift_wishes && (
-              <Text style={styles.detailCardValue}>{settings.gift_wishes}</Text>
-            )}
-          </View>
-        )}
-
-        {/* Parent Logistics */}
-        {(settings.parent_stay_required || settings.supervision_ratio || settings.pickup_time) && (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailCardTitle}>👨‍👩‍👧 Parent Information</Text>
-            {settings.parent_stay_required && (
-              <View style={styles.alertBox}>
-                <Ionicons name="people" size={16} color="#9333ea" />
-                <Text style={styles.alertText}>Parents must stay</Text>
-              </View>
-            )}
-            {settings.supervision_ratio && (
-              <Text style={styles.detailCardValue}>Supervision: {settings.supervision_ratio}</Text>
-            )}
-            {settings.pickup_time && (
-              <Text style={styles.detailCardValue}>Pickup Time: {settings.pickup_time}</Text>
-            )}
-          </View>
-        )}
-
-        {/* Safety & Requirements */}
-        {(settings.safety_requirements || settings.what_to_bring || settings.equipment_provided) && (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailCardTitle}>⚠️ Safety & Requirements</Text>
-            {settings.safety_requirements && (
-              <Text style={styles.detailCardValue}>Safety: {settings.safety_requirements}</Text>
-            )}
-            {settings.what_to_bring && (
-              <View style={styles.alertBox}>
-                <Ionicons name="bag-handle" size={16} color="#10b981" />
-                <Text style={styles.alertText}>Bring: {settings.what_to_bring}</Text>
-              </View>
-            )}
-            {settings.equipment_provided && (
-              <Text style={styles.detailCardSubtext}>Provided: {settings.equipment_provided}</Text>
-            )}
-            {settings.venue_rules && (
-              <Text style={styles.detailCardSubtext}>Venue Rules: {settings.venue_rules}</Text>
-            )}
-          </View>
-        )}
-
-        {/* Photography */}
-        {settings.photography_arrangement && (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailCardTitle}>📸 Photography</Text>
-            <Text style={styles.detailCardValue}>
-              {settings.photography_arrangement === 'professional' && 'Professional Photographer'}
-              {settings.photography_arrangement === 'parent-volunteers' && 'Parent Volunteers'}
-              {settings.photography_arrangement === 'none' && 'No Photos'}
-            </Text>
-            {settings.photographer_details && (
-              <Text style={styles.detailCardSubtext}>{settings.photographer_details}</Text>
-            )}
-          </View>
-        )}
-
-        {/* Weather Backup */}
-        {settings.backup_plan && (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailCardTitle}>☔ Weather Backup Plan</Text>
-            <Text style={styles.detailCardValue}>{settings.backup_plan}</Text>
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  const renderAdultBirthdayDetails = (settings: Record<string, any>) => {
-    if (!settings) return null;
-
-    return (
-      <View style={styles.templateDetailsSection}>
-        <Text style={styles.sectionTitle}>🎂 Birthday Celebration Details</Text>
-        
-        {/* Birthday Celebrant Info */}
-        {settings.birthday_person && (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailCardTitle}>Birthday Celebrant</Text>
-            <Text style={styles.detailCardValue}>
-              {settings.birthday_person}
-              {settings.age && ` (turning ${settings.age})`}
-            </Text>
-            {settings.milestone && (
-              <Text style={styles.detailCardSubtext}>{settings.milestone}</Text>
-            )}
-          </View>
-        )}
-
-        {/* Guest Info */}
-        {settings.expected_guest_count && (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailCardTitle}>Guest Information</Text>
-            <Text style={styles.detailCardValue}>
-              Expected: {settings.expected_guest_count} guests
-            </Text>
-          </View>
-        )}
-
-        {/* Venue & Theme */}
-        {(settings.venue_type || settings.theme) && (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailCardTitle}>Venue & Theme</Text>
-            {settings.venue_type && (
-              <Text style={styles.detailCardValue}>📍 {settings.venue_type}</Text>
-            )}
-            {settings.theme && (
-              <Text style={styles.detailCardValue}>🎨 Theme: {settings.theme}</Text>
-            )}
-            {settings.dress_code && (
-              <Text style={styles.detailCardSubtext}>Dress Code: {settings.dress_code}</Text>
-            )}
-          </View>
-        )}
-
-        {/* Food & Drinks */}
-        {(settings.catering_style || settings.bar_service || settings.menu_notes) && (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailCardTitle}>🍽️ Food & Drinks</Text>
-            {settings.catering_style && (
-              <Text style={styles.detailCardValue}>Catering: {settings.catering_style}</Text>
-            )}
-            {settings.bar_service && (
-              <Text style={styles.detailCardValue}>🍸 Bar: {settings.bar_service}</Text>
-            )}
-            {settings.signature_cocktail && (
-              <Text style={styles.detailCardSubtext}>Signature: {settings.signature_cocktail}</Text>
-            )}
-            {settings.menu_notes && (
-              <Text style={styles.detailCardSubtext}>{settings.menu_notes}</Text>
-            )}
-            {settings.allergy_notes && (
-              <View style={styles.alertBox}>
-                <Ionicons name="alert-circle" size={16} color="#ef4444" />
-                <Text style={styles.alertText}>Allergies: {settings.allergy_notes}</Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Entertainment */}
-        {(settings.entertainment_type || settings.entertainment_details) && (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailCardTitle}>🎵 Entertainment</Text>
-            {settings.entertainment_type && (
-              <Text style={styles.detailCardValue}>
-                {settings.entertainment_type === 'dj' && '🎧 DJ'}
-                {settings.entertainment_type === 'band' && '🎸 Live Band'}
-                {settings.entertainment_type === 'karaoke' && '🎤 Karaoke'}
-                {settings.entertainment_type === 'comedy' && '🎭 Comedy Show'}
-                {settings.entertainment_type === 'none' && 'No Entertainment'}
-              </Text>
-            )}
-            {settings.entertainment_details && (
-              <Text style={styles.detailCardSubtext}>{settings.entertainment_details}</Text>
-            )}
-          </View>
-        )}
-
-        {/* Gift Preferences */}
-        {settings.gift_preference && (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailCardTitle}>🎁 Gift Preferences</Text>
-            {settings.gift_preference === 'registry' && settings.registry_links?.length > 0 && (
-              <>
-                <Text style={styles.detailCardValue}>Gift Registry:</Text>
-                {settings.registry_links.map((link: string, index: number) => (
-                  <Text key={index} style={styles.linkText} numberOfLines={1}>
-                    {link}
-                  </Text>
-                ))}
-              </>
-            )}
-            {settings.gift_preference === 'no-gifts' && (
-              <Text style={styles.detailCardValue}>No gifts please 💝</Text>
-            )}
-            {settings.gift_preference === 'donation' && settings.donation_info && (
-              <Text style={styles.detailCardValue}>Donate to: {settings.donation_info}</Text>
-            )}
-            {settings.gift_preference === 'wishes' && settings.gift_wishes && (
-              <Text style={styles.detailCardValue}>{settings.gift_wishes}</Text>
-            )}
-          </View>
-        )}
-
-        {/* Special Features */}
-        {(settings.photo_booth || settings.toasts_speeches) && (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailCardTitle}>✨ Special Features</Text>
-            {settings.photo_booth && (
-              <Text style={styles.detailCardValue}>📸 Photo Booth Included</Text>
-            )}
-            {settings.booth_details && (
-              <Text style={styles.detailCardSubtext}>{settings.booth_details}</Text>
-            )}
-            {settings.toasts_speeches && (
-              <Text style={styles.detailCardValue}>🥂 Toasts & Speeches Scheduled</Text>
-            )}
-            {settings.toast_schedule && (
-              <Text style={styles.detailCardSubtext}>{settings.toast_schedule}</Text>
-            )}
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  const renderTemplateDetails = () => {
-    if (!event?.settings) return null;
-
-    switch (event.template_type) {
-      case 'birthday':
-        return renderAdultBirthdayDetails(event.settings);
-      case 'kids-birthday':
-        return renderBirthdayDetails(event.settings);
-      // Add other template types here as they're implemented
-      default:
-        return null;
+    await queryClient.invalidateQueries({ queryKey: ['user-events'] });
+    if (result.data && state.status === 'ready') {
+      setState({ ...state, event: result.data });
     }
-  };
+  }
 
-  if (loading) {
+  function confirm(action: EventAction, event: MvpEvent): void {
+    const copy = action === 'publish'
+      ? { title: `Publish ${event.name}?`, message: 'Guests can be checked in after publication.', label: 'Publish' }
+      : action === 'cancel'
+        ? { title: `Cancel ${event.name}?`, message: 'Cancellation cannot be reversed.', label: 'Cancel Event' }
+        : { title: `Delete ${event.name}?`, message: 'This permanently removes its guests, RSVP links, and attendance history.', label: 'Delete Event' };
+    Alert.alert(copy.title, copy.message, [
+      { text: 'Keep Event', style: 'cancel' },
+      {
+        text: copy.label,
+        style: action === 'publish' ? 'default' : 'destructive',
+        onPress: () => { void runAction(action, event); },
+      },
+    ]);
+  }
+
+  if (state.status === 'loading') {
     return (
       <View style={styles.centered}>
-        <Stack.Screen options={{ title: 'Event Details' }} />
-        <ActivityIndicator size="large" color="#9333ea" />
+        <ActivityIndicator size="large" color="#C02A16" />
+        <Text style={styles.loadingText}>Loading event...</Text>
       </View>
     );
   }
 
-  if (!event) {
+  if (state.status === 'error') {
     return (
       <View style={styles.centered}>
-        <Stack.Screen options={{ title: 'Event Not Found' }} />
-        <Ionicons name="alert-circle-outline" size={64} color="#ef4444" />
-        <Text style={styles.errorText}>Event not found</Text>
+        <Ionicons name="alert-circle-outline" size={48} color="#E12D33" />
+        <Text style={styles.errorTitle}>Event unavailable</Text>
+        <Text style={styles.errorText}>{state.message}</Text>
+        <TouchableOpacity style={styles.primaryButton} onPress={() => { void loadEvent(); }}>
+          <Text style={styles.primaryButtonText}>Try Again</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.secondaryButton} onPress={() => router.back()}>
+          <Text style={styles.secondaryButtonText}>Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
+
+  const { event, stats } = state;
+  const busy = pendingAction !== null;
+  const canEdit = event.status === 'draft' || event.status === 'published';
+  const canDelete = event.status === 'draft' || event.status === 'completed' || event.status === 'cancelled';
 
   return (
     <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          title: getEventTitle(event),
-            headerRight: () => (
-            <TouchableOpacity onPress={() => {/* TODO: Edit event */}}>
-              <Ionicons name="create-outline" size={24} color="#9333ea" />
-            </TouchableOpacity>
-          ),
-        }}
-      />
+      <View style={styles.header}>
+        <TouchableOpacity accessibilityLabel="Back" accessibilityRole="button" style={styles.backButton} onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={22} color="#26201D" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Event</Text>
+        <TouchableOpacity
+          accessibilityRole="button"
+          disabled={!canEdit || busy}
+          style={styles.headerAction}
+          onPress={() => router.push({ pathname: '/events/create', params: { eventId: event.id } })}
+        >
+          <Text style={[styles.headerActionText, (!canEdit || busy) && styles.disabledText]}>Edit</Text>
+        </TouchableOpacity>
+      </View>
 
-      <ScrollView style={styles.content}>
-        {/* Event Header */}
-        <View style={styles.header}>
-          <View style={styles.headerTop}>
-            <View style={styles.templateBadge}>
-              <Ionicons
-                name={getTemplateIcon(event.template_type)}
-                size={20}
-                color="#9333ea"
-              />
-              <Text style={styles.templateText}>
-                {event.template_type?.replace('-', ' ')?.toUpperCase() || 'EVENT'}
-              </Text>
-            </View>
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(event.status) }]}>
-              <Text style={styles.statusText}>{event.status?.toUpperCase() || 'UNKNOWN'}</Text>
-            </View>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.hero}>
+          <View style={styles.statusBadge}>
+            <Text style={styles.statusText}>{event.status}</Text>
           </View>
-          
-          <Text style={styles.title}>{getEventTitle(event)}</Text>
-          {event.description && (
-            <Text style={styles.description}>{event.description}</Text>
-          )}
+          <Text style={styles.title}>{event.name}</Text>
+          {event.description ? <Text style={styles.description}>{event.description}</Text> : null}
+        </View>
 
-          {/* Event Details */}
-          <View style={styles.detailsContainer}>
-            <View style={styles.detailRow}>
-              <Ionicons name="calendar" size={20} color="#6b7280" />
-              <View style={styles.detailContent}>
-                <Text style={styles.detailLabel}>Start Date</Text>
-                <Text style={styles.detailValue}>
-                  {new Date(event.start_date || event.date || event.event_date || '').toLocaleString()}
-                </Text>
-              </View>
-            </View>
-            {event.end_date && (
-              <View style={styles.detailRow}>
-                <Ionicons name="calendar-outline" size={20} color="#6b7280" />
-                <View style={styles.detailContent}>
-                  <Text style={styles.detailLabel}>End Date</Text>
-                  <Text style={styles.detailValue}>
-                    {new Date(event.end_date).toLocaleString()}
-                  </Text>
-                </View>
-              </View>
-            )}
-            {event.location && (
-              <View style={styles.detailRow}>
-                <Ionicons name="location" size={20} color="#6b7280" />
-                <View style={styles.detailContent}>
-                  <Text style={styles.detailLabel}>Location</Text>
-                  <Text style={styles.detailValue}>{getEventLocation(event)}</Text>
-                </View>
-              </View>
-            )}
-            <View style={styles.detailRow}>
-              <Ionicons name="lock-closed" size={20} color="#6b7280" />
-              <View style={styles.detailContent}>
-                <Text style={styles.detailLabel}>Privacy</Text>
-                <Text style={styles.detailValue}>
-                  {event.privacy ? event.privacy.charAt(0).toUpperCase() + event.privacy.slice(1) : 'Private'}
-                </Text>
-              </View>
-            </View>
+        <View style={styles.detailsCard}>
+          <View style={styles.detailRow}>
+            <Ionicons name="calendar-outline" size={21} color="#C02A16" />
+            <Text style={styles.detailText}>{formatEventDate(event.start, event.end, event.timezone)}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Ionicons name="location-outline" size={21} color="#C02A16" />
+            <Text style={styles.detailText}>{event.location}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Ionicons name="globe-outline" size={21} color="#C02A16" />
+            <Text style={styles.detailText}>{event.timezone}</Text>
           </View>
         </View>
 
-        {/* Stats Overview */}
-        <View style={styles.statsSection}>
-          <Text style={styles.sectionTitle}>Event Statistics</Text>
+        <Text style={styles.sectionTitle}>Attendance</Text>
+        {stats ? (
           <View style={styles.statsGrid}>
-            <View style={styles.statBox}>
-              <Text style={styles.statNumber}>{stats.total_guests}</Text>
-              <Text style={styles.statLabel}>Total Guests</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Text style={[styles.statNumber, { color: '#10b981' }]}>
-                {stats.guests_accepted}
-              </Text>
-              <Text style={styles.statLabel}>Accepted</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Text style={[styles.statNumber, { color: '#6b7280' }]}>
-                {stats.guests_pending}
-              </Text>
-              <Text style={styles.statLabel}>Pending</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Text style={[styles.statNumber, { color: '#9333ea' }]}>
-                {stats.guests_checked_in}
-              </Text>
-              <Text style={styles.statLabel}>Checked In</Text>
-            </View>
+            <Stat value={stats.total} label="Guests" />
+            <Stat value={stats.accepted} label="Accepted" />
+            <Stat value={stats.pending} label="Awaiting" />
+            <Stat value={stats.checkedIn} label="Checked In" />
           </View>
+        ) : <Text style={styles.supportingText}>Attendance totals are temporarily unavailable.</Text>}
+
+        <TouchableOpacity
+          accessibilityRole="button"
+          style={styles.actionCard}
+          onPress={() => router.push(`/events/${event.id}/guests`)}
+        >
+          <View style={styles.actionIcon}><Ionicons name="people" size={24} color="#C02A16" /></View>
+          <View style={styles.actionCopy}>
+            <Text style={styles.actionTitle}>Guests and attendance</Text>
+            <Text style={styles.actionDescription}>Add guests, review RSVPs, and record check-in.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={22} color="#847771" />
+        </TouchableOpacity>
+
+        {event.status === 'published' && new Date(event.start).getTime() > Date.now() ? (
+          <TouchableOpacity
+            accessibilityRole="button"
+            style={styles.actionCard}
+            onPress={() => router.push(`/events/${event.id}/invitations`)}
+          >
+            <View style={styles.actionIcon}><Ionicons name="mail" size={24} color="#C02A16" /></View>
+            <View style={styles.actionCopy}>
+              <Text style={styles.actionTitle}>Send invitations</Text>
+              <Text style={styles.actionDescription}>Choose guests and send the fixed browser RSVP invitation.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color="#847771" />
+          </TouchableOpacity>
+        ) : null}
+
+        <Text style={styles.sectionTitle}>Event actions</Text>
+        <View style={styles.lifecycleActions}>
+          {event.status === 'draft' ? (
+            <ActionButton
+              disabled={busy}
+              icon="paper-plane-outline"
+              label={pendingAction === 'publish' ? 'Publishing...' : 'Publish Event'}
+              onPress={() => confirm('publish', event)}
+            />
+          ) : null}
+          {event.status === 'published' ? (
+            <ActionButton
+              destructive
+              disabled={busy}
+              icon="close-circle-outline"
+              label={pendingAction === 'cancel' ? 'Cancelling...' : 'Cancel Event'}
+              onPress={() => confirm('cancel', event)}
+            />
+          ) : null}
+          <ActionButton
+            destructive
+            disabled={busy || !canDelete}
+            icon="trash-outline"
+            label={pendingAction === 'delete' ? 'Deleting...' : 'Delete Event'}
+            onPress={() => confirm('delete', event)}
+          />
+          {event.status === 'published' ? (
+            <Text style={styles.lifecycleNote}>Cancel this event before deleting it.</Text>
+          ) : null}
         </View>
 
-        {/* Template-Specific Details */}
-        {renderTemplateDetails()}
-
-        {/* Management Actions */}
-        <View style={styles.actionsSection}>
-          <Text style={styles.sectionTitle}>Manage Event</Text>
-          
-          {/* Create Invites */}
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push(`/events/${id}/invites/templates` as any)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.actionIconContainer}>
-              <Ionicons name="mail" size={24} color="#9333ea" />
-            </View>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Create Invitations</Text>
-              <Text style={styles.actionSubtitle}>
-                Design and send custom invites to guests
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push(`/events/${id}/guests` as any)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.actionIconContainer}>
-              <Ionicons name="people" size={24} color="#9333ea" />
-            </View>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Guest List</Text>
-              <Text style={styles.actionSubtitle}>
-                Manage guests, RSVPs, and check-ins
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push(`/events/${id}/activities` as any)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.actionIconContainer}>
-              <Ionicons name="calendar" size={24} color="#9333ea" />
-            </View>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Activities</Text>
-              <Text style={styles.actionSubtitle}>
-                {stats.timeline_blocks} scheduled activities
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => {/* TODO: Navigate to media */}}
-          >
-            <View style={styles.actionIconContainer}>
-              <Ionicons name="images" size={24} color="#9333ea" />
-            </View>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Media</Text>
-              <Text style={styles.actionSubtitle}>
-                {stats.media_count} photos and videos
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => {/* TODO: Navigate to vendors */}}
-          >
-            <View style={styles.actionIconContainer}>
-              <Ionicons name="business" size={24} color="#9333ea" />
-            </View>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Vendors</Text>
-              <Text style={styles.actionSubtitle}>Manage vendors and services</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push(`/events/${id}/games` as any)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.actionIconContainer}>
-              <Ionicons name="game-controller" size={24} color="#9333ea" />
-            </View>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Games</Text>
-              <Text style={styles.actionSubtitle}>Interactive party games</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
-          </TouchableOpacity>
-
-          
-        </View>
-
-        {/* Danger Zone. Guarded on 'archived', the schema's terminal state;
-            the previous check was against 'cancelled', which the CHECK
-            constraint on events.status does not permit, so it was always
-            true. */}
-        {event.status !== 'archived' && (
-          <View style={styles.dangerZone}>
-            <TouchableOpacity
-              style={styles.dangerButton}
-              onPress={() => {
-                Alert.alert(
-                  'Cancel Event',
-                  'Are you sure you want to cancel this event? This action cannot be undone.',
-                  [
-                    { text: 'No', style: 'cancel' },
-                    { text: 'Yes, Cancel', style: 'destructive', onPress: () => {/* TODO: Cancel event */} },
-                  ]
-                );
-              }}
-            >
-              <Ionicons name="close-circle" size={20} color="#ef4444" />
-              <Text style={styles.dangerButtonText}>Cancel Event</Text>
-            </TouchableOpacity>
+        {actionError ? (
+          <View accessibilityRole="alert" style={styles.errorBox}>
+            <Text style={styles.errorText}>{actionError}</Text>
           </View>
-        )}
+        ) : null}
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f9fafb',
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f9fafb',
-  },
-  errorText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#6b7280',
-    marginTop: 16,
-  },
-  content: {
-    flex: 1,
-  },
-  header: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  templateBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#f3e8ff',
-    borderRadius: 16,
-  },
-  templateText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#9333ea',
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 8,
-  },
-  description: {
-    fontSize: 16,
-    color: '#6b7280',
-    lineHeight: 24,
-    marginBottom: 16,
-  },
-  detailsContainer: {
-    gap: 12,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  detailContent: {
-    flex: 1,
-  },
-  detailLabel: {
-    fontSize: 12,
-    color: '#9ca3af',
-    marginBottom: 2,
-  },
-  detailValue: {
-    fontSize: 16,
-    color: '#1f2937',
-    fontWeight: '500',
-  },
-  statsSection: {
-    backgroundColor: '#fff',
-    padding: 20,
-    marginTop: 12,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 16,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  statBox: {
-    flex: 1,
-    minWidth: '45%',
-    backgroundColor: '#f9fafb',
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#1f2937',
-  },
-  statLabel: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 4,
-  },
-  actionsSection: {
-    backgroundColor: '#fff',
-    padding: 20,
-    marginTop: 12,
-  },
-  actionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  actionIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#f3e8ff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  actionContent: {
-    flex: 1,
-  },
-  actionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 4,
-  },
-  actionSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  dangerZone: {
-    padding: 20,
-    marginTop: 12,
-  },
-  dangerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    padding: 16,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#ef4444',
-  },
-  dangerButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ef4444',
-  },
-  // Template Details Styles
-  templateDetailsSection: {
-    backgroundColor: '#fff',
-    padding: 20,
-    marginTop: 12,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  detailCard: {
-    backgroundColor: '#f9fafb',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  detailCardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 8,
-  },
-  detailCardValue: {
-    fontSize: 15,
-    color: '#374151',
-    marginBottom: 4,
-    lineHeight: 22,
-  },
-  detailCardSubtext: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 4,
-    lineHeight: 20,
-  },
-  chipContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  activityChip: {
-    backgroundColor: '#f3e8ff',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#e9d5ff',
-  },
-  activityChipText: {
-    fontSize: 13,
-    color: '#9333ea',
-    fontWeight: '500',
-  },
-  linkText: {
-    fontSize: 14,
-    color: '#3b82f6',
-    textDecorationLine: 'underline',
-    marginTop: 4,
-  },
-  alertBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#fef2f2',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: '#ef4444',
-  },
-  alertText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#1f2937',
-    fontWeight: '500',
-  },
+  container: { flex: 1, backgroundColor: '#FBFAF9' },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24, backgroundColor: '#FBFAF9' },
+  loadingText: { color: '#6A5E58', fontSize: 15 },
+  errorTitle: { color: '#26201D', fontSize: 22, fontWeight: '800' },
+  errorText: { color: '#9F1D22', fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  primaryButton: { minWidth: 180, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#C02A16', marginTop: 8 },
+  primaryButtonText: { color: '#FFFFFF', fontWeight: '800' },
+  secondaryButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 18 },
+  secondaryButtonText: { color: '#972317', fontWeight: '700' },
+  header: { minHeight: 96, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 14, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#EBE7E5' },
+  backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { color: '#26201D', fontSize: 17, fontWeight: '800', paddingBottom: 11 },
+  headerAction: { minWidth: 44, minHeight: 44, alignItems: 'flex-end', justifyContent: 'center' },
+  headerActionText: { color: '#972317', fontSize: 15, fontWeight: '800' },
+  disabledText: { opacity: 0.4 },
+  content: { padding: 20, paddingBottom: 48 },
+  hero: { paddingVertical: 14 },
+  statusBadge: { alignSelf: 'flex-start', borderRadius: 999, backgroundColor: '#FFF2F0', paddingHorizontal: 11, paddingVertical: 6, marginBottom: 14 },
+  statusText: { color: '#972317', fontSize: 12, fontWeight: '800', textTransform: 'capitalize' },
+  title: { color: '#26201D', fontSize: 34, lineHeight: 40, fontWeight: '900', letterSpacing: -0.8 },
+  description: { color: '#6A5E58', fontSize: 16, lineHeight: 24, marginTop: 10 },
+  detailsCard: { gap: 16, padding: 18, marginTop: 20, borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EBE7E5' },
+  detailRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  detailText: { flex: 1, color: '#39312D', fontSize: 15, lineHeight: 21 },
+  sectionTitle: { color: '#26201D', fontSize: 20, fontWeight: '800', marginTop: 28, marginBottom: 12 },
+  supportingText: { color: '#6A5E58', fontSize: 14, lineHeight: 20 },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  statCard: { width: '48%', minHeight: 96, justifyContent: 'center', padding: 16, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EBE7E5' },
+  statValue: { color: '#C02A16', fontSize: 27, fontWeight: '900' },
+  statLabel: { color: '#6A5E58', fontSize: 13, fontWeight: '600', marginTop: 3 },
+  actionCard: { minHeight: 84, flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EBE7E5', marginTop: 14 },
+  actionIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#FFF2F0' },
+  actionCopy: { flex: 1, marginHorizontal: 13 },
+  actionTitle: { color: '#26201D', fontSize: 16, fontWeight: '800' },
+  actionDescription: { color: '#6A5E58', fontSize: 13, lineHeight: 18, marginTop: 3 },
+  lifecycleActions: { gap: 10 },
+  lifecycleButton: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 13, borderWidth: 1, borderColor: '#D86A58', backgroundColor: '#FFF8F6' },
+  lifecycleButtonText: { color: '#972317', fontSize: 15, fontWeight: '800' },
+  destructiveButton: { borderColor: '#DFA5A7', backgroundColor: '#FFF5F5' },
+  destructiveButtonText: { color: '#A51D20' },
+  disabledButton: { opacity: 0.5 },
+  lifecycleNote: { color: '#6A5E58', fontSize: 13, textAlign: 'center' },
+  errorBox: { padding: 14, borderRadius: 12, backgroundColor: '#FCEDEE', borderWidth: 1, borderColor: '#E12D33', marginTop: 16 },
 });

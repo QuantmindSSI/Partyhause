@@ -1,50 +1,34 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+
 import { prisma } from '../lib/prisma';
 import { getJwtSecret } from '../lib/jwt-secret';
+import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from '../lib/legal';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
     email?: string;
     name?: string;
-    /** True only when the token carries a confirmed-address claim. */
-    email_verified?: boolean;
-    [key: string]: unknown;
+    email_verified: boolean;
+    token_version: number;
   };
 }
 
-// getJwtSecret is imported from ../lib/jwt-secret. It reads lazily (this module
-// is hoisted above dotenv.config() in server/index.ts) and throws in production
-// rather than falling back to the committed development key.
+type AuthenticationResult =
+  | 'authenticated'
+  | 'invalid'
+  | 'revoked'
+  | 'unverified';
 
-// AUTH_BYPASS is a local-development escape hatch only, never honored in
-// production builds.
 function authBypassEnabled(): boolean {
   return process.env.AUTH_BYPASS === 'true' && process.env.NODE_ENV !== 'production';
 }
 
-interface JwtPayload {
-  sub: string;
-  email?: string;
-  name?: string;
-  /**
-   * Whether the address was confirmed when this token was minted.
-   *
-   * Absent on tokens issued before verification was enforced. Those are
-   * treated as unverified rather than trusted, because signup used to hand out
-   * a token immediately: an absent claim is exactly the population that could
-   * never confirm. They expire within the 7-day token lifetime, after which
-   * this branch goes cold.
-   */
-  email_verified?: boolean;
-  [key: string]: unknown;
-}
-
 function extractToken(req: Request): string | null {
-  const auth = req.headers.authorization;
-  if (!auth) return null;
-  const match = auth.match(/^Bearer\s+(.+)$/i);
+  const authorization = req.headers.authorization;
+  if (!authorization) return null;
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
   return match ? match[1] : null;
 }
 
@@ -55,141 +39,173 @@ function bypassUserId(): string {
   return process.env.AUTH_BYPASS_USER_ID || 'dev-user-00000000-0000-0000-0000-000000000001';
 }
 
-// The bypass identity must exist as real rows: connections, notifications,
-// events, etc. all carry foreign keys to users/user_profiles, so a synthetic
-// req.user with no backing row turns every authenticated WRITE into a P2003
-// foreign-key 500 on a fresh database. Materialize it once per process
-// (idempotent upserts); on failure, log once and continue — reads still work
-// and the log explains any subsequent FK failures instead of them being
-// mysterious.
 let bypassUserReady: Promise<void> | null = null;
 
-function ensureBypassUser(): Promise<void> {
+async function ensureBypassUser(): Promise<void> {
   if (bypassUserReady === null) {
     const id = bypassUserId();
-    // Username derived from the id: a fixed literal would collide (unique
-    // constraint P2002) when AUTH_BYPASS_USER_ID changes against a dev DB
-    // that already has the old bypass profile row.
-    const username = `dev-${id.replace(/[^a-z0-9_]/gi, '_').slice(0, 40)}`.toLowerCase();
+    const username = `dev_${id.replace(/[^a-z0-9_]/gi, '_').slice(0, 26)}`.toLowerCase();
     bypassUserReady = (async () => {
       await prisma.user.upsert({
         where: { id },
-        update: {},
-        create: { id, email: BYPASS_USER_EMAIL, name: BYPASS_USER_NAME },
+        update: {
+          account_status: 'active',
+          email_verified: true,
+        },
+        create: {
+          id,
+          email: BYPASS_USER_EMAIL,
+          name: BYPASS_USER_NAME,
+          account_status: 'active',
+          email_verified: true,
+          age_eligible: true,
+          terms_version: CURRENT_TERMS_VERSION,
+          privacy_version: CURRENT_PRIVACY_VERSION,
+        },
       });
       await prisma.userProfile.upsert({
         where: { id },
         update: {},
         create: { id, username, display_name: BYPASS_USER_NAME },
       });
-    })().catch((err: unknown) => {
-      console.warn(
-        '[auth] AUTH_BYPASS user could not be materialized; will retry on the next request:',
-        err instanceof Error ? err.message : err,
-      );
-      // Reset the cache so a transient failure (DB briefly down) is retried
-      // by the next request instead of being latched until process restart.
+    })().catch((error: unknown) => {
       bypassUserReady = null;
+      throw error;
     });
   }
-  return bypassUserReady;
+  await bypassUserReady;
 }
 
-// Try to authenticate the request from its Bearer token. Returns true and
-// sets req.user when the token verifies; returns false otherwise.
-function applyVerifiedToken(req: AuthenticatedRequest): boolean {
-  const token = extractToken(req);
-  if (!token) return false;
+/**
+ * Verify a bearer JWT and bind it to the current database identity state.
+ *
+ * A valid signature is not sufficient. The user must still exist, remain
+ * active, have a verified address, and carry the same token epoch as the JWT.
+ * This database read is what makes logout, password reset, and deletion revoke
+ * already-issued stateless tokens.
+ */
+async function applyVerifiedToken(req: AuthenticatedRequest, token: string): Promise<AuthenticationResult> {
+  let payload: jwt.JwtPayload;
   try {
-      const payload = jwt.verify(token, getJwtSecret()) as JwtPayload;
-      req.user = {
-        id: payload.sub,
-        email: payload.email,
-        name: payload.name,
-        email_verified: payload.email_verified === true,
-      };
-      return true;
+    const verified = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] });
+    if (
+      typeof verified === 'string'
+      || typeof verified.sub !== 'string'
+      || typeof verified.token_version !== 'number'
+      || !Number.isInteger(verified.token_version)
+      || verified.token_version < 0
+    ) {
+      return 'invalid';
+    }
+    payload = verified;
   } catch {
-    return false;
+    return 'invalid';
   }
+
+  const user = await prisma.user.findUnique({
+    where: { id: payload.sub },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      email_verified: true,
+      token_version: true,
+      account_status: true,
+    },
+  });
+  if (
+    !user
+    || user.account_status !== 'active'
+    || user.token_version !== payload.token_version
+  ) {
+    return 'revoked';
+  }
+  if (!user.email_verified || payload.email_verified !== true) {
+    return 'unverified';
+  }
+
+  req.user = {
+    id: user.id,
+    email: user.email,
+    name: user.name ?? undefined,
+    email_verified: true,
+    token_version: user.token_version,
+  };
+  return 'authenticated';
 }
 
-export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
-  // A valid real session always wins. AUTH_BYPASS is a fallback for
-  // credential-less local requests — it must not clobber genuine logins,
-  // otherwise writes are attributed to the synthetic dev user instead of
-  // the signed-in account.
-  if (applyVerifiedToken(req)) {
-    // A confirmed address is required, enforced here rather than only at
-    // login so tokens minted before this change cannot walk past it. Those
-    // carry no `email_verified` claim and are treated as unconfirmed; the
-    // holder signs in again and receives one that does.
-    //
-    // Nothing is stranded by this. The only action an unconfirmed user needs
-    // is resending their link, and POST /api/auth/resend-verification is
-    // anonymous, so it never reaches this middleware.
-    //
-    // 403 with a code, not 401: the credentials are valid, so a 401 would send
-    // the client into a re-login loop that cannot resolve anything.
-    if (req.user?.email_verified !== true) {
-      res.status(403).json({
-        error: 'Email address not confirmed',
-        code: 'EMAIL_NOT_VERIFIED',
-        message: 'Confirm your email address to continue. Request a new link if it expired.',
-      });
+async function applyBypass(req: AuthenticatedRequest): Promise<void> {
+  await ensureBypassUser();
+  req.user = {
+    id: bypassUserId(),
+    email: BYPASS_USER_EMAIL,
+    name: BYPASS_USER_NAME,
+    email_verified: true,
+    token_version: 0,
+  };
+}
+
+export async function requireAuth(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  const token = extractToken(req);
+  try {
+    if (token) {
+      const result = await applyVerifiedToken(req, token);
+      if (result === 'authenticated') {
+        next();
+        return;
+      }
+      if (result === 'unverified') {
+        res.status(403).json({
+          error: 'Email address not confirmed',
+          code: 'EMAIL_NOT_VERIFIED',
+          message: 'Confirm your email address to continue. Request a new link if it expired.',
+        });
+        return;
+      }
+    }
+
+    if (authBypassEnabled()) {
+      await applyBypass(req);
+      next();
       return;
     }
-    next();
-    return;
-  }
 
-  if (authBypassEnabled()) {
-    req.user = {
-      id: bypassUserId(),
-      email: BYPASS_USER_EMAIL,
-      name: BYPASS_USER_NAME,
-      // The synthetic dev user counts as confirmed; it can never complete a
-      // real verification flow, and blocking it would break local work.
-      email_verified: true,
-    };
-    void ensureBypassUser().then(() => next());
-    return;
+    if (!token) {
+      res.status(401).json({ error: 'Missing Authorization header', code: 'AUTH_REQUIRED' });
+      return;
+    }
+    res.status(401).json({ error: 'Invalid, expired, or revoked token', code: 'SESSION_REVOKED' });
+  } catch (error) {
+    next(error);
   }
-
-  if (!extractToken(req)) {
-    res.status(401).json({ error: 'Missing Authorization header' });
-    return;
-  }
-  res.status(401).json({ error: 'Invalid or expired token' });
 }
 
-export function optionalAuth(req: AuthenticatedRequest, _res: Response, next: NextFunction): void {
+export async function optionalAuth(
+  req: AuthenticatedRequest,
+  _res: Response,
+  next: NextFunction,
+): Promise<void> {
   const token = extractToken(req);
   if (!token) {
-    // No credentials at all: stay anonymous even under AUTH_BYPASS —
-    // optional-auth routes are expected to serve anonymous traffic.
     next();
     return;
   }
 
-  if (applyVerifiedToken(req)) {
+  try {
+    if (await applyVerifiedToken(req, token) === 'authenticated') {
+      next();
+      return;
+    }
+    req.user = undefined;
+    if (authBypassEnabled()) {
+      await applyBypass(req);
+    }
     next();
-    return;
+  } catch (error) {
+    next(error);
   }
-
-  if (authBypassEnabled()) {
-    req.user = {
-      id: bypassUserId(),
-      email: BYPASS_USER_EMAIL,
-      name: BYPASS_USER_NAME,
-      // The synthetic dev user counts as confirmed; it can never complete a
-      // real verification flow, and blocking it would break local work.
-      email_verified: true,
-    };
-    void ensureBypassUser().then(() => next());
-    return;
-  }
-
-  // Token invalid — continue without user
-  next();
 }

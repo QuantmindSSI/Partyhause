@@ -1,10 +1,10 @@
 # PartyHause Brand Visual Identity
 
-Version 1.0. Status: proposed, not yet wired into the app.
+Version 1.0. Status: approved for IOS-MVP-1 and partially implemented.
 
 This document defines the visual identity for PartyHause: the logo, the colour system, typography, iconography, motion and the raster assets that ship with them. Every colour value here was computed and every contrast ratio was measured. Nothing in the tables below is asserted from memory.
 
-The assets described here exist as real files in `public/brand/`. The application does not consume them yet. The migration is specified in section 10.
+The assets described here exist as real files in `public/brand/`. The iOS icon, light and dark splash artwork, native landing screen, authentication screen, and mobile color tokens consume this identity. The remaining web, PWA, email, and legal-page work is listed in section 10.
 
 ---
 
@@ -351,25 +351,25 @@ Alpha channels are deliberate, not incidental. The Apple touch icons, both `icon
 
 ---
 
-## 10. Implementation
+## 10. Implementation Status
 
-These assets are not yet consumed by the app. Nothing in `src/`, `index.html`, `public/manifest.json` or `vite.config.ts` was modified.
+The native IOS-MVP-1 shell now renders the raised-roof mark and coral action system. `apps/mobile/app.config.ts` points at a 1024 by 1024 opaque app icon, separate light and inverse dark splash marks, and the warm Paper and Ink splash backgrounds. `LandingScreenEnhanced.tsx`, `AuthScreen.tsx`, and `constants/theme.ts` use the same identity.
 
-**Colour.** Replace `src/index.css:8-192` with the scales in section 4. Delete the Liquid Metal block at `:22-40` and the Solid Color System block at `:92-115`. Define the ten currently undefined variables listed in section 1, or delete the rules that reference them. Point `--primary` at `coral-500` for brand use but set button fills to `coral-700`, and set `--ring` to `coral-600`.
+**Web colour.** The canonical scales and accessible coral action color are present, but old Liquid Metal and Solid Color System rules remain. Remove the unused systems and undefined references before calling the web migration complete.
 
-**Tailwind.** In `tailwind.config.ts`, rename the `orange` key at `:53-64` to `coral` so it stops shadowing Tailwind's built-in orange, and add `magenta`, `neutral` and the support colours. Add the `fontFamily` block, which does not currently exist.
+**Tailwind.** Coral, magenta, warm neutral, and support colors are present. Typography still needs one explicit web font-family configuration.
 
 **Type.** Self-host Outfit and Inter, add `@font-face` rules, and set the Tailwind `fontFamily` tokens.
 
-**Icons and manifest.** Copy `public/brand/icons/*` over `public/icons/*`. Update `index.html:5-13` to point at the new favicon set, and change `index.html:15`, `public/manifest.json:9` and `vite.config.ts:16` from `#6366F1` to `#FF5233`. Add `badge.png` to the manifest icon list. Either create `public/screenshots/` or remove the three entries at `public/manifest.json:46-61`, which currently point at files that do not exist.
+**Web icons and manifest.** Point the Vite manifest, HTML metadata, service worker, and install banner directly at `public/brand/`. Retire the old `public/icons/` family after no consumer remains.
 
 **Social.** Replace `og:image` and `twitter:image` at `index.html:28,34` with `/brand/icons/social-card-1200x630.png`. The spelling in `placeholder.svg` has been corrected, but it is still Arial Bold on a flat periwinkle field and is not the identity defined here.
 
 **Retire.** Delete `public/partyhause-icon.svg` and `public/placeholder.svg` once nothing references them. `public/partyhause-icon.svg` is currently rendered at `src/components/PWAInstallBanner.tsx:156`.
 
-**Logo in the app.** Build a `Logo` component that renders the SVG mark, and replace the `Sparkles` lockups at `src/components/AuthScreen.tsx:209-225` and `:356-365`. The dashboard headers that pass `title="PartyHause"` into `PageShell` should render the mark alongside the text.
+**Logo in product.** Native landing and authentication use the generated mark. Web authentication and dashboard headers still need a shared SVG logo component instead of text or Sparkles lockups.
 
-Two duplicate manifests currently exist and disagree. `vite.config.ts:9-42` generates one while `index.html:13` hard-links `/manifest.json`. Resolve to a single source before shipping icon changes, or the icon set that wins will depend on injection order.
+Vite is the web manifest source. Do not recreate the removed static duplicate manifest.
 
 ---
 

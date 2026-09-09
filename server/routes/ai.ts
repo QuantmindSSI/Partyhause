@@ -6,7 +6,7 @@
 
 import { Router } from 'express';
 import type { Response } from 'express';
-import { rateLimit } from 'express-rate-limit';
+import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import { requireAuth } from '../middleware/auth';
 import type { AuthenticatedRequest } from '../middleware/auth';
 import { extractEventDetails } from '../lib/event-extraction';
@@ -24,7 +24,12 @@ const aiLimiter = rateLimit({
   limit: 30,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  keyGenerator: (req) => (req as AuthenticatedRequest).user?.id ?? req.ip ?? 'unknown',
+  keyGenerator: (req) =>
+    // See the note on emailLimiter in server/index.ts. `req.ip` alone lets an
+    // IPv6 caller rotate through a /64 for a fresh bucket per request;
+    // ipKeyGenerator collapses that to the prefix. Pre-existing here, surfaced
+    // only when the server was finally run with NODE_ENV=development.
+    (req as AuthenticatedRequest).user?.id ?? ipKeyGenerator(req.ip ?? '') ?? 'unknown',
   message: { error: 'Too many AI requests. Try again in a few minutes.' },
 });
 
