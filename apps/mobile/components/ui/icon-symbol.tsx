@@ -5,7 +5,19 @@ import { SymbolWeight, SymbolViewProps } from 'expo-symbols';
 import { ComponentProps } from 'react';
 import { OpaqueColorValue, type StyleProp, type TextStyle } from 'react-native';
 
-/** The string form of an SF Symbol name, which is what this file maps from. */
+/**
+ * SF Symbol names in their plain string form.
+ *
+ * expo-symbols 57 widened `SymbolViewProps['name']` to
+ * `SFSymbols7_0 | { ios?; android?; web? }`, so a caller can now pass a
+ * per-platform object instead of a single name. That union cannot be a
+ * `Record` key, and it cannot index one either.
+ *
+ * `Extract<..., string>` takes only the string half, which is the half this
+ * fallback can translate: the mapping below is SF Symbol name to Material
+ * Icon name, and a platform-keyed object has no single name to look up. A
+ * caller wanting per-platform icons should pick the name before calling this.
+ */
 type SFSymbolName = Extract<SymbolViewProps['name'], string>;
 type MaterialIconName = ComponentProps<typeof MaterialIcons>['name'];
 

@@ -1,6 +1,10 @@
 import 'react-native-url-polyfill/auto';
-import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
-import { Stack } from "expo-router";
+// Themes come from expo-router, not @react-navigation/native. SDK 57 vendors
+// its own copy of React Navigation and marks the standalone re-exports
+// deprecated: "Import `DarkTheme` from `expo-router` instead. Will be removed
+// in a future SDK." Importing both pulls two copies of the navigation types
+// into the graph, which is where the tab-bar prop mismatch came from.
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 import { GestureHandlerRootView } from "react-native-gesture-handler";

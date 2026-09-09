@@ -13,7 +13,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     version: "1.0.0",
     orientation: "portrait",
     userInterfaceStyle: "automatic",
-    newArchEnabled: true,
+    // `newArchEnabled` is gone from ExpoConfig in SDK 57. The New Architecture
+    // is no longer a flag: React Native 0.86 removed the legacy renderer, so
+    // there is nothing left to enable and declaring it fails the config type.
     icon: "./assets/images/icon.png",
     description: "PartyHause helps you create unforgettable events with friends. Easily manage guest lists, send invitations, track RSVPs, share photos, and create lasting memories for birthdays, weddings, and any celebration.",
     ios: {
@@ -58,7 +60,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         backgroundImage: "./assets/images/android-icon-background.png",
         monochromeImage: "./assets/images/android-icon-monochrome.png"
       },
-      edgeToEdgeEnabled: true,
+      // `edgeToEdgeEnabled` was removed from the Android config in SDK 57.
+      // Edge-to-edge is no longer opt-in: React Native 0.86 targets Android 16,
+      // where the system draws behind the bars unconditionally and the opt-out
+      // was deleted upstream. Declaring it now fails the config type check.
       predictiveBackGestureEnabled: false
     },
     web: {
