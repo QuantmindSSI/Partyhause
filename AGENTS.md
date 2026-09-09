@@ -84,7 +84,7 @@ npm workspaces are `apps/*` and `packages/*` (`package.json:10-13`).
 | `apps/mobile/` | Expo Router app. Own lockfile, `app.config.ts`, `eas.json`, `ios/` |
 | `prisma/` | `schema.prisma` (1231 lines, 39 models) and `seed.ts` |
 | `infra/` | Bicep. `main.bicep` (subscription scope), `resources.bicep`, `modules/` (5) |
-| `scripts/` | 18 operational scripts, down from 29. Three are wired to npm scripts; the rest are run by hand, including the three `e2e-*.mjs` database suites. Twelve were deleted on 2026-09-08 for importing a package that is not installed or targeting a database that no longer exists, and one was added |
+| `scripts/` | 22 operational scripts. Six are wired to npm scripts; the rest are run by hand, including the three `e2e-*.mjs` database suites. `enroll-production-migrations.cjs` and `production-migration-preflight.cjs` are the production path for adopting the migration history and are described under Data model |
 | `docs/` | 88 markdown files, all current, historical or non-technical. 97 stale ones were deleted on 2026-09-04. Index at [`docs/README.md`](./docs/README.md) |
 
 **`packages/core` is consumed by mobile only.** `rg "@partyhause/core" src/` returns nothing. The
@@ -104,7 +104,7 @@ npm ci --legacy-peer-deps
 npx prisma generate
 
 # 3. Apply the schema to a local Postgres.
-DATABASE_URL="postgresql://localhost:5432/partyhause" npx prisma db push
+DATABASE_URL="postgresql://localhost:5432/partyhause" npx prisma migrate deploy
 DATABASE_URL="postgresql://localhost:5432/partyhause" npx tsx prisma/seed.ts
 
 # 4. Start the API on 3001. dev-api.ts sets AUTH_BYPASS=true for local work.
@@ -145,13 +145,31 @@ still produce a working bundle if you bypass `build:check`.
 
 Base URL in production is the API Container App FQDN. All routes are under `/api`.
 
-`server/index.ts` mounts 20 routers (`:348-367`) behind `apiLimiter` (`:347`), plus inline
-endpoints registered **before** the limiter: `GET /api/health` (`:248`), `POST /api/send-email`
-(`:262`), and the favicon and SPA fallback when `dist/` exists. `/api/send-email` is outside
-`apiLimiter` deliberately, so a mail send cannot be starved by ordinary API traffic; it carries its
-own `emailLimiter`, 20 per 5 minutes keyed on the authenticated user.
+`server/index.ts` mounts 26 routers behind `apiLimiter`, plus inline endpoints registered **before**
+the limiter: `GET /api/health`, `POST /api/send-email`, and the favicon and SPA fallback when
+`dist/` exists. `/api/send-email` is outside `apiLimiter` deliberately, so a mail send cannot be
+starved by ordinary API traffic; it carries its own `emailLimiter`, 20 per 5 minutes keyed on the
+authenticated user.
 
-82 routes across 20 files.
+104 routes across 23 files.
+
+**There are two generations of API here and that is deliberate.** The `/api/mvp` surface added on
+2026-09-09 is the one the iOS app is being built against; the older flat routers below it are what
+the web app uses. The new one does not replace them and no existing route changed behaviour, so
+nothing that worked before works differently now. Do not add to both: a new capability belongs on
+`/api/mvp`, and the older routers should shrink as the web client moves across.
+
+| MVP router | Routes |
+|---|---|
+| `/api/mvp` | `GET /events`, `POST /events`, `GET /events/:id`, `PATCH /events/:id`, `POST /events/:id/publish`, `POST /events/:id/cancel`, `DELETE /events/:id`, `GET /events/:eventId/guests`, `POST /events/:eventId/guests`, `GET /events/:eventId/invitations`, `POST /events/:eventId/invitations/send`, `GET /guests/:id`, `PATCH /guests/:id`, `DELETE /guests/:id`, `POST /guests/:id/check-in`, `POST /guests/:id/check-in/correction` |
+| `/api/mvp/account` | `GET /`, `POST /deletion-intent`, `POST /deletion`, `GET /deletion/:receipt` |
+| `/api/rsvp` | `POST /resolve`, `PUT /` |
+
+Writes on `/api/mvp` require an `Idempotency-Key` header and carry an expected `revision`, so a
+retried request cannot double-apply and two editors cannot silently overwrite each other.
+`/api/mvp/account` exists because App Store review requires in-app account deletion of any app that
+creates accounts. `/api/rsvp` is anonymous by design: the guest replying to an invitation has no
+account, and the token in the URL is the credential.
 
 | Router | Routes |
 |---|---|
@@ -220,8 +238,14 @@ length 8, no complexity rule.
 2. Login rejects unconfirmed accounts with **403 `EMAIL_NOT_VERIFIED`**, deliberately distinct from
    the 401 for bad credentials, so the client can offer a resend instead of a password reset.
 3. `requireAuth` rejects any token whose `email_verified` claim is not `true`, which catches tokens
-   minted before the gate existed. Tokens last 7 days and cannot be revoked, so gating login alone
-   would have left a week-long hole.
+   minted before the gate existed. That mattered more when tokens could not be revoked; gating
+   login alone would have left a week-long hole.
+
+**Tokens are revocable.** Every JWT carries a `token_version` claim and `requireAuth` rejects any
+token whose epoch is behind the user's current one (`middleware/auth.ts:119`). Logout and password
+reset both increment it, so signing out ends the session rather than merely advising the client to
+forget it, and a reset ends every other session while keeping the one that performed it. A token
+predating the claim has no epoch to compare and is refused as revoked.
 
 `POST /api/auth/resend-verification` is **anonymous by design**. A user who cannot sign in has no
 session, so putting it behind `requireAuth` made it the one endpoint a locked-out user needed and
@@ -260,12 +284,53 @@ The datasource declares no `url` (Prisma 7 requirement); it is supplied by `pris
 `DATABASE_URL`. `server/lib/prisma.ts` falls back to assembling a connection string from
 `POSTGRES_*` parts with `sslmode=require` if `DATABASE_URL` fails to parse.
 
-**There is no `prisma/migrations/` directory** despite `prisma.config.ts:25` pointing at one. The
-schema is applied with `prisma db push`, so there is no migration history.
+**There is a migration history now**, five migrations in `prisma/migrations/`, added 2026-09-09.
+Before that the schema was applied with `prisma db push` and nothing recorded how the deployed
+shape had been reached.
+
+| Migration | What it is |
+|---|---|
+| `20260905000000_baseline` | The schema as deployed. Written to be enrolled against an existing database, not only replayed onto an empty one |
+| `20260905000100_database_functions` | The ten trigger and RPC functions that used to live in `server/sql/azure-pg-functions.sql`. Idempotent, and `test:migrations` runs it twice to prove it |
+| `20260905000200_core_integrity_constraints` | The CHECK constraints the schema could only document in comments. This is where `events.status` gains `'cancelled'` |
+| `20260906000000_ios_mvp_domain` | The MVP delta. 5 tables, 48 ALTERs, 4 backfills and 2 triggers, written to run against a populated production database |
+| `20260909000000_partyboard_vote_tables` | Reconciles PartyBoard to the vote-row design. Copies `voter_ids` into rows **before** dropping the column |
+
+**Use `prisma migrate deploy`, not `prisma db push`.** A push against a database that has
+migrations applied reshapes tables without recording anything, and the next `migrate diff` reports
+drift with no explanation for it.
+
+```bash
+npm run test:migrations   # replay, idempotency, invariants, and a zero-drift assertion
+```
+
+That script is the gate. It finishes on
+`prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code`, so the
+history and `schema.prisma` cannot silently disagree.
+
+**Production has no migration history and cannot simply be migrated into one.** It was built by
+`db push`, so its tables already exist and `migrate deploy` would try to create them again. Two
+scripts handle that, in this order:
+
+```bash
+node scripts/production-migration-preflight.cjs   # data preconditions, read only
+node scripts/enroll-production-migrations.cjs     # writes _prisma_migrations
+```
+
+The preflight matters because `20260906000000_ios_mvp_domain` adds a unique index on
+`(event_id, normalized_email)` for guests. A production database holding two guests with the same
+address on one event, or a guest with a blank one, will fail mid-migration with the table already
+half-altered. Checking first is cheaper than recovering.
+
+Enrollment records the baseline as applied without running it, then runs the migrations that came
+after. Each entry carries a SHA-256 of its file and the script refuses to proceed on a mismatch, so
+an edited migration cannot be enrolled unreviewed. **Editing any `migration.sql` therefore means
+updating its checksum in that script**, and adding a migration means adding an entry; a load-time
+guard compares the plan against `prisma/migrations/` and throws if they diverge.
 
 ```bash
 npx prisma generate
-DATABASE_URL="postgresql://..." npx prisma db push
+DATABASE_URL="postgresql://..." npx prisma migrate deploy
 DATABASE_URL="postgresql://..." npx tsx prisma/seed.ts
 DATABASE_URL="postgresql://..." npx prisma studio
 ```
@@ -309,9 +374,17 @@ container and forms the base of emailed links.
 ### Runtime, API container
 
 `PORT`, `NODE_ENV`, `CORS_ALLOWED_ORIGINS`, `DATABASE_URL`, `POSTGRES_*`, `JWT_SECRET`,
-`JWT_EXPIRES_IN`, `VITE_APP_URL`, `ACS_CONNECTION_STRING`, `ACS_SENDER_ADDRESS`, `RESEND_API_KEY`,
-`RESEND_FROM_EMAIL`, `RESEND_WEBHOOK_SECRET`, `WEBPUBSUB_CONNECTION_STRING`, `WEBPUBSUB_HUB`,
-`AZURE_STORAGE_*`, `AZURE_OPENAI_*`, `OPENAI_API_KEY`, `AUTH_BYPASS`, `AUTH_BYPASS_USER_ID`.
+`JWT_EXPIRES_IN`, `INVITATION_TOKEN_SECRET`, `VITE_APP_URL`, `ACS_CONNECTION_STRING`,
+`ACS_SENDER_ADDRESS`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_WEBHOOK_SECRET`,
+`WEBPUBSUB_CONNECTION_STRING`, `WEBPUBSUB_HUB`, `AZURE_STORAGE_*`, `AZURE_OPENAI_*`,
+`OPENAI_API_KEY`, `AUTH_BYPASS`, `AUTH_BYPASS_USER_ID`.
+
+**`INVITATION_TOKEN_SECRET` is required and the API refuses to start without it.** It signs RSVP
+links, which are bearer credentials in a URL, and `server/lib/invitation-token.ts` rejects a value
+that is empty, shorter than the production minimum, or equal to `JWT_SECRET`. Sharing one secret
+would mean a leaked invitation link and a session token were forgeable from the same key. It is
+provisioned by Bicep (`infra/main.bicep`, `infra/resources.bicep`) like the others; a deploy that
+forgets it fails at boot rather than at the first RSVP.
 
 Secrets are provisioned by Bicep into the Container App `secrets` array and referenced with
 `secretref:`. The deploy workflow deliberately passes no environment variables, leaving Bicep as
@@ -468,7 +541,7 @@ the cache expires.
 
 ## Testing
 
-22 files in `src/test/`, 343 passing and 5 skipped. Vitest with jsdom.
+47 files in `src/test/`, 473 passing and 13 skipped. Vitest with jsdom.
 
 Notable suites: `bundle-chunk-graph.test.ts` guards the emitted Rollup chunk graph against import
 cycles, which once shipped a white screen that returned HTTP 200, and asserts PWA manifest icons
@@ -480,7 +553,18 @@ gates. `core-api-client.test.ts` covers transport retry bounds and 401 handling.
 which is the class of defect that page shipped with and nobody caught, because it had no coverage
 at all until 2026-09-08.
 
-The skipped 5 are live email E2E tests requiring a running API.
+The MVP suites arrived 2026-09-09. `mvp-contract.test.ts` and `mvp-command.test.ts` cover the
+idempotency key and the expected-`revision` check, which are what stop a retried request applying
+twice and two editors overwriting each other. `mvp-services.test.ts` and `mvp-invitations.test.ts`
+cover the services. `mvp-router.test.ts`, `account-router.test.ts` and `rsvp-router.test.ts` cover
+the HTTP surface. `auth-revocation.test.ts` pins the `token_version` epoch, including that reset
+issues a token from the *new* epoch rather than the stale one. `legal-surfaces.test.ts` asserts the
+server, client and published documents all name the same version, and that no retired vendor
+reappears in a legal page.
+
+The 4 skipped files are Postgres integration suites, gated on `DATABASE_URL` being set. They pass:
+run `npm run test:migrations` first, then `DATABASE_URL=... npx vitest run src/test/*.integration.test.ts`.
+The other skips are live email tests requiring a running API.
 
 ### Tests that need a database
 
@@ -492,7 +576,7 @@ production on purpose.
 
 | Script | Covers | Checks | Deletes |
 |---|---|---|---|
-| `e2e-auth-journey.mjs` | signup, storage, the verification gate, verification, login, `/api/auth/me`, `/api/users/:id`, profile update, a second viewer, logout | 109 | two `journey.*@partyhause.local` accounts |
+| `e2e-auth-journey.mjs` | signup and its consent gate, storage, the verification gate, verification, login, token revocation, `/api/auth/me`, `/api/users/:id`, profile update, a second viewer, logout | 116 | two `journey.*@partyhause.local` accounts |
 | `e2e-account-recovery.mjs` | the user who never confirms and forgets their password | 22 | one `never-confirmed@recovery.local` account |
 | `e2e-partyboard.mjs` | all seven `/api/partyboard` routes plus authorization | 56 | **truncates** users, events, guests, partyboard tables |
 
@@ -502,7 +586,7 @@ else. Point all three at a scratch database regardless.
 ```bash
 brew services start postgresql@18
 createdb partyhause_dev
-DATABASE_URL="postgresql://$USER@localhost:5432/partyhause_dev?schema=public" npx prisma db push
+DATABASE_URL="postgresql://$USER@localhost:5432/partyhause_dev?schema=public" npx prisma migrate deploy
 npx tsx scripts/e2e-auth-journey.mjs
 npx tsx scripts/e2e-account-recovery.mjs
 npx tsx scripts/e2e-partyboard.mjs
@@ -552,7 +636,7 @@ Ranked by consequence.
 7. **Five routers have no web consumer**: `timeline`, `event-templates`, `connections`,
    `cost-split` and, on mobile only, `ai`. `cost-split` has full CRUD and no UI on either client.
    `timeline` is bypassed deliberately and `src/lib/timeline.ts:17` explains why.
-8. **458 lint warnings**, mostly `no-explicit-any`. Zero errors.
+8. **424 lint warnings**, mostly `no-explicit-any`. Zero errors.
 9. **`build.target` is `esnext`**, so nothing is downlevelled. `Object.hasOwn` (Safari 15.4+) is
    already present in two eagerly loaded chunks.
 10. **`Dockerfile:26` mutates `tsconfig.json`** during the web build, so the image build differs
@@ -561,6 +645,31 @@ Ranked by consequence.
 12. **`apps/mobile/app.json` and `app.config.ts` conflict.** `app.config.ts` spreads `...config`
     then overrides name, slug and scheme, and replaces the plugin list wholesale, which silently
     drops `react-native-reanimated/plugin` declared in `app.json`.
+
+### Deferred on 2026-09-09, on branch `mvp-stash-snapshot`
+
+The iOS-MVP work arrived as one 249-file change containing four separable layers. The migrations
+and the `/api/mvp` domain landed. Two layers did not, and they are not abandoned: they are on
+`mvp-stash-snapshot` (`9103199`), which is a branch precisely so it stops being a stash entry that
+one `git stash drop` would erase.
+
+**The mobile MVP, entangled with Expo SDK 54 to 57.** It deletes about 70 files, including the
+whole 14-file template-forms subsystem, the event-creation wizard, `activities.tsx` and
+`profile/[id].tsx`, and adds account, invitations and session screens. That resolves gaps 2, 3 and
+4 by deletion rather than by wiring, which for an MVP is the better answer. It cannot be taken
+piecemeal: `expo-secure-store@57` targets SDK 57, and the branch also moves React Native 0.81 to
+0.86 and TypeScript 5.9 to 6.0. Verifying it needs an actual iOS build, which needs the EAS project
+and Apple Team ID listed under Mobile build path.
+
+**The web dependency upgrade.** React 18 to 19, `@tanstack/react-query` v4 to v5,
+`react-day-picker` v8 to v9, `lucide-react` 0.279 to 1.41, `framer-motion` 10 to 12, Node 18 to 22,
+and consolidation onto a single root lockfile with `apps/mobile/package-lock.json` deleted. That
+last part fixes the documented hazard that the mobile lockfile does not satisfy its manifest.
+
+Only one file couples the web app to that upgrade: `src/components/ui/calendar.tsx` uses the
+react-day-picker v9 API. Reverting that single file made the entire branch typecheck and pass
+against the current dependency tree, which is how the layers were shown to be separable rather than
+assumed to be. Take it as its own change, with a browser rather than jsdom as the evidence.
 
 ### Fixed on 2026-09-08
 

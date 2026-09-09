@@ -15,7 +15,7 @@ const MIGRATIONS = [
   },
   {
     name: '20260905000100_database_functions',
-    checksum: '5505cda2090c1051e866929a1589d1683e6a671640cc9542f18aed3b83aa71c6',
+    checksum: '9e604d2f354eff1aec0d7a7971e4e2e186edabba045c984f3295f4887481ebdb',
     file: path.join(REPOSITORY_ROOT, 'prisma/migrations/20260905000100_database_functions/migration.sql'),
   },
   {
@@ -28,7 +28,40 @@ const MIGRATIONS = [
     checksum: '2762cd762beae573b13c9a562ba708e14a50d248955380fc3828270e68556157',
     file: path.join(REPOSITORY_ROOT, 'prisma/migrations/20260906000000_ios_mvp_domain/migration.sql'),
   },
+  {
+    name: '20260909000000_partyboard_vote_tables',
+    checksum: 'b1e71b949cabfb1b03de6c0b1196d3a89e11a10d6159ae2e73e682a6fde6e6a1',
+    file: path.join(REPOSITORY_ROOT, 'prisma/migrations/20260909000000_partyboard_vote_tables/migration.sql'),
+  },
 ];
+
+// The checksums above are a guard, not bookkeeping: executableSql refuses to
+// run a migration whose file has changed since this plan was written, because
+// enrolling a production database against SQL nobody reviewed is the failure
+// this script exists to prevent.
+//
+// That means editing any migration.sql requires updating its checksum here, and
+// adding a migration requires adding an entry. `npm run test:migrations` will
+// not catch an omission: it replays from an empty database and never consults
+// this list. Verify with:
+//
+//   for m in prisma/migrations/2026*/; do
+//     printf '%s %s\n' "$(basename "$m")" "$(shasum -a 256 "$m/migration.sql" | cut -d' ' -f1)"
+//   done
+const MIGRATION_DIRECTORY = path.join(REPOSITORY_ROOT, 'prisma/migrations');
+const onDisk = fs
+  .readdirSync(MIGRATION_DIRECTORY, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort();
+const planned = MIGRATIONS.map((migration) => migration.name).sort();
+if (onDisk.length !== planned.length || onDisk.some((name, i) => name !== planned[i])) {
+  throw new Error(
+    'enroll-production-migrations is out of date with prisma/migrations.\n'
+    + `  on disk: ${onDisk.join(', ')}\n`
+    + `  planned: ${planned.join(', ')}`,
+  );
+}
 
 const CREATE_HISTORY = `
   CREATE TABLE IF NOT EXISTS public._prisma_migrations (
