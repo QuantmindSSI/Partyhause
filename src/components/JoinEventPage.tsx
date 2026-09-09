@@ -1,316 +1,197 @@
-import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Loader2, PartyPopper, Users, Calendar, MapPin, Check } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { getStoredToken } from '@/lib/auth-storage';
-import { apiUrl } from '@/lib/apiBase';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { CalendarDays, Clock3, Loader2, MapPin } from 'lucide-react';
+import { useParams } from 'react-router-dom';
 
-interface Event {
-  id: string;
-  name: string;
-  description?: string;
-  start_date: string;
-  venue?: string;
-  location?: string;
-  host_id: string;
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  resolveRsvp,
+  submitRsvp,
+  type BrowserRsvpChoice,
+  type BrowserRsvpInvitation,
+} from '@/lib/rsvp-client';
+
+type PageState =
+  | { status: 'loading' }
+  | { status: 'unavailable' }
+  | { status: 'ready'; invitation: BrowserRsvpInvitation };
+
+const CHOICES: Array<{ value: BrowserRsvpChoice; label: string; description: string }> = [
+  { value: 'accepted', label: 'Accept', description: 'I will be there.' },
+  { value: 'maybe', label: 'Maybe', description: 'I am not certain yet.' },
+  { value: 'declined', label: 'Decline', description: 'I cannot attend.' },
+];
+
+function formatDate(value: string, timezone: string): string {
+  const date = new Date(value);
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: 'full',
+      timeStyle: 'short',
+      timeZone: timezone,
+    }).format(date);
+  } catch {
+    return date.toLocaleString();
+  }
 }
 
-interface JoinResponse {
-  message: string;
-  guest: any;
-  event: Event;
-  connection: {
-    type: 'connected' | 'request_sent' | 'already_connected';
-    connection?: any;
-    request?: any;
-  } | null;
-  show_crew_prompt: boolean;
+function statusLabel(status: BrowserRsvpInvitation['rsvp']['status']): string {
+  if (status === 'pending') return 'Awaiting your response';
+  if (status === 'accepted') return 'Accepted';
+  if (status === 'maybe') return 'Maybe';
+  return 'Declined';
 }
 
 export function JoinEventPage() {
   const { token } = useParams<{ token: string }>();
-  const navigate = useNavigate();
-  
-  const [loading, setLoading] = useState(true);
-  const [joining, setJoining] = useState(false);
-  const [showCrewModal, setShowCrewModal] = useState(false);
-  const [eventData, setEventData] = useState<JoinResponse | null>(null);
+  const [state, setState] = useState<PageState>({ status: 'loading' });
+  const [choice, setChoice] = useState<BrowserRsvpChoice | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  useEffect(() => {
-    if (token && isAuthenticated !== null) {
-      joinEvent(false);
+  const load = useCallback(async () => {
+    if (!token) {
+      setState({ status: 'unavailable' });
+      return;
     }
-  }, [token, isAuthenticated]);
+    setState({ status: 'loading' });
+    const result = await resolveRsvp(token);
+    if (result.error || !result.data) {
+      setState({ status: 'unavailable' });
+      return;
+    }
+    setState({ status: 'ready', invitation: result.data });
+  }, [token]);
 
-  const checkAuth = () => {
-    // A stored token means "has a session to present", not "is signed in".
-    // The distinction matters here: an expired token still lets the join
-    // attempt through, and the server decides. Guessing locally would refuse
-    // a valid session whose clock skew we cannot see.
-    setIsAuthenticated(getStoredToken() !== null);
-  };
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  const joinEvent = async (addToCrew: boolean = false) => {
-    if (!token) return;
-
-    setJoining(true);
-    setLoading(true);
+  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!token || !choice || state.status !== 'ready') return;
+    setSubmitting(true);
     setError(null);
-
-    try {
-      const authToken = getStoredToken();
-
-      // Express endpoint (the old /api/join-event was a deleted Vercel fn).
-      const response = await fetch(apiUrl('/api/invites/join'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}),
-        },
-        body: JSON.stringify({
-          token,
-          also_add_to_crew: addToCrew,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to join event');
-      }
-
-      const data: JoinResponse = await response.json();
-      setEventData(data);
-
-      if (data.show_crew_prompt && !addToCrew) {
-        setShowCrewModal(true);
-      } else {
-        // Show success message briefly, then go home — the app's event UI is
-        // driven by store state, there is no /events/:id URL route.
-        setTimeout(() => {
-          navigate('/');
-        }, 2000);
-      }
-    } catch (error) {
-      console.error('Failed to join event:', error);
-      setError(error instanceof Error ? error.message : 'Failed to join event');
-    } finally {
-      setLoading(false);
-      setJoining(false);
+    setMessage(null);
+    const result = await submitRsvp(token, choice, state.invitation.rsvp.revision);
+    setSubmitting(false);
+    if (result.data) {
+      setState({ status: 'ready', invitation: result.data });
+      setMessage(`Your response is now ${statusLabel(result.data.rsvp.status).toLowerCase()}.`);
+      return;
     }
-  };
-
-  const handleCrewAccept = () => {
-    setShowCrewModal(false);
-    joinEvent(true);
-  };
-
-  const handleCrewDecline = () => {
-    setShowCrewModal(false);
-    if (eventData) {
-      navigate(`/events/${eventData.event.id}`);
+    if (result.error?.code === 'REVISION_CONFLICT') {
+      const refreshed = await resolveRsvp(token);
+      if (refreshed.data) setState({ status: 'ready', invitation: refreshed.data });
+      else setState({ status: 'unavailable' });
+      setChoice(null);
+      setError('Your response changed in another request. Review the current response and try again.');
+      return;
     }
-  };
+    if (result.error?.status === 404) {
+      setState({ status: 'unavailable' });
+      return;
+    }
+    setError(result.error?.message || 'Your response could not be saved. Please try again.');
+  }
 
-  if (loading && !showCrewModal) {
+  if (state.status === 'loading') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-pink-50">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-12 pb-12 flex flex-col items-center gap-4">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <p className="text-lg font-medium">Joining event...</p>
-            <p className="text-sm text-muted-foreground">Please wait</p>
-          </CardContent>
-        </Card>
-      </div>
+      <main className="min-h-screen bg-[#f7f1ed] px-4 py-12 flex items-center justify-center">
+        <div className="text-center" role="status">
+          <Loader2 className="mx-auto h-9 w-9 animate-spin text-[#b53120]" />
+          <p className="mt-4 font-medium text-[#4d3d37]">Loading your invitation...</p>
+        </div>
+      </main>
     );
   }
 
-  if (error) {
+  if (state.status === 'unavailable') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-pink-50 p-4">
-        <Card className="w-full max-w-md border-destructive">
+      <main className="min-h-screen bg-[#f7f1ed] px-4 py-12 flex items-center justify-center">
+        <Card className="w-full max-w-lg border-[#ddcbc2] bg-white shadow-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-destructive">
-              <span>❌</span> Unable to Join
-            </CardTitle>
-            <CardDescription>
-              {error}
-            </CardDescription>
-          </CardHeader>
-          <CardFooter>
-            <Button
-              variant="outline"
-              onClick={() => navigate('/')}
-              className="w-full"
-            >
-              Go to Home
-            </Button>
-          </CardFooter>
-        </Card>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated && !loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-pink-50 p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <PartyPopper className="h-6 w-6 text-primary" />
-              Join Event
-            </CardTitle>
-            <CardDescription>
-              Sign in to join this event and access all features
-            </CardDescription>
-          </CardHeader>
-          <CardFooter className="flex gap-2">
-            <Button
-              onClick={() => navigate('/auth')}
-              className="flex-1"
-            >
-              Sign In
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => navigate('/')}
-              className="flex-1"
-            >
-              Cancel
-            </Button>
-          </CardFooter>
-        </Card>
-      </div>
-    );
-  }
-
-  // Success state (before crew modal or navigation)
-  if (eventData && !showCrewModal) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-pink-50 p-4">
-        <Card className="w-full max-w-md border-green-500">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-green-600">
-              <Check className="h-6 w-6" />
-              Successfully Joined!
-            </CardTitle>
-            <CardDescription>
-              You've been added to {eventData.event.name}
-            </CardDescription>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#a03a2b]">PartyHause RSVP</p>
+            <CardTitle className="text-2xl text-[#2d211d]">Invitation unavailable</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Redirecting to event page...
-            </p>
+            <p className="leading-6 text-[#675650]">This invitation cannot be opened. Ask the host for help if you expected it to be available.</p>
           </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Crew prompt modal
-  if (showCrewModal && eventData) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-pink-50 p-4">
-        <Card className="w-full max-w-lg">
-          <CardHeader className="text-center pb-4">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-              <PartyPopper className="h-8 w-8 text-primary" />
-            </div>
-            <CardTitle className="text-2xl">🎉 You're In!</CardTitle>
-            <CardDescription className="text-base">
-              Successfully joined <strong>{eventData.event.name}</strong>
-            </CardDescription>
-          </CardHeader>
-
-          <CardContent className="space-y-6">
-            {/* Event Details */}
-            <div className="rounded-lg bg-muted/50 p-4 space-y-2">
-              <div className="flex items-start gap-3">
-                <Calendar className="h-5 w-5 text-muted-foreground mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium">
-                    {new Date(eventData.event.start_date).toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                      hour: 'numeric',
-                      minute: '2-digit',
-                    })}
-                  </p>
-                </div>
-              </div>
-              {(eventData.event.venue || eventData.event.location) && (
-                <div className="flex items-start gap-3">
-                  <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />
-                  <p className="text-sm">
-                    {eventData.event.venue || eventData.event.location}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Crew Prompt */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-primary">
-                <Users className="h-5 w-5" />
-                <h3 className="font-semibold">Add Host to Your Crew?</h3>
-              </div>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Join the host's crew to automatically see their future events in your feed. 
-                Stay connected and never miss out on the next party!
-              </p>
-            </div>
-          </CardContent>
-
-          <CardFooter className="flex flex-col gap-2">
-            <Button
-              onClick={handleCrewAccept}
-              disabled={joining}
-              className="w-full gap-2"
-              size="lg"
-            >
-              {joining ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Adding to Crew...
-                </>
-              ) : (
-                <>
-                  <Users className="h-4 w-4" />
-                  Yes — Add to Crew
-                </>
-              )}
-            </Button>
-            <Button
-              onClick={handleCrewDecline}
-              disabled={joining}
-              variant="outline"
-              className="w-full"
-              size="lg"
-            >
-              No Thanks — Just Join Event
-            </Button>
+          <CardFooter className="gap-5 text-sm">
+            <a className="font-semibold text-[#8f2c1f] underline" href="/privacy.html" rel="noreferrer">Privacy</a>
+            <a className="font-semibold text-[#8f2c1f] underline" href="/support.html" rel="noreferrer">Support</a>
           </CardFooter>
         </Card>
-      </div>
+      </main>
     );
   }
 
-  return null;
+  const { invitation } = state;
+  return (
+    <main className="min-h-screen bg-[#f7f1ed] px-4 py-10 sm:py-16">
+      <Card className="mx-auto w-full max-w-xl overflow-hidden border-[#ddcbc2] bg-white shadow-xl shadow-[#8d4a3820]">
+        <div className="bg-[#2e1812] px-6 py-8 text-white sm:px-9">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#efa28d]">Private invitation</p>
+          <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">{invitation.event.name}</h1>
+          <p className="mt-3 text-[#f5e8e3]">Hosted by {invitation.event.hostName}</p>
+        </div>
+        <CardContent className="space-y-7 px-6 py-7 sm:px-9">
+          <section aria-labelledby="event-details" className="space-y-4">
+            <h2 className="text-lg font-bold text-[#2d211d]" id="event-details">Event details</h2>
+            <div className="flex gap-3 text-[#574640]">
+              <CalendarDays aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-[#b53120]" />
+              <div><p className="font-semibold">Starts</p><p>{formatDate(invitation.event.start, invitation.event.timezone)}</p></div>
+            </div>
+            <div className="flex gap-3 text-[#574640]">
+              <Clock3 aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-[#b53120]" />
+              <div><p className="font-semibold">Ends</p><p>{formatDate(invitation.event.end, invitation.event.timezone)}</p><p className="text-sm">{invitation.event.timezone}</p></div>
+            </div>
+            <div className="flex gap-3 text-[#574640]">
+              <MapPin aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-[#b53120]" />
+              <div><p className="font-semibold">Location</p><p>{invitation.event.location}</p></div>
+            </div>
+          </section>
+
+          <div className="rounded-xl border border-[#ead9d1] bg-[#fff8f5] px-4 py-3">
+            <p className="text-xs font-bold uppercase tracking-wider text-[#7b665e]">Current response</p>
+            <p className="mt-1 text-lg font-bold text-[#2d211d]">{statusLabel(invitation.rsvp.status)}</p>
+          </div>
+
+          <form className="space-y-5" onSubmit={(event) => { void submit(event); }}>
+            <fieldset>
+              <legend className="text-lg font-bold text-[#2d211d]">Will you attend?</legend>
+              <div className="mt-3 grid gap-3">
+                {CHOICES.map((option) => (
+                  <label className={`flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 ${choice === option.value ? 'border-[#b53120] bg-[#fff4f0]' : 'border-[#dfd5d1]'}`} key={option.value}>
+                    <input
+                      checked={choice === option.value}
+                      className="h-5 w-5 accent-[#b53120]"
+                      name="rsvp"
+                      onChange={() => setChoice(option.value)}
+                      type="radio"
+                      value={option.value}
+                    />
+                    <span><span className="block font-bold text-[#2d211d]">{option.label}</span><span className="text-sm text-[#675650]">{option.description}</span></span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            {message ? <p aria-live="polite" className="rounded-lg bg-[#eaf7ef] px-4 py-3 font-medium text-[#17643e]">{message}</p> : null}
+            {error ? <p aria-live="assertive" className="rounded-lg bg-[#fff0f0] px-4 py-3 text-[#9b2327]" role="alert">{error}</p> : null}
+            <Button className="min-h-12 w-full bg-[#b53120] text-base font-bold hover:bg-[#8f261a]" disabled={!choice || submitting} type="submit">
+              {submitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving response...</> : 'Submit RSVP'}
+            </Button>
+          </form>
+        </CardContent>
+        <CardFooter className="justify-between border-t border-[#eee5e1] px-6 py-5 text-sm sm:px-9">
+          <span className="text-[#75635c]">No account is required.</span>
+          <span className="flex gap-4">
+            <a className="font-semibold text-[#8f2c1f] underline" href="/privacy.html" rel="noreferrer">Privacy</a>
+            <a className="font-semibold text-[#8f2c1f] underline" href="/support.html" rel="noreferrer">Support</a>
+          </span>
+        </CardFooter>
+      </Card>
+    </main>
+  );
 }

@@ -25,6 +25,9 @@ process.env.DATABASE_URL =
   process.env.DATABASE_URL ||
   `postgresql://${process.env.USER}@localhost:5432/partyhause_dev?schema=public`;
 process.env.JWT_SECRET = 'e2e-partyboard-secret-that-is-definitely-long-enough-32';
+process.env.INVITATION_TOKEN_SECRET =
+  process.env.INVITATION_TOKEN_SECRET
+  || 'e2e-partyboard-invitation-secret-distinct-from-jwt';
 process.env.NODE_ENV = 'test';
 process.env.PORT = '3999';
 
@@ -58,7 +61,22 @@ await prisma.guest.create({
   data: { event_id: event.id, name: 'Declined Dana', email: declined.email, user_id: declined.id, rsvp_status: 'declined' },
 });
 
-const tok = (u) => jwt.sign({ sub: u.id, email: u.email, name: u.name, email_verified: true }, process.env.JWT_SECRET, { expiresIn: '1h' });
+// token_version binds the token to the user's current session epoch. Without
+// it requireAuth answers 401 SESSION_REVOKED to every request, and because
+// this suite collects results rather than printing as it goes, that surfaced
+// as a TypeError on an undefined body several stages later rather than as a
+// failed check.
+const tok = (u) => jwt.sign(
+  {
+    sub: u.id,
+    email: u.email,
+    name: u.name,
+    email_verified: true,
+    token_version: u.token_version,
+  },
+  process.env.JWT_SECRET,
+  { expiresIn: '1h' },
+);
 const T = { host: tok(host), guest: tok(guest), outsider: tok(outsider), declined: tok(declined) };
 
 // Boot the real server.

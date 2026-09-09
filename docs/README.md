@@ -1,14 +1,15 @@
 # Documentation index
 
-91 markdown files. Every one of them is either accurate today, an accurate record of the past, or
+90 markdown files. Every one of them is either accurate today, an accurate record of the past, or
 non-engineering material. Nothing here tells you to run a command that stopped working in July 2026.
 
-That was not true yesterday. On 2026-09-04 this directory held 188 files, of which 97 described
-Supabase, Netlify or Vercel as live infrastructure or had been superseded outright. Those 97 were
-deleted. What follows is what survived and why.
+That was not true yesterday. Before the 2026-09-04 cleanup, the repository held 187 markdown files,
+including 185 under `docs/`. Of those, 97 described Supabase, Netlify or Vercel as live
+infrastructure or had been superseded outright. Those 97 were deleted. What follows is what
+survived and why.
 
-Start at [`../AGENTS.md`](../AGENTS.md). It is the engineering source of truth and it outranks
-every file listed here.
+Start at [`../AGENTS.md`](../AGENTS.md) for implementation facts. The approved IOS-MVP-1 product
+scope and release requirements are controlled by [`mobile-ios-launch/`](./mobile-ios-launch/).
 
 | Class | Count | How to read it |
 |---|---|---|
@@ -21,18 +22,19 @@ every file listed here.
 
 ## Current
 
-- [`../AGENTS.md`](../AGENTS.md) engineering source of truth. Stack, setup, the full 62-route API
+- [`../AGENTS.md`](../AGENTS.md) engineering source of truth. Stack, setup, the full 77-route API
   surface, auth model, infrastructure, deployment, known gaps
 - [`../README.md`](../README.md) product front door. Non-engineering audience
 - [`SHARED_API_CLIENT.md`](./SHARED_API_CLIENT.md) `packages/core` design and rationale
 - [`LOCAL_DEV_AUTOSYNC.md`](./LOCAL_DEV_AUTOSYNC.md) lockfile and schema drift reminders
 - [`WEBMCP_MONITORING.md`](./WEBMCP_MONITORING.md) browser Model Context monitoring tools
 - [`BRAND.md`](./BRAND.md) identity, colour, type, assets. Corrective rather than descriptive
-- [`mobile-ios-launch/`](./mobile-ios-launch/) all 11 files. The iOS launch specification
+- [`mobile-ios-launch/`](./mobile-ios-launch/) all 11 files. The approved IOS-MVP-1 scope and launch
+  specification: iPhone host app, private one-host events, 50 guests, and browser RSVP
 
-`mobile-ios-launch/08-current-state-gap-register.md` is the most useful document in this directory:
-93 gaps, 68 marked BLOCKER, each carrying file:line evidence. `GAP-IOS-06`, which recorded the
-documentation problem this index describes, is now marked RESOLVED.
+`mobile-ios-launch/08-current-state-gap-register.md` is the implementation snapshot at `2cbf6a6`:
+93 legacy gap IDs, with 39 `OPEN_BLOCKER`, 2 `OPEN_HIGH`, 6 `RESOLVED_AT_2CBF6A6`, and 46
+`REMOVED_FROM_IOS_MVP`. Removed scope is not counted as resolved.
 
 ---
 

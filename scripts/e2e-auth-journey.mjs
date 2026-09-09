@@ -34,8 +34,19 @@
 //
 // Exit code is 0 when every check passes, 1 otherwise.
 
-process.env.DATABASE_URL = `postgresql://${process.env.USER}@localhost:5432/partyhause_dev?schema=public`;
+// An externally supplied DATABASE_URL wins. This used to assign
+// partyhause_dev unconditionally, which silently discarded the connection
+// string the caller exported: the run reported failures from whichever
+// database happened to be called partyhause_dev, while the operator watched
+// the one they had just migrated. Defaulting is fine; overriding is not.
+process.env.DATABASE_URL =
+  process.env.DATABASE_URL
+  || `postgresql://${process.env.USER}@localhost:5432/partyhause_dev?schema=public`;
 process.env.JWT_SECRET = 'e2e-auth-journey-secret-long-enough-for-prod-check';
+// Independent of JWT_SECRET, which server/lib/invitation-token.ts enforces.
+process.env.INVITATION_TOKEN_SECRET =
+  process.env.INVITATION_TOKEN_SECRET
+  || 'e2e-auth-journey-invitation-secret-distinct-from-jwt';
 process.env.NODE_ENV = 'test';
 process.env.PORT = '3996';
 // The bypass must be off. It is enabled by dev-api.ts and would let an
@@ -53,9 +64,29 @@ const prisma = new PrismaClient({
 });
 
 const PASSWORD = 'correct-horse-99';
+
+/**
+ * Consent the signup route requires, read from the same module the route reads.
+ *
+ * Hardcoding the dates here would make this suite pass a version bump it should
+ * fail: the point of the check is that client and server agree on which
+ * document was accepted, and a literal copied into the test agrees with
+ * nothing.
+ */
+const { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } = await import('../src/lib/legal.ts');
+const CONSENT = {
+  ageEligible: true,
+  termsVersion: CURRENT_TERMS_VERSION,
+  privacyVersion: CURRENT_PRIVACY_VERSION,
+};
+// `username` is deliberately absent here and resolved from the database after
+// signup. It used to be the email local part, which made a public field a
+// disclosure of a private one: `journey_newuser` tells any viewer that the
+// address is journey.newuser@something. It is now derived from the user's
+// UUID, so it carries no information the account did not choose to publish.
 const ACCOUNTS = [
-  { email: 'journey.newuser@partyhause.local', username: 'journey_newuser', name: 'Journey User' },
-  { email: 'journey.viewer@partyhause.local', username: 'journey_viewer', name: 'Journey Viewer' },
+  { email: 'journey.newuser@partyhause.local', name: 'Journey User' },
+  { email: 'journey.viewer@partyhause.local', name: 'Journey Viewer' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -157,10 +188,33 @@ check('a password under 8 characters is refused', tooShort.status, 400);
 const noEmail = await post('/api/auth/signup', { password: PASSWORD });
 check('a missing email is refused', noEmail.status, 400);
 
+// Signup records the legal versions the account accepted, so every request
+// here has to carry them. The server compares them for exact equality against
+// its own constants rather than accepting any string: an account created
+// against last month's terms must not be recorded as having accepted this
+// month's.
+const noConsent = await post('/api/auth/signup', {
+  email: primary.email,
+  password: PASSWORD,
+  name: primary.name,
+});
+check('signup without consent is refused', noConsent.status, 400);
+check('  ...with a code the client can branch on', noConsent.body?.code, 'LEGAL_CONSENT_REQUIRED');
+
+const staleConsent = await post('/api/auth/signup', {
+  email: primary.email,
+  password: PASSWORD,
+  name: primary.name,
+  ...CONSENT,
+  termsVersion: '1970-01-01',
+});
+check('signup against a superseded terms version is refused', staleConsent.status, 400);
+
 const signup = await post('/api/auth/signup', {
   email: primary.email,
   password: PASSWORD,
   name: primary.name,
+  ...CONSENT,
 });
 check('signup succeeds', signup.status, 201);
 check('signup reports the account is unverified', signup.body?.user?.email_verified, false);
@@ -168,7 +222,11 @@ check('signup issues NO session token', signup.body?.token, undefined);
 checkTrue('signup tells the user to check their email',
   typeof signup.body?.message === 'string' && /email/i.test(signup.body.message));
 
-const duplicate = await post('/api/auth/signup', { email: primary.email, password: PASSWORD });
+const duplicate = await post('/api/auth/signup', {
+  email: primary.email,
+  password: PASSWORD,
+  ...CONSENT,
+});
 check('registering the same address twice is refused', duplicate.status, 409);
 
 // ===========================================================================
@@ -202,7 +260,18 @@ check('  no reset token is issued at signup', stored.reset_token, null);
 
 const profile = await prisma.userProfile.findUnique({ where: { id: stored.id } });
 checkTrue('a user_profiles row exists with the same id', profile !== null);
-check('  username is derived from the email local part', profile.username, primary.username);
+
+// Derived from the UUID, not the address. The two assertions that matter are
+// that it is opaque and that it does not contain the local part: a username is
+// shown to other people and an email address is not.
+checkTrue('  username is derived from the user id, not the email',
+  /^u_[0-9a-z]+$/.test(profile.username));
+checkTrue('  username does not leak the email local part',
+  !profile.username.includes('journey') && !profile.username.includes('newuser'));
+
+// Every later assertion compares against what signup actually wrote, so a
+// change in the derivation is caught once, here, rather than four times.
+primary.username = profile.username;
 check('  display_name is set', profile.display_name, primary.name);
 check('  haus_score starts at zero', profile.haus_score, 0);
 check('  the account is not private by default', profile.is_private, false);
@@ -235,8 +304,19 @@ check('  and still no token', unverifiedLogin.body?.token, undefined);
 
 // A token minted with the claim set to false must be refused by requireAuth,
 // which is the gate that catches tokens issued before the gate existed.
+//
+// token_version is included so this exercises the verification gate and not
+// the revocation one. Omitting it makes the request fail earlier, for a
+// different and correct reason, and the assertion below would then pass
+// without the gate it names ever running.
 const unverifiedToken = jwt.sign(
-  { sub: stored.id, email: primary.email, name: primary.name, email_verified: false },
+  {
+    sub: stored.id,
+    email: primary.email,
+    name: primary.name,
+    email_verified: false,
+    token_version: stored.token_version,
+  },
   process.env.JWT_SECRET,
   { expiresIn: '1h' },
 );
@@ -244,13 +324,32 @@ const meUnverified = await get('/api/auth/me', unverifiedToken);
 check('requireAuth refuses a token whose claim says unverified', meUnverified.status, 403);
 check('  with the same code', meUnverified.body?.code, 'EMAIL_NOT_VERIFIED');
 
+// A token from a superseded epoch is refused whatever else it claims. This is
+// what makes logout and password reset actually end a session.
+const staleEpochToken = jwt.sign(
+  {
+    sub: stored.id,
+    email: primary.email,
+    name: primary.name,
+    email_verified: true,
+    token_version: stored.token_version - 1,
+  },
+  process.env.JWT_SECRET,
+  { expiresIn: '1h' },
+);
+const meStale = await get('/api/auth/me', staleEpochToken);
+check('requireAuth refuses a token from a superseded epoch', meStale.status, 401);
+check('  with SESSION_REVOKED', meStale.body?.code, 'SESSION_REVOKED');
+
+// A token predating the epoch claim entirely carries no epoch to compare, so
+// it cannot be trusted and is refused as revoked rather than merely unverified.
 const legacyToken = jwt.sign(
   { sub: stored.id, email: primary.email },
   process.env.JWT_SECRET,
   { expiresIn: '1h' },
 );
 const meLegacy = await get('/api/auth/me', legacyToken);
-check('requireAuth refuses a legacy token with no claim at all', meLegacy.status, 403);
+check('requireAuth refuses a legacy token with no claim at all', meLegacy.status, 401);
 
 // ===========================================================================
 // STAGE 4. Email verification
@@ -396,7 +495,7 @@ check('  and the bio is unchanged', stillMine.bio, NEW_BIO);
 // ===========================================================================
 section('STAGE 8  a second account views the profile');
 
-await post('/api/auth/signup', { email: viewer.email, password: PASSWORD, name: viewer.name });
+await post('/api/auth/signup', { email: viewer.email, password: PASSWORD, name: viewer.name, ...CONSENT });
 await new Promise((resolve) => setTimeout(resolve, 300));
 const viewerLink = verificationLinks.get(viewer.email);
 checkTrue('the second account also received a link', viewerLink !== undefined);
@@ -426,12 +525,18 @@ section('STAGE 9  sign out');
 
 const logout = await post('/api/auth/logout', {}, token);
 check('logout answers 200', logout.status, 200);
-// JWTs are not revocable and the server keeps no session table, so the token
-// still verifies. The client discarding it is the whole mechanism. Asserting
-// this rather than assuming it: if a revocation list is ever added, this
-// check is where the change surfaces.
-check('the token still verifies (stateless JWT, revocation is client-side)',
-  (await get('/api/auth/me', token)).status, 200);
+
+// Logout now actually ends the session. It increments the user's token epoch,
+// which invalidates every token issued before it, so signing out on a shared
+// or stolen device is effective rather than advisory.
+//
+// This assertion previously read "the token still verifies (stateless JWT,
+// revocation is client-side)" and expected 200. That was a true description of
+// a real limitation, and it is the check that surfaced the change when the
+// epoch was added, which is exactly what it was written for.
+const afterLogout = await get('/api/auth/me', token);
+check('the token no longer verifies: logout revoked it', afterLogout.status, 401);
+check('  with SESSION_REVOKED', afterLogout.body?.code, 'SESSION_REVOKED');
 
 // ===========================================================================
 section('RESULT');

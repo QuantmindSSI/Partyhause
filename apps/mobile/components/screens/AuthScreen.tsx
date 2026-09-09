@@ -1,5 +1,11 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Linking } from 'react-native';
+import {
+  CURRENT_PRIVACY_VERSION,
+  CURRENT_TERMS_VERSION,
+  LEGAL_URLS,
+  MINIMUM_ACCOUNT_AGE,
+} from '@partyhause/core';
 import { api } from '@/lib/client';
 
 interface AuthScreenProps {
@@ -17,6 +23,18 @@ export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) 
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  /**
+   * Signup consent, captured rather than assumed.
+   *
+   * `api.auth.signUp` requires a SignupConsent, and the server records the
+   * accepted document versions against the account. Passing `ageEligible: true`
+   * without asking would make the stored record a statement the user never
+   * made, which is worse than having no record: it is a false one, and it is
+   * the record that would be produced if the assertion were ever challenged.
+   */
+  const [ageEligible, setAgeEligible] = useState(false);
+  const [legalAccepted, setLegalAccepted] = useState(false);
 
   /**
    * Account-recovery state.
@@ -101,6 +119,14 @@ export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) 
       return;
     }
 
+    if (!isLogin && (!ageEligible || !legalAccepted)) {
+      setMessage({
+        type: 'error',
+        text: `Confirm you are at least ${MINIMUM_ACCOUNT_AGE} and accept the Terms and Privacy Policy.`,
+      });
+      return;
+    }
+
     setLoading(true);
     setMessage(null);
 
@@ -114,6 +140,11 @@ export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) 
             email.trim(),
             password.trim(),
             name.trim() || email.split('@')[0],
+            {
+              ageEligible: true,
+              termsVersion: CURRENT_TERMS_VERSION,
+              privacyVersion: CURRENT_PRIVACY_VERSION,
+            },
           );
 
       if (result.error) {
@@ -193,6 +224,44 @@ export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) 
                 autoCorrect={false}
                 editable={!loading}
               />
+
+              <TouchableOpacity
+                style={styles.consentRow}
+                onPress={() => setAgeEligible((v) => !v)}
+                disabled={loading}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: ageEligible }}
+              >
+                <View style={[styles.checkbox, ageEligible && styles.checkboxChecked]}>
+                  {ageEligible ? <Text style={styles.checkboxMark}>✓</Text> : null}
+                </View>
+                <Text style={styles.consentText}>
+                  I confirm I am at least {MINIMUM_ACCOUNT_AGE} years old.
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.consentRow}
+                onPress={() => setLegalAccepted((v) => !v)}
+                disabled={loading}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: legalAccepted }}
+              >
+                <View style={[styles.checkbox, legalAccepted && styles.checkboxChecked]}>
+                  {legalAccepted ? <Text style={styles.checkboxMark}>✓</Text> : null}
+                </View>
+                <Text style={styles.consentText}>
+                  I accept the{' '}
+                  <Text style={styles.consentLink} onPress={() => Linking.openURL(LEGAL_URLS.terms)}>
+                    Terms
+                  </Text>{' '}
+                  and{' '}
+                  <Text style={styles.consentLink} onPress={() => Linking.openURL(LEGAL_URLS.privacy)}>
+                    Privacy Policy
+                  </Text>
+                  .
+                </Text>
+              </TouchableOpacity>
             </>
           )}
 
@@ -417,6 +486,44 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
     marginBottom: 8,
+  },
+  consentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    gap: 10,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#2a2a3a',
+    backgroundColor: '#1a1a24',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  checkboxChecked: {
+    backgroundColor: '#FF5233',
+    borderColor: '#FF5233',
+  },
+  checkboxMark: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 16,
+  },
+  consentText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#b8b8c8',
+  },
+  consentLink: {
+    color: '#FF5233',
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
   input: {
     backgroundColor: '#1a1a24',

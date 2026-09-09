@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 
 vi.mock('@/hooks/use-auth', async () => {
@@ -9,12 +9,6 @@ vi.mock('@/hooks/use-auth', async () => {
 import { useAuth } from '@/hooks/use-auth';
 import { getStoredToken, setStoredToken, setStoredUser, clearAuth } from '@/lib/auth-storage';
 import { usePartyStore } from '@/store/usePartyStore';
-import { eventService } from '@/lib/events';
-
-type AuthServiceMock = {
-  signIn: ReturnType<typeof vi.fn>;
-  signUp: ReturnType<typeof vi.fn>;
-};
 
 vi.mock('@/lib/auth', () => ({
   authService: {
@@ -22,6 +16,7 @@ vi.mock('@/lib/auth', () => ({
     signUp: vi.fn(),
     resetPassword: vi.fn(),
     resendVerification: vi.fn(),
+    signOut: vi.fn(),
   },
 }));
 
@@ -77,7 +72,7 @@ describe('useAuth hook', () => {
 
   it('signs in a user via auth service', async () => {
     const mockUser = { id: 'user-2', email: 'signin@example.com' };
-    (authService.signIn as any).mockResolvedValue({
+    vi.mocked(authService.signIn).mockResolvedValue({
       success: true,
       user: mockUser,
     });
@@ -139,9 +134,38 @@ describe('useAuth hook', () => {
     expect(resend).toEqual({ success: true, error: null });
   });
 
+  it('keeps the web store anonymous after tokenless signup', async () => {
+    const signupUser = { id: 'user-3', email: 'signup@example.com', name: 'Signup User' };
+    vi.mocked(authService.signUp).mockResolvedValue({
+      success: true,
+      user: signupUser,
+      awaitingVerification: true,
+    });
+    const { result } = renderHook(() => useAuth());
+
+    let response: unknown;
+    await act(async () => {
+      response = await result.current.signUp('signup@example.com', 'password', 'Signup User', {
+        ageEligible: true,
+        termsVersion: '2026-09-06',
+        privacyVersion: '2026-09-06',
+      });
+    });
+
+    expect(response).toEqual({ user: signupUser, error: null });
+    expect(authService.signUp).toHaveBeenCalledWith('signup@example.com', 'password', 'Signup User', {
+      ageEligible: true,
+      termsVersion: '2026-09-06',
+      privacyVersion: '2026-09-06',
+    });
+    expect(usePartyStore.getState().user).toBeNull();
+    expect(usePartyStore.getState().isAuthenticated).toBe(false);
+    expect(usePartyStore.getState().isLoading).toBe(false);
+  });
+
   it('resets the store on sign out', async () => {
     usePartyStore.setState({
-      user: { id: 'user-4', email: 'active@example.com' } as any,
+      user: { id: 'user-4', email: 'active@example.com' },
       isAuthenticated: true,
       isLoading: false,
     });
@@ -152,6 +176,7 @@ describe('useAuth hook', () => {
       await result.current.signOut();
     });
 
+    expect(authService.signOut).toHaveBeenCalledTimes(1);
     const state = usePartyStore.getState();
     expect(state.user).toBeNull();
     expect(state.isAuthenticated).toBe(false);

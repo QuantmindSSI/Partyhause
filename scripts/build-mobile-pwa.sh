@@ -11,7 +11,7 @@ echo "🚀 Building PartyHause Mobile as PWA..."
 cd "$(dirname "$0")/../apps/mobile"
 
 echo "📦 Installing dependencies..."
-npm install --legacy-peer-deps
+npm install
 
 echo "🔨 Building Expo web app..."
 npx expo export --platform web --output-dir ../../dist

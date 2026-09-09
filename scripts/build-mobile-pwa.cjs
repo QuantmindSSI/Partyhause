@@ -31,9 +31,9 @@ function collectHtmlFiles(directory) {
 // Install dependencies for the workspace (including mobile)
 console.log('📦 Installing workspace dependencies...');
 try {
-  execSync('npm install --workspaces --legacy-peer-deps', { 
-    cwd: rootDir, 
-    stdio: 'inherit' 
+  execSync('npm install --workspaces', {
+    cwd: rootDir,
+    stdio: 'inherit'
   });
 } catch (error) {
   console.log('⚠️  Dependency installation had warnings, continuing...');

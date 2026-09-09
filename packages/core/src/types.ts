@@ -33,6 +33,7 @@ export interface AuthSession {
  */
 export interface SignUpResult {
   user: AuthUser & { email_verified: boolean };
+  verificationDelivery: 'accepted' | 'unavailable';
   message: string;
 }
 
@@ -67,7 +68,7 @@ export type EventPrivacy = 'public' | 'private' | 'unlisted';
  * database will reject on write, while 'active' and 'archived' are real states
  * that such UI then fails to handle.
  */
-export type EventStatus = 'draft' | 'published' | 'active' | 'completed' | 'archived';
+export type EventStatus = 'draft' | 'published' | 'active' | 'completed' | 'cancelled' | 'archived';
 
 export interface PartyEvent {
   id: string;

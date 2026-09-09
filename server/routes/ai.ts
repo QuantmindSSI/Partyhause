@@ -25,16 +25,10 @@ const aiLimiter = rateLimit({
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   keyGenerator: (req) =>
-    // `req.ip` alone is an IPv6 bypass: a caller holding a /64 has 2^64
-    // addresses and each one is a fresh bucket, so the limit never binds.
-    // `ipKeyGenerator` collapses an IPv6 address to its /64 prefix, which is
-    // the unit actually allocated to a subscriber, and passes IPv4 through
-    // unchanged.
-    //
-    // express-rate-limit v8 raises ERR_ERL_KEY_GEN_IPV6 for the naive form,
-    // but only when NODE_ENV is not 'production'. The deployed API therefore
-    // started cleanly while the bypass was live, and nothing surfaced it until
-    // the server was finally run locally.
+    // See the note on emailLimiter in server/index.ts. `req.ip` alone lets an
+    // IPv6 caller rotate through a /64 for a fresh bucket per request;
+    // ipKeyGenerator collapses that to the prefix. Pre-existing here, surfaced
+    // only when the server was finally run with NODE_ENV=development.
     (req as AuthenticatedRequest).user?.id ?? ipKeyGenerator(req.ip ?? '') ?? 'unknown',
   message: { error: 'Too many AI requests. Try again in a few minutes.' },
 });

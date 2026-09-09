@@ -38,6 +38,8 @@ const ROOT = process.cwd();
 const DIST = path.resolve(ROOT, 'dist');
 const ASSETS = path.join(DIST, 'assets');
 const MOBILE_PUBLIC = path.resolve(ROOT, 'apps/mobile/public');
+const WEB_APP = path.resolve(ROOT, 'src/App.tsx');
+const RSVP_PAGE = path.resolve(ROOT, 'src/components/JoinEventPage.tsx');
 const built = fs.existsSync(ASSETS);
 
 interface ManifestIcon {
@@ -136,6 +138,14 @@ describe.skipIf(!built)('emitted bundle chunk graph', () => {
     // @floating-ui/react-dom matched a loose `/react-dom/` rule and was the
     // package that actually threw. Its marker must not appear here.
     expect(src).not.toContain('@floating-ui');
+  });
+
+  it('keeps generic invitation and social join APIs out of the RSVP chunk', () => {
+    const file = fs.readdirSync(ASSETS).find((name) => name.startsWith('JoinEventPage-') && name.endsWith('.js'));
+    expect(file, 'no JoinEventPage chunk was emitted').toBeDefined();
+    const source = fs.readFileSync(path.join(ASSETS, file!), 'utf8');
+    expect(source).toContain('/api/rsvp/resolve');
+    expect(source).not.toMatch(/\/api\/(?:invites|send-email|partycrew)|also_add_to_crew/);
   });
 });
 
@@ -312,7 +322,12 @@ describe('web container nginx routing', () => {
 
   // The mirror of the rule above: client-side routes carry no file extension
   // and must still receive the shell, or deep links 404.
-  it.each(['/', '/join/some-token', '/profile/42', '/events/7/partyboard'])(
+  //
+  // /join/:token is deliberately excluded here and asserted separately below.
+  // It is served by its own location block with a different try_files form,
+  // because the token sits in the path and the response must not be logged,
+  // stored or referred onward.
+  it.each(['/', '/profile/42', '/events/7/partyboard'])(
     'still serves the SPA shell for the client-side route %s',
     (uri) => {
       const loc = resolve(uri);
@@ -320,6 +335,20 @@ describe('web container nginx routing', () => {
       expect(loc.body).toMatch(/try_files\s+\$uri\s+\$uri\/\s+\/index\.html/);
     },
   );
+
+  // An RSVP link is a bearer credential in a URL. Anyone holding the path can
+  // answer for that guest, so the shell has to be served without writing the
+  // path to the access log, without letting a shared cache keep the response,
+  // and without handing the URL to whatever the guest clicks next.
+  it('serves the SPA shell for /join/:token without logging or leaking the token', () => {
+    const loc = resolve('/join/some-token');
+    expect(rejectsMissingFile(loc)).toBe(false);
+    expect(loc.body).toMatch(/try_files\s+\/index\.html\s+=404/);
+    expect(loc.body).toMatch(/access_log\s+off/);
+    expect(loc.body).toMatch(/Cache-Control\s+"no-store"/);
+    expect(loc.body).toMatch(/Referrer-Policy\s+"no-referrer"/);
+    expect(loc.body).toMatch(/X-Robots-Tag\s+"noindex/);
+  });
 
   // The unfingerprinted-code regex was added after the fact. nginx gives exact
   // and `^~` matches priority over any regex, and takes the first regex in
@@ -355,5 +384,37 @@ describe('web container PWA assets', () => {
       return normalized === 'public' || normalized.startsWith('public/');
     });
     expect(excludesPublic, 'public PWA assets are excluded from the Docker image').toBe(false);
+  });
+});
+
+describe.skipIf(!built)('legal document cache boundary', () => {
+  it('does not include mutable legal or support pages in the service-worker precache', () => {
+    const worker = fs.readFileSync(path.join(DIST, 'sw.js'), 'utf8');
+    expect(worker).not.toContain('url:"privacy.html"');
+    expect(worker).not.toContain('url:"terms.html"');
+    expect(worker).not.toContain('url:"support.html"');
+  });
+});
+
+describe('browser RSVP route boundary', () => {
+  it('ships only the token route and removes raw event and guest identifiers', () => {
+    const app = fs.readFileSync(WEB_APP, 'utf8');
+    expect(app).toContain('<Route path="/join/:token"');
+    expect(app).not.toContain('/event/:eventId/guest/:guestId');
+  });
+
+  it('keeps social join, native promotion, and generic invitation APIs out of RSVP', () => {
+    const page = fs.readFileSync(RSVP_PAGE, 'utf8');
+    expect(page).not.toMatch(/supabase|partycrew|also_add_to_crew|api\/invites|qr code|install/i);
+    expect(page).toContain('/privacy.html');
+    expect(page).toContain('/support.html');
+  });
+
+  it('sets a no-referrer policy before the RSVP route loads', () => {
+    const html = fs.readFileSync(path.resolve(ROOT, 'index.html'), 'utf8');
+    const nginx = fs.readFileSync(path.resolve(ROOT, 'nginx.conf'), 'utf8');
+    expect(html).toContain('<meta name="referrer" content="no-referrer"');
+    expect(nginx).toMatch(/location \^~ \/join\/ \{[\s\S]*Cache-Control "no-store"[\s\S]*Referrer-Policy "no-referrer"/);
+    expect(nginx).toMatch(/location \^~ \/join\/ \{[\s\S]*access_log off[\s\S]*X-Robots-Tag "noindex, nofollow, noarchive"/);
   });
 });

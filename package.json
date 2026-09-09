@@ -23,6 +23,7 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
+    "test:migrations": "prisma migrate deploy && prisma db execute --file prisma/migrations/20260905000100_database_functions/migration.sql && prisma db execute --file prisma/migrations/20260905000100_database_functions/migration.sql && prisma migrate deploy && node scripts/verify-migration-invariants.cjs && npx tsx scripts/verify-mvp-concurrency.ts && npx tsx scripts/verify-signup-transaction.ts && prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code",
     "test:coverage": "vitest run --coverage",
     "server": "tsx server/index.ts",
     "dev:api": "tsx watch server/dev-api.ts",

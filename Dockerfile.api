@@ -1,9 +1,9 @@
 # --- Build stage ---
-FROM node:20-slim AS builder
+FROM node:22.22.0-slim AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --legacy-peer-deps
+RUN npm ci
 
 COPY . .
 
@@ -11,14 +11,14 @@ COPY . .
 RUN npx prisma generate
 
 # --- Runtime stage ---
-FROM node:20-slim
+FROM node:22.22.0-slim
 WORKDIR /app
 
 # Install tsx for TypeScript runtime execution
-RUN npm install -g tsx
+RUN npm install -g tsx@4.22.4
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --legacy-peer-deps
+RUN npm ci --omit=dev
 
 # Copy server code (TypeScript routes + lib + middleware)
 COPY server/ ./server/

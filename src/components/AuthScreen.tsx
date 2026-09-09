@@ -12,7 +12,6 @@ import {
   Calendar,
   Gamepad2,
   Camera,
-  QrCode,
   Eye,
   EyeOff,
   Mail,
@@ -22,6 +21,12 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
+import {
+  CURRENT_PRIVACY_VERSION,
+  CURRENT_TERMS_VERSION,
+  LEGAL_URLS,
+  MINIMUM_ACCOUNT_AGE,
+} from '@/lib/legal';
 
 interface AuthScreenProps {
   initialMode?: 'landing' | 'auth';
@@ -42,10 +47,11 @@ export const AuthScreen = ({
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [name, setName] = useState('');
+    const [ageEligible, setAgeEligible] = useState(false);
+    const [legalAccepted, setLegalAccepted] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
     const [isFormValid, setIsFormValid] = useState(false);
-
     /**
      * Account-recovery state.
      *
@@ -71,7 +77,7 @@ export const AuthScreen = ({
     // Diagnostic: run once on mount to detect missing imports in test env without violating hooks rules
     useEffect(() => {
       if (process.env.NODE_ENV === 'test') {
-        const required: [string, any][] = [
+        const required: [string, unknown][] = [
           ['motion', motion], ['usePartyStore', usePartyStore], ['Button', Button], ['Input', Input],
           ['Card', Card], ['CardContent', CardContent], ['CardHeader', CardHeader], ['CardTitle', CardTitle],
           ['Music', Music], ['Sparkles', Sparkles], ['Users', Users]
@@ -110,10 +116,10 @@ export const AuthScreen = ({
       setIsFormValid(
         EMAIL_RE.test(email) &&
         password.length >= MIN_PASSWORD &&
-        (isLogin || name.trim().length >= 2)
+        (isLogin || (name.trim().length >= 2 && ageEligible && legalAccepted))
       );
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [email, password, name, isLogin]);
+    }, [email, password, name, isLogin, ageEligible, legalAccepted]);
 
     const validateForm = () => {
       if (!EMAIL_RE.test(email)) {
@@ -124,6 +130,9 @@ export const AuthScreen = ({
       }
       if (!isLogin && !name.trim()) {
         throw new Error('Please enter your name');
+      }
+      if (!isLogin && (!ageEligible || !legalAccepted)) {
+        throw new Error('Confirm your age eligibility and accept the current Terms and Privacy Policy');
       }
     };
 
@@ -148,16 +157,19 @@ export const AuthScreen = ({
           setUnverifiedEmail(null);
           if (error) throw error;
         } else {
-          const { user, error } = await signUp(email, password, name);
+          const { user, error } = await signUp(email, password, name, {
+            ageEligible: true,
+            termsVersion: CURRENT_TERMS_VERSION,
+            privacyVersion: CURRENT_PRIVACY_VERSION,
+          });
           if (error) throw error;
           if (user) {
             alert('Please check your email to confirm your account!');
             setIsLogin(true);
           }
         }
-      } catch (error: any) {
-        const errorMessage = error.message || 'An error occurred during authentication';
-        alert(errorMessage);
+      } catch (error: unknown) {
+        alert(error instanceof Error ? error.message : 'An error occurred during authentication');
       } finally {
         setLoading(false);
       }
@@ -573,6 +585,34 @@ export const AuthScreen = ({
                       )}
                     </div>
 
+                    {!isLogin && (
+                      <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
+                        <label className="flex items-start gap-3">
+                          <input
+                            type="checkbox"
+                            checked={ageEligible}
+                            onChange={(event) => setAgeEligible(event.target.checked)}
+                            className="mt-1 h-4 w-4"
+                          />
+                          <span>I confirm I am at least {MINIMUM_ACCOUNT_AGE} years old.</span>
+                        </label>
+                        <label className="flex items-start gap-3">
+                          <input
+                            type="checkbox"
+                            checked={legalAccepted}
+                            onChange={(event) => setLegalAccepted(event.target.checked)}
+                            className="mt-1 h-4 w-4"
+                          />
+                          <span>
+                            I accept the{' '}
+                            <a className="font-semibold text-orange-600 underline" href={LEGAL_URLS.terms}>Terms</a>
+                            {' '}and{' '}
+                            <a className="font-semibold text-orange-600 underline" href={LEGAL_URLS.privacy}>Privacy Policy</a>.
+                          </span>
+                        </label>
+                      </div>
+                    )}
+
                     {/* Submit Button */}
                     <Button
                       type="submit"
@@ -710,7 +750,7 @@ export const AuthScreen = ({
                       What you'll get:
                     </p>
                     <div className="grid grid-cols-1 gap-2">
-                      {welcomeMessage.benefits.map((benefit, index) => (
+                      {welcomeMessage.benefits.map((benefit) => (
                         <div key={benefit} className="flex items-center text-gray-600 text-sm">
                           <CheckCircle className="h-4 w-4 text-orange-500 mr-2 flex-shrink-0" />
                           {benefit}

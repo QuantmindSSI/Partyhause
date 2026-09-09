@@ -23,6 +23,7 @@ import {
   setStoredUser,
   clearAuth,
 } from '@/lib/auth-storage';
+import { CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION } from '@/lib/legal';
 
 const TOKEN_KEY = 'partyhause_auth_token';
 const USER_KEY = 'partyhause_auth_user';
@@ -170,7 +171,11 @@ describe('stored session', () => {
         }),
       } as Response);
 
-      await authService.signUp('new@partyhause.local', 'password123', 'New User');
+      await authService.signUp('new@partyhause.local', 'password123', 'New User', {
+        ageEligible: true,
+        termsVersion: CURRENT_TERMS_VERSION,
+        privacyVersion: CURRENT_PRIVACY_VERSION,
+      });
 
       expect(localStorage.getItem(TOKEN_KEY)).toBeNull();
       expect(localStorage.getItem(USER_KEY)).toBeNull();

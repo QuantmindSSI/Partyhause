@@ -37,7 +37,7 @@ env:
   # Kept for the post-deploy smoke test, which should verify the container
   # directly rather than through DNS and the custom-domain certificate.
   WEB_CONTAINER_URL: https://ca-web-partyhause-gipkzrenusqpy.calmtree-5b646dc8.eastus2.azurecontainerapps.io
-  NODE_VERSION: '20'
+  NODE_VERSION: '22.22.0'
   # Short SHA used to tag images for traceability (also tagged :latest).
   IMAGE_TAG: ${{ github.sha }}
 
@@ -47,6 +47,8 @@ env:
 #   RESEND_API_KEY             — Resend API key (API container secret)
 #   RESEND_FROM_EMAIL          — verified Resend sending address (e.g. "PartyHause <noreply@partyhause.com>")
 #   ENTRA_API_CLIENT_SECRET    — Entra External ID (B2C) API app client secret (Bicep @secure param)
+#   JWT_SECRET                 - application JWT signing key (at least 32 characters)
+#   INVITATION_TOKEN_SECRET    - HMAC key for deterministic RSVP tokens (at least 32 bytes)
 #
 # Optional (only needed for first provision or infra changes):
 #   AZURE_DEPLOYER_OBJECT_ID   — Object ID of the SP/user granted Key Vault access.
@@ -71,6 +73,22 @@ jobs:
   build-and-test:
     name: Build & Test
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: partyhause_ci
+          POSTGRES_PASSWORD: partyhause_ci
+          POSTGRES_USER: partyhause_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U partyhause_ci -d partyhause_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://partyhause_ci:partyhause_ci@localhost:5432/partyhause_ci
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -82,7 +100,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm ci
 
       # @prisma/client ships as a stub whose types are written by `generate`.
       # Without this, typechecking tsconfig.server.json fails with TS2305
@@ -90,6 +108,9 @@ jobs:
       # so `npm ci` alone does not produce it. No database is required.
       - name: Generate Prisma client
         run: npx prisma generate
+
+      - name: Verify database migrations
+        run: npm run test:migrations
 
       - name: Lint code
         run: npm run lint
@@ -105,6 +126,12 @@ jobs:
       - name: Run tests
         run: npm run test:run
 
+      - name: Validate Expo project
+        run: npm run doctor:mobile
+
+      - name: Export iOS bundle
+        run: npm run build:ios:export
+
   provision:
     name: Provision / Update infrastructure (Bicep)
     runs-on: ubuntu-latest
@@ -119,13 +146,13 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Fail fast if JWT_SECRET is missing
+      - name: Fail fast if application secrets are missing
         # jwtSecret has no default in main.bicep, but an empty GitHub secret would
-        # still expand to "" here and provision an empty signing key. The API then
-        # falls back to a default string committed to the repository, which makes
-        # every account forgeable. Refuse to deploy rather than do that silently.
+        # still expand to "" here and provision unusable secret values. Refuse to
+        # deploy rather than publish a Container App revision that cannot start.
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          INVITATION_TOKEN_SECRET: ${{ secrets.INVITATION_TOKEN_SECRET }}
         run: |
           if [ -z "${JWT_SECRET}" ]; then
             echo "ERROR: JWT_SECRET repository secret is empty or unset."
@@ -138,6 +165,21 @@ jobs:
             exit 1
           fi
           echo "JWT_SECRET present (${#JWT_SECRET} characters)."
+          if [ -z "${INVITATION_TOKEN_SECRET}" ]; then
+            echo "ERROR: INVITATION_TOKEN_SECRET repository secret is empty or unset."
+            echo "Set it under Settings > Secrets and variables > Actions."
+            echo "Generate one with: openssl rand -base64 48"
+            exit 1
+          fi
+          if [ "${#INVITATION_TOKEN_SECRET}" -lt 32 ]; then
+            echo "ERROR: INVITATION_TOKEN_SECRET is too short; require at least 32 characters."
+            exit 1
+          fi
+          if [ "${INVITATION_TOKEN_SECRET}" = "${JWT_SECRET}" ]; then
+            echo "ERROR: INVITATION_TOKEN_SECRET must differ from JWT_SECRET."
+            exit 1
+          fi
+          echo "INVITATION_TOKEN_SECRET present (${#INVITATION_TOKEN_SECRET} characters)."
 
       - name: Deploy Bicep template (subscription scope)
         # Idempotent: creates/updates the RG + all resources defined in main.bicep.
@@ -151,6 +193,7 @@ jobs:
             --parameters postgresAdminPassword="${{ secrets.POSTGRES_ADMIN_PASSWORD }}" \
             --parameters RESEND_API_KEY="${{ secrets.RESEND_API_KEY }}" \
             --parameters jwtSecret="${{ secrets.JWT_SECRET }}" \
+            --parameters invitationTokenSecret="${{ secrets.INVITATION_TOKEN_SECRET }}" \
             --parameters entraApiClientSecret="${{ secrets.ENTRA_API_CLIENT_SECRET }}" \
             --parameters deployerObjectId="${{ secrets.AZURE_DEPLOYER_OBJECT_ID }}" \
             --parameters entraTenantId="${{ secrets.ENTRA_TENANT_ID }}" \

@@ -1,9 +1,9 @@
 # --- Build stage ---
-FROM node:20-slim AS builder
+FROM node:22.22.0-slim AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --legacy-peer-deps
+RUN npm ci
 
 COPY . .
 

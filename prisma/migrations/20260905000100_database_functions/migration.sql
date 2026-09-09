@@ -1,4 +1,4 @@
--- scripts/azure-pg-functions.sql
+-- PartyHause PostgreSQL functions and triggers.
 --
 -- Business-rule functions and triggers for the AZURE PostgreSQL database
 -- (or any database created with `prisma db push`).
@@ -15,18 +15,19 @@
 --   bodies bind against TEXT columns.
 --
 -- FIXES INCLUDED (defects carried over from the original definitions):
---   * convert_guest_to_crew: v_event_host was declared but never assigned —
+--   * convert_guest_to_crew: v_event_host was declared but never assigned;
 --     the duplicate-crew check never matched and the INSERT wrote NULL
 --     following_id (the endpoint 500'd on every call).
 --   * update_event_cost_summary: used NEW.event_id while bound to DELETE
---     (NEW is NULL on DELETE) — summaries went permanently stale after a
+--     (NEW is NULL on DELETE); summaries went permanently stale after a
 --     split deletion. Also recomputes to a zeroed row when the last split
 --     for an event is removed.
 --
--- USAGE
---   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/azure-pg-functions.sql
+-- Applied by `prisma migrate deploy` after the schema baseline.
 --
 -- Idempotent: CREATE OR REPLACE + DROP TRIGGER IF EXISTS throughout.
+
+BEGIN;
 
 -- ============================================
 -- Invite tokens (from 20251103_guest_crew_features.sql)
@@ -35,7 +36,7 @@
 -- CREATE OR REPLACE cannot rename function parameters ("cannot change name
 -- of input parameter"), and databases provisioned from the original
 -- migrations carry these functions with p_-prefixed parameter names. Drop by
--- exact signature first (idempotent; no dependent objects — trigger
+-- exact signature first (idempotent; no dependent objects; trigger
 -- functions are separate and RPC callers bind at call time).
 DROP FUNCTION IF EXISTS is_invite_token_valid(TEXT);
 DROP FUNCTION IF EXISTS increment_token_usage(TEXT, UUID);
@@ -325,3 +326,5 @@ CREATE TRIGGER trigger_check_poll_consensus
 AFTER INSERT ON poll_votes
 FOR EACH ROW
 EXECUTE FUNCTION check_poll_consensus();
+
+COMMIT;

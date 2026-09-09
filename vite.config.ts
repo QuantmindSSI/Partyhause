@@ -58,6 +58,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        globIgnores: ['privacy.html', 'terms.html', 'support.html'],
+        navigateFallbackDenylist: [/^\/(?:privacy|terms|support)\.html$/],
         runtimeCaching: [],
         cleanupOutdatedCaches: true,
         skipWaiting: true,

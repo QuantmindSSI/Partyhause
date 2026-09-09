@@ -26,8 +26,14 @@
 //
 // Exit code is 0 when every check passes, 1 otherwise.
 
-process.env.DATABASE_URL = `postgresql://${process.env.USER}@localhost:5432/partyhause_dev?schema=public`;
+// An externally supplied DATABASE_URL wins; this used to override it.
+process.env.DATABASE_URL =
+  process.env.DATABASE_URL
+  || `postgresql://${process.env.USER}@localhost:5432/partyhause_dev?schema=public`;
 process.env.JWT_SECRET = 'verify-recovery-secret-that-is-long-enough-32c';
+process.env.INVITATION_TOKEN_SECRET =
+  process.env.INVITATION_TOKEN_SECRET
+  || 'e2e-recovery-invitation-secret-distinct-from-jwt';
 process.env.NODE_ENV = 'test';   // not production, so the reset link is printed to the log
 process.env.PORT = '3995';
 
@@ -77,7 +83,18 @@ const check = (name, actual, expected) => {
 };
 
 // 1. Register. No token is issued, by design.
-const signup = await post('/signup', { email: EMAIL, password: 'originalpw123', name: 'Nev Confirmed' });
+//
+// Consent is read from the same module the route validates against, so a
+// version bump cannot leave this suite asserting a document nobody accepted.
+const { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } = await import('../src/lib/legal.ts');
+const signup = await post('/signup', {
+  email: EMAIL,
+  password: 'originalpw123',
+  name: 'Nev Confirmed',
+  ageEligible: true,
+  termsVersion: CURRENT_TERMS_VERSION,
+  privacyVersion: CURRENT_PRIVACY_VERSION,
+});
 check('signup succeeds', signup.status, 201);
 check('signup issues no session token', signup.body?.token, undefined);
 

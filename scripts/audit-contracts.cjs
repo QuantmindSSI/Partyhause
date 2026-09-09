@@ -173,6 +173,10 @@ function collectServer() {
 
 /** Record property names of 2xx res.json({...}) literals inside a handler. */
 function collectJsonKeys(node, out, sf) {
+  if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)
+      && node.expression.text === 'endpoint') {
+    out.add('<spread>');
+  }
   (function visit(n) {
     if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression)
         && n.expression.name.text === 'json') {

@@ -10,7 +10,6 @@
 import { Router } from 'express';
 import multer from 'multer';
 import {
-  BlobServiceClient,
   StorageSharedKeyCredential,
   generateBlobSASQueryParameters,
   BlobSASPermissions,
@@ -18,8 +17,23 @@ import {
 } from '@azure/storage-blob';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
+import {
+  blobServiceClient,
+  publicBlobUrl,
+  sanitizeBlobPath,
+  sanitizeBlobSegment,
+  storageBlobEndpoint,
+  storageContainerName,
+} from '../lib/blob-storage';
 
 const router = Router();
+
+function storageError(error: unknown, fallback: string): { log: unknown; message: string } {
+  if (error instanceof Error) {
+    return { log: error.stack || error.message, message: error.message };
+  }
+  return { log: error, message: fallback };
+}
 
 // All storage routes require authentication.
 router.use(requireAuth);
@@ -30,29 +44,6 @@ router.use(requireAuth);
  * Sanitize a client-supplied blob path segment: only word chars, dot, dash.
  * Rejects traversal-ish ('..') and empty segments by returning null.
  */
-function sanitizeSegment(segment: string): string | null {
-  const cleaned = segment.trim();
-  if (!cleaned || cleaned === '.' || cleaned === '..') return null;
-  if (!/^[A-Za-z0-9._-]+$/.test(cleaned)) return null;
-  return cleaned;
-}
-
-/**
- * Sanitize a client-supplied blob path (may contain '/' separators).
- * Returns null when any segment is invalid.
- */
-function sanitizeBlobPath(path: string): string | null {
-  const segments = path.split('/').filter((s) => s.length > 0);
-  if (segments.length === 0) return null;
-  const cleaned: string[] = [];
-  for (const seg of segments) {
-    const ok = sanitizeSegment(seg);
-    if (!ok) return null;
-    cleaned.push(ok);
-  }
-  return cleaned.join('/');
-}
-
 /**
  * Ownership check for delete/SAS: a caller may operate on a blob when
  *   (a) the blob lives under their own user-id prefix (`<userId>/...`), or
@@ -74,66 +65,6 @@ async function callerOwnsBlob(blobName: string, userId: string): Promise<boolean
   }
 
   return false;
-}
-
-// ----- Configuration -------------------------------------------------------
-
-const CONTAINER_NAME =
-  process.env.AZURE_STORAGE_IMAGE_CONTAINER || 'event-invites';
-
-const ACCOUNT_NAME = process.env.AZURE_STORAGE_ACCOUNT || '';
-const BLOB_ENDPOINT =
-  process.env.AZURE_STORAGE_BLOB_ENDPOINT ||
-  (ACCOUNT_NAME
-    ? `https://${ACCOUNT_NAME}.blob.core.windows.net/`
-    : 'https://stphgipkzrenusqpy.blob.core.windows.net/');
-
-/**
- * Resolve a BlobServiceClient. Prefer an explicit connection string
- * (AZURE_STORAGE_CONNECTION_STRING); otherwise build one from the account name
- * + key (AZURE_STORAGE_ACCOUNT_KEY).
- */
-function getBlobServiceClient(): BlobServiceClient {
-  const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
-
-  if (connectionString) {
-    return BlobServiceClient.fromConnectionString(connectionString);
-  }
-
-  const accountKey = process.env.AZURE_STORAGE_ACCOUNT_KEY;
-  if (!ACCOUNT_NAME || !accountKey) {
-    throw new Error(
-      'Azure Storage not configured: set AZURE_STORAGE_CONNECTION_STRING or both AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_ACCOUNT_KEY',
-    );
-  }
-
-  const sharedKeyCredential = new StorageSharedKeyCredential(
-    ACCOUNT_NAME,
-    accountKey,
-  );
-  return new BlobServiceClient(BLOB_ENDPOINT, sharedKeyCredential);
-}
-
-/**
- * Lazily-initialized singleton client so we don't re-parse the connection
- * string on every request.
- */
-let _client: BlobServiceClient | null = null;
-function blobServiceClient(): BlobServiceClient {
-  if (!_client) {
-    _client = getBlobServiceClient();
-  }
-  return _client;
-}
-
-/**
- * Build the public URL for a blob in the event-invites container.
- */
-function publicBlobUrl(blobName: string): string {
-  const base = BLOB_ENDPOINT.endsWith('/')
-    ? BLOB_ENDPOINT
-    : `${BLOB_ENDPOINT}/`;
-  return `${base}${CONTAINER_NAME}/${blobName}`;
 }
 
 // ----- Multer (in-memory file upload) --------------------------------------
@@ -192,7 +123,7 @@ router.post(
       }
 
       const ext =
-        sanitizeSegment(file.originalname.split('.').pop()?.toLowerCase() || '') ||
+        sanitizeBlobSegment(file.originalname.split('.').pop()?.toLowerCase() || '') ||
         file.mimetype.split('/')[1] ||
         'jpg';
 
@@ -202,8 +133,8 @@ router.post(
       } else {
         const stamp = Date.now();
         const rand = Math.random().toString(36).slice(2, 8);
-        const base = eventId && sanitizeSegment(eventId)
-          ? `${sanitizeSegment(eventId)}_invite`
+        const base = eventId && sanitizeBlobSegment(eventId)
+          ? `${sanitizeBlobSegment(eventId)}_invite`
           : `invite_${stamp}_${rand}`;
         blobName = `${base}.${ext}`;
       }
@@ -220,7 +151,7 @@ router.post(
       }
 
       const containerClient = blobServiceClient().getContainerClient(
-        CONTAINER_NAME,
+        storageContainerName(),
       );
 
       // Ensure the container exists (idempotent). Public access is set at the
@@ -237,11 +168,12 @@ router.post(
 
       const url = publicBlobUrl(blobName);
       return res.json({ success: true, url, blobName });
-    } catch (error: any) {
-      console.error('Storage upload error:', error?.stack || error);
+    } catch (error: unknown) {
+      const detail = storageError(error, 'Failed to upload image');
+      console.error('Storage upload error:', detail.log);
       return res.status(500).json({
         success: false,
-        error: error?.message || 'Failed to upload image',
+        error: detail.message,
       });
     }
   },
@@ -269,7 +201,7 @@ router.delete('/:blobName', async (req: AuthenticatedRequest, res) => {
     }
 
     const containerClient = blobServiceClient().getContainerClient(
-      CONTAINER_NAME,
+      storageContainerName(),
     );
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
 
@@ -282,11 +214,12 @@ router.delete('/:blobName', async (req: AuthenticatedRequest, res) => {
 
     await blockBlobClient.delete();
     return res.json({ success: true });
-  } catch (error: any) {
-    console.error('Storage delete error:', error?.stack || error);
+  } catch (error: unknown) {
+    const detail = storageError(error, 'Failed to delete image');
+    console.error('Storage delete error:', detail.log);
     return res.status(500).json({
       success: false,
-      error: error?.message || 'Failed to delete image',
+      error: detail.message,
     });
   }
 });
@@ -313,8 +246,9 @@ router.get('/url/:blobName', async (req: AuthenticatedRequest, res) => {
       return res.json({ success: true, url: publicBlobUrl(blobName) });
     }
 
-    const sharedKeyCredential = accountKey
-      ? new StorageSharedKeyCredential(ACCOUNT_NAME, accountKey)
+    const accountName = process.env.AZURE_STORAGE_ACCOUNT?.trim() || '';
+    const sharedKeyCredential = accountKey && accountName
+      ? new StorageSharedKeyCredential(accountName, accountKey)
       : undefined;
 
     if (!sharedKeyCredential) {
@@ -322,7 +256,7 @@ router.get('/url/:blobName', async (req: AuthenticatedRequest, res) => {
     }
 
     const containerClient = blobServiceClient().getContainerClient(
-      CONTAINER_NAME,
+      storageContainerName(),
     );
     const blobClient = containerClient.getBlobClient(blobName);
 
@@ -331,7 +265,7 @@ router.get('/url/:blobName', async (req: AuthenticatedRequest, res) => {
 
     const sasToken = generateBlobSASQueryParameters(
       {
-        containerName: CONTAINER_NAME,
+        containerName: storageContainerName(),
         blobName,
         permissions: BlobSASPermissions.parse('r'),
         startsOn,
@@ -341,13 +275,14 @@ router.get('/url/:blobName', async (req: AuthenticatedRequest, res) => {
       sharedKeyCredential,
     ).toString();
 
-    const sasUrl = `${blobClient.url}?${sasToken}`;
+    const sasUrl = `${blobClient.url || `${storageBlobEndpoint()}${storageContainerName()}/${blobName}`}?${sasToken}`;
     return res.json({ success: true, url: sasUrl, expiresOn: expiresOn.toISOString() });
-  } catch (error: any) {
-    console.error('Storage SAS URL error:', error?.stack || error);
+  } catch (error: unknown) {
+    const detail = storageError(error, 'Failed to generate SAS URL');
+    console.error('Storage SAS URL error:', detail.log);
     return res.status(500).json({
       success: false,
-      error: error?.message || 'Failed to generate SAS URL',
+      error: detail.message,
     });
   }
 });
