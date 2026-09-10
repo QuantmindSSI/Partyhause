@@ -20,8 +20,22 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       supportsTablet: true,
       bundleIdentifier: "com.partyhause.mobile",
       buildNumber: "1.0.0",
+      // Universal Links for invitation URLs.
+      //
+      // Only claimed now that `app/join/[token].tsx` exists. Claiming a path
+      // with no screen behind it opens the app to expo-router's unmatched
+      // screen instead of opening Safari, and Apple's CDN caches the
+      // association, so that mistake outlives its fix.
+      //
+      // The published file at public/.well-known/apple-app-site-association
+      // claims /join/* and nothing else, and its appID must stay in step with
+      // `bundleIdentifier` above and the Team ID in eas.json.
+      associatedDomains: ["applinks:partyhause.com"],
       infoPlist: {
         NSContactsUsageDescription: "PartyHause opens your contact picker so you can choose one person at a time to invite. It never reads your address book.",
+        // Declared so every submission stops stalling on the export-compliance
+        // prompt. The app uses only HTTPS, which is exempt.
+        ITSAppUsesNonExemptEncryption: false,
       }
     },
     android: {

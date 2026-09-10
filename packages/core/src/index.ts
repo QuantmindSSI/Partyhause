@@ -44,6 +44,12 @@ export type {
   AccountLegalSummary,
   AccountResource,
 } from './resources/account';
+export { createRsvpResource } from './resources/rsvp';
+export type {
+  RsvpChoice,
+  RsvpInvitation,
+  RsvpResource,
+} from './resources/rsvp';
 export type {
   EventsResource, GuestsResource, TimelineResource, PollsResource,
   PartyCrewResource, UsersResource, FeedResource, NotificationsResource,

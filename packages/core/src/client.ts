@@ -19,6 +19,8 @@ import { createAuthResource } from './resources/auth';
 import type { AuthResource } from './resources/auth';
 import { createAccountResource } from './resources/account';
 import type { AccountResource } from './resources/account';
+import { createRsvpResource } from './resources/rsvp';
+import type { RsvpResource } from './resources/rsvp';
 import {
   createEventsResource, createGuestsResource, createTimelineResource,
   createPollsResource, createPartyCrewResource, createUsersResource, createFeedResource,
@@ -44,6 +46,14 @@ export interface ApiClient {
    * a missing convenience.
    */
   account: AccountResource;
+  /**
+   * Anonymous RSVP, reached from an invitation link.
+   *
+   * Shared so the mobile deep-link screen and the web /join page cannot drift
+   * apart on the compare-and-swap contract, which is the exact failure mode
+   * two separate clients produce.
+   */
+  rsvp: RsvpResource;
   events: EventsResource;
   guests: GuestsResource;
   timeline: TimelineResource;
@@ -75,6 +85,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
   return {
     auth: createAuthResource(transport),
     account: createAccountResource(transport),
+    rsvp: createRsvpResource(transport),
     events: createEventsResource(transport),
     guests: createGuestsResource(transport),
     timeline: createTimelineResource(transport),
