@@ -17,7 +17,7 @@
     "build:web": "npx vite build",
     "build:mobile": "node ./scripts/build-mobile-pwa.cjs",
     "typecheck": "npx tsc -p tsconfig.app.json && npx tsc -p tsconfig.node.json && npx tsc -p tsconfig.server.json && npx tsc -p packages/core/tsconfig.json && npx tsc --noEmit -p apps/mobile/tsconfig.json",
-    "build:check": "npm run typecheck && npm run audit:contracts && npx vite build",
+    "build:check": "npm run typecheck && npm run audit:contracts && npm run icons:mobile:check && npx vite build",
     "lint": "eslint .",
     "preview": "npx vite preview",
     "test": "vitest",
@@ -31,7 +31,9 @@
     "dev:api": "tsx watch server/dev-api.ts",
     "dev:docker": "docker-compose up --build",
     "audit:endpoints": "node scripts/audit-endpoints.cjs",
-    "audit:contracts": "node scripts/audit-contracts.cjs"
+    "audit:contracts": "node scripts/audit-contracts.cjs",
+    "icons:mobile": "node scripts/generate-mobile-icons.mjs",
+    "icons:mobile:check": "node scripts/generate-mobile-icons.mjs --check"
   },
   "dependencies": {
     "@azure/communication-email": "^1.1.0",

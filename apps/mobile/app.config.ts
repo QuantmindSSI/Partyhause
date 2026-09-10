@@ -36,7 +36,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "READ_MEDIA_VIDEO"
       ],
       adaptiveIcon: {
-        backgroundColor: "#E6F4FE",
+        // Brand coral, not the Expo template's #E6F4FE. This is the fallback
+        // fill for launchers that ignore backgroundImage; it must not be a
+        // colour from outside the palette in docs/BRAND.md.
+        backgroundColor: "#FF5233",
         foregroundImage: "./assets/images/android-icon-foreground.png",
         backgroundImage: "./assets/images/android-icon-background.png",
         monochromeImage: "./assets/images/android-icon-monochrome.png"
@@ -71,6 +74,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           resizeMode: "contain",
           backgroundColor: "#ffffff",
           dark: {
+            // A separate asset, not just a separate background. The standard
+            // mark's body is neutral-900 #26201D, which is invisible against
+            // #000000; the dark variant uses the inverse mark so the house
+            // still reads. Sharing one image would have shipped a floating
+            // roof with no house under it.
+            image: "./assets/images/splash-icon-dark.png",
             backgroundColor: "#000000"
           }
         }
