@@ -1,10 +1,20 @@
 import { ConfigContext, ExpoConfig } from "expo/config";
 
 export default ({ config }: ConfigContext): ExpoConfig => {
-  // `extra` is deliberately absent. The two keys it used to carry were read
-  // from unset environment variables, so every build manifest shipped empty
-  // strings that nothing ever read back via Constants.expoConfig.extra.
-  // `eas init` writes `extra.eas.projectId` here when the EAS project exists.
+  // `extra` is deliberately not set here, and that is now load-bearing rather
+  // than merely tidy.
+  //
+  // It originally carried two keys read from unset environment variables, so
+  // every build manifest shipped empty strings nothing read back.
+  //
+  // `eas init` then wrote `extra.eas.projectId` and `owner` into app.json, not
+  // into this file. They reach the resolved config only through the `...config`
+  // spread below, because nothing here overrides `extra`. Setting `extra` to a
+  // literal object at any point would silently drop the project id, and
+  // `eas.json` declares `appVersionSource: "remote"`, which cannot resolve a
+  // build without it. Anything added here must spread `config.extra` first.
+  //
+  // `src/test/eas-build-config.test.ts` pins that invariant.
   return {
     ...config,
     name: "PartyHause",
