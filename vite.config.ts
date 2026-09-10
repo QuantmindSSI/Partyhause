@@ -17,7 +17,6 @@ export default defineConfig({
         'icons/icon-512.png',
         'icons/icon-maskable-192.png',
         'icons/icon-maskable-512.png',
-        'placeholder.svg',
         'robots.txt'
       ],
       manifest: {
@@ -59,6 +58,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        globIgnores: ['privacy.html', 'terms.html', 'support.html'],
+        navigateFallbackDenylist: [/^\/(?:privacy|terms|support)\.html$/],
         runtimeCaching: [],
         cleanupOutdatedCaches: true,
         skipWaiting: true,

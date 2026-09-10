@@ -247,8 +247,11 @@ Typecheck clean across all five projects. Web build clean.
 1. **Mobile client instance** wiring `createAsyncStorage(AsyncStorage)`.
 2. **Migrate 13 mobile files** off `supabase.from(...)` and `supabase.auth.*`.
    This is where mobile gains a working login for the first time.
-3. **Delete both stubs**, `packages/core/src/supabase.ts` and
-   `apps/mobile/lib/supabase.ts`.
+3. ~~**Delete both stubs.**~~ Done. Both were replaced by `client.ts` in their
+   respective packages. The web app's equivalent, `src/lib/supabase.ts`, was
+   removed on 2026-09-08 and its surviving localStorage helpers now live in
+   `src/lib/auth-storage.ts`; the fake database client it also exported is
+   gone rather than renamed. There is no vendor SDK stub anywhere in the tree.
 4. **Point `src/lib/api-client.ts` at core** and remove the duplicated
    transport, which is currently the only remaining copy of this logic.
 5. **Extend resource coverage** to the six families web uses that core does not

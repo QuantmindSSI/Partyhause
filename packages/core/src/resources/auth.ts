@@ -1,16 +1,16 @@
 /**
  * Authentication resource.
  *
- * This is the piece the mobile app never had. `AuthScreen.tsx` called
- * `supabase.auth.signInWithPassword`, a method that does not exist on the
- * Supabase stub, so there was no sign-in path at all. Session persistence is
- * handled here so both platforms store the token identically.
+ * Session persistence lives here rather than in each caller, so both platforms
+ * write the same two keys with the same shapes. Sign-in and sign-out are the
+ * only two operations permitted to touch stored credentials.
  */
 
 import type { Transport } from '../http/transport';
 import type { ApiResponse } from '../http/transport';
 import { STORAGE_KEYS } from '../http/adapters';
 import type { AuthSession, AuthUser, CurrentUser, SignUpResult } from '../types';
+import type { SignupConsent } from '../legal';
 
 export interface AuthResource {
   signIn(email: string, password: string): Promise<ApiResponse<AuthSession>>;
@@ -19,16 +19,29 @@ export interface AuthResource {
    * until the address is confirmed, so nothing is persisted and the caller
    * must show a "check your email" state.
    */
-  signUp(email: string, password: string, name?: string): Promise<ApiResponse<SignUpResult>>;
+  signUp(
+    email: string,
+    password: string,
+    name: string,
+    consent: SignupConsent,
+  ): Promise<ApiResponse<SignUpResult>>;
   signOut(): Promise<void>;
+  /** Remove local credentials without making a network request. */
+  clearSession(): Promise<void>;
+  /** Clear the local session only when the current token still matches. */
+  clearSessionIfToken(token: string): Promise<boolean>;
   me(): Promise<ApiResponse<CurrentUser>>;
-  forgotPassword(email: string): Promise<ApiResponse<{ success: boolean }>>;
+  forgotPassword(email: string): Promise<ApiResponse<{ success: boolean; message: string }>>;
   /**
    * Second step of the reset. The address is part of the contract, not just the
    * token: the route looks the user up by email and then bcrypt-compares the
    * token against that row's hash, so a body without it is rejected outright.
    */
-  resetPassword(email: string, token: string, password: string): Promise<ApiResponse<{ success: boolean }>>;
+  resetPassword(
+    email: string,
+    token: string,
+    password: string,
+  ): Promise<ApiResponse<{ success: boolean; message: string }>>;
   /** Same shape as resetPassword, and for the same reason. */
   verifyEmail(email: string, token: string): Promise<ApiResponse<{ success: boolean; message: string }>>;
   /**
@@ -52,8 +65,25 @@ export interface AuthResource {
  * signed in while every request 401'd.
  */
 async function persist(transport: Transport, session: AuthSession): Promise<void> {
-  await transport.storage.setItem(STORAGE_KEYS.token, session.token);
-  await transport.storage.setItem(STORAGE_KEYS.user, JSON.stringify(session.user));
+  try {
+    // Write the token last. It is the session commit marker used by every gate.
+    await transport.storage.setItem(STORAGE_KEYS.user, JSON.stringify(session.user));
+    await transport.storage.setItem(STORAGE_KEYS.token, session.token);
+  } catch (error) {
+    try {
+      await clearPersistedSession(transport);
+    } catch (cleanupError) {
+      console.error('Failed to roll back partially persisted auth credentials', cleanupError);
+    }
+    throw error;
+  }
+}
+
+async function clearPersistedSession(transport: Transport): Promise<void> {
+  await Promise.all([
+    transport.storage.removeItem(STORAGE_KEYS.token),
+    transport.storage.removeItem(STORAGE_KEYS.user),
+  ]);
 }
 
 export function createAuthResource(transport: Transport): AuthResource {
@@ -68,32 +98,55 @@ export function createAuthResource(transport: Transport): AuthResource {
       return result;
     },
 
-      async signUp(email, password, name) {
-        // Signup does NOT establish a session. The route deliberately returns
-        // no token: the address must be confirmed first, and it previously
-        // handed out a 7-day credential to an address nobody controlled.
-        // Nothing is persisted here, so callers must route to a
-        // "check your email" state rather than into the app.
-        return transport.request<SignUpResult>('/api/auth/signup', {
-          method: 'POST',
-          body: name ? { email, password, name } : { email, password },
-          anonymous: true,
-        });
-      },
-      async resendVerification(email) {
-        // Anonymous: a user who cannot sign in still needs to reach this.
-        return transport.request<{ success: boolean; message: string }>(
-          '/api/auth/resend-verification',
-          { method: 'POST', body: { email }, anonymous: true },
-        );
-      },
+    async signUp(email, password, name, consent) {
+      // Signup does NOT establish a session. The route deliberately returns
+      // no token: the address must be confirmed first, and it previously
+      // handed out a 7-day credential to an address nobody controlled.
+      // Nothing is persisted here, so callers must route to a
+      // "check your email" state rather than into the app.
+      return transport.request<SignUpResult>('/api/auth/signup', {
+        method: 'POST',
+        body: {
+          email,
+          password,
+          name,
+          ageEligible: consent.ageEligible,
+          termsVersion: consent.termsVersion,
+          privacyVersion: consent.privacyVersion,
+        },
+        anonymous: true,
+      });
+    },
+
+    async resendVerification(email) {
+      // Anonymous: a user who cannot sign in still needs to reach this.
+      return transport.request<{ success: boolean; message: string }>(
+        '/api/auth/resend-verification',
+        { method: 'POST', body: { email }, anonymous: true },
+      );
+    },
 
     async signOut() {
-      // Best effort server-side; the local session is cleared regardless so a
-      // network failure can never strand a user in a signed-in state.
-      await transport.request('/api/auth/logout', { method: 'POST' });
-      await transport.storage.removeItem(STORAGE_KEYS.token);
-      await transport.storage.removeItem(STORAGE_KEYS.user);
+      // Give the server the current bearer token before removing it locally so
+      // logout can increment the account's token epoch and revoke every device.
+      try {
+        await transport.request('/api/auth/logout', { method: 'POST' });
+      } finally {
+        await clearPersistedSession(transport);
+      }
+    },
+
+    clearSession() {
+      return clearPersistedSession(transport);
+    },
+
+    async clearSessionIfToken(token) {
+      if (transport.storage.clearSessionIfToken) {
+        return transport.storage.clearSessionIfToken(token);
+      }
+      if (await transport.storage.getItem(STORAGE_KEYS.token) !== token) return false;
+      await clearPersistedSession(transport);
+      return true;
     },
 
     me() {
@@ -101,7 +154,7 @@ export function createAuthResource(transport: Transport): AuthResource {
     },
 
     forgotPassword(email) {
-      return transport.request<{ success: boolean }>('/api/auth/forgot-password', {
+      return transport.request<{ success: boolean; message: string }>('/api/auth/forgot-password', {
         method: 'POST',
         body: { email },
         anonymous: true,
@@ -109,7 +162,7 @@ export function createAuthResource(transport: Transport): AuthResource {
     },
 
     resetPassword(email, token, password) {
-      return transport.request<{ success: boolean }>('/api/auth/reset-password', {
+      return transport.request<{ success: boolean; message: string }>('/api/auth/reset-password', {
         method: 'POST',
         body: { email, token, password },
         anonymous: true,

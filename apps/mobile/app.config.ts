@@ -1,9 +1,20 @@
 import { ConfigContext, ExpoConfig } from "expo/config";
 
 export default ({ config }: ConfigContext): ExpoConfig => {
-  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
-  const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
-
+  // `extra` is deliberately not set here, and that is now load-bearing rather
+  // than merely tidy.
+  //
+  // It originally carried two keys read from unset environment variables, so
+  // every build manifest shipped empty strings nothing read back.
+  //
+  // `eas init` then wrote `extra.eas.projectId` and `owner` into app.json, not
+  // into this file. They reach the resolved config only through the `...config`
+  // spread below, because nothing here overrides `extra`. Setting `extra` to a
+  // literal object at any point would silently drop the project id, and
+  // `eas.json` declares `appVersionSource: "remote"`, which cannot resolve a
+  // build without it. Anything added here must spread `config.extra` first.
+  //
+  // `src/test/eas-build-config.test.ts` pins that invariant.
   return {
     ...config,
     name: "PartyHause",
@@ -12,15 +23,31 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     version: "1.0.0",
     orientation: "portrait",
     userInterfaceStyle: "automatic",
-    newArchEnabled: true,
+    // `newArchEnabled` is gone from ExpoConfig in SDK 57. The New Architecture
+    // is no longer a flag: React Native 0.86 removed the legacy renderer, so
+    // there is nothing left to enable and declaring it fails the config type.
     icon: "./assets/images/icon.png",
     description: "PartyHause helps you create unforgettable events with friends. Easily manage guest lists, send invitations, track RSVPs, share photos, and create lasting memories for birthdays, weddings, and any celebration.",
     ios: {
       supportsTablet: true,
       bundleIdentifier: "com.partyhause.mobile",
       buildNumber: "1.0.0",
+      // Universal Links for invitation URLs.
+      //
+      // Only claimed now that `app/join/[token].tsx` exists. Claiming a path
+      // with no screen behind it opens the app to expo-router's unmatched
+      // screen instead of opening Safari, and Apple's CDN caches the
+      // association, so that mistake outlives its fix.
+      //
+      // The published file at public/.well-known/apple-app-site-association
+      // claims /join/* and nothing else, and its appID must stay in step with
+      // `bundleIdentifier` above and the Team ID in eas.json.
+      associatedDomains: ["applinks:partyhause.com"],
       infoPlist: {
         NSContactsUsageDescription: "PartyHause opens your contact picker so you can choose one person at a time to invite. It never reads your address book.",
+        // Declared so every submission stops stalling on the export-compliance
+        // prompt. The app uses only HTTPS, which is exempt.
+        ITSAppUsesNonExemptEncryption: false,
       }
     },
     android: {
@@ -35,12 +62,18 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "READ_MEDIA_VIDEO"
       ],
       adaptiveIcon: {
-        backgroundColor: "#E6F4FE",
+        // Brand coral, not the Expo template's #E6F4FE. This is the fallback
+        // fill for launchers that ignore backgroundImage; it must not be a
+        // colour from outside the palette in docs/BRAND.md.
+        backgroundColor: "#FF5233",
         foregroundImage: "./assets/images/android-icon-foreground.png",
         backgroundImage: "./assets/images/android-icon-background.png",
         monochromeImage: "./assets/images/android-icon-monochrome.png"
       },
-      edgeToEdgeEnabled: true,
+      // `edgeToEdgeEnabled` was removed from the Android config in SDK 57.
+      // Edge-to-edge is no longer opt-in: React Native 0.86 targets Android 16,
+      // where the system draws behind the bars unconditionally and the opt-out
+      // was deleted upstream. Declaring it now fails the config type check.
       predictiveBackGestureEnabled: false
     },
     web: {
@@ -70,6 +103,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           resizeMode: "contain",
           backgroundColor: "#ffffff",
           dark: {
+            // A separate asset, not just a separate background. The standard
+            // mark's body is neutral-900 #26201D, which is invisible against
+            // #000000; the dark variant uses the inverse mark so the house
+            // still reads. Sharing one image would have shipped a floating
+            // roof with no house under it.
+            image: "./assets/images/splash-icon-dark.png",
             backgroundColor: "#000000"
           }
         }
@@ -78,10 +117,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     experiments: {
       typedRoutes: true,
       reactCompiler: true
-    },
-    extra: {
-      supabaseUrl,
-      supabaseAnonKey
     }
   };
 };

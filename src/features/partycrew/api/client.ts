@@ -4,8 +4,8 @@
  * This was a second, independent HTTP client. It had no timeout, no retry and
  * no 401 handling, so a partycrew request that hung, hung forever, and an
  * expired session surfaced as a generic error instead of a redirect to login.
- * It also read its bearer token from the Supabase stub rather than from the
- * shared auth storage.
+ * It also read its bearer token from a separate store rather than from the
+ * shared auth storage, so a sign-out did not reach it.
  *
  * It is now a thin adapter over `src/lib/api-client`, which owns the 15s
  * timeout, the idempotent-only retry on 502/503/504, the 401 redirect and the

@@ -303,8 +303,7 @@ export const EventCreation = () => {
         const imageUrl = await uploadInviteImage(inviteFile, createdEvent.id);
         
         if (imageUrl) {
-          // Update the event with the invite image URL via the Express API
-          // (the old supabase.from() stub always returned an error).
+          // Update the event with the invite image URL via the Express API.
           const { apiPut } = await import('@/lib/api-client');
           const { error } = await apiPut(`/api/events/${createdEvent.id}`, {
             invite_image_url: imageUrl,

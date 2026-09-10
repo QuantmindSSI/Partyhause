@@ -13,7 +13,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiUrl } from '@/lib/apiBase';
-import { setStoredToken } from '@/lib/supabase';
+import { setStoredToken, setStoredUser } from '@/lib/auth-storage';
 
 const MIN_PASSWORD = 8;
 
@@ -53,9 +53,18 @@ export default function ResetPasswordPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      // The API returns a fresh session token on success — sign the user in.
-      if (typeof data.token === 'string' && data.token.length > 0) {
+      // Sign the user in. Both halves of the session are required: the store
+      // hydrates only when the token AND the cached user are present
+      // (src/hooks/use-auth.ts). Writing the token alone left the user with a
+      // valid session the app rendered as signed out, so a successful reset
+      // dropped them back at the login screen.
+      if (typeof data.token === 'string' && data.token.length > 0 && data.user?.id) {
         setStoredToken(data.token);
+        setStoredUser({
+          id: data.user.id,
+          email: data.user.email ?? email,
+          name: data.user.name ?? undefined,
+        });
       }
       navigate('/', { replace: true });
     } catch (err) {

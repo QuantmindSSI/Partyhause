@@ -1,5 +1,11 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Linking } from 'react-native';
+import {
+  CURRENT_PRIVACY_VERSION,
+  CURRENT_TERMS_VERSION,
+  LEGAL_URLS,
+  MINIMUM_ACCOUNT_AGE,
+} from '@partyhause/core';
 import { api } from '@/lib/client';
 
 interface AuthScreenProps {
@@ -17,6 +23,18 @@ export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) 
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  /**
+   * Signup consent, captured rather than assumed.
+   *
+   * `api.auth.signUp` requires a SignupConsent, and the server records the
+   * accepted document versions against the account. Passing `ageEligible: true`
+   * without asking would make the stored record a statement the user never
+   * made, which is worse than having no record: it is a false one, and it is
+   * the record that would be produced if the assertion were ever challenged.
+   */
+  const [ageEligible, setAgeEligible] = useState(false);
+  const [legalAccepted, setLegalAccepted] = useState(false);
 
   /**
    * Account-recovery state.
@@ -90,6 +108,117 @@ export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) 
     });
   };
 
+  /**
+   * Sign in. This is the only path that produces a session.
+   *
+   * The client has persisted the token and the cached user together by the
+   * time this resolves, so handing control to `onAuthSuccess` is safe here.
+   */
+  const performSignIn = async () => {
+    const { error } = await api.auth.signIn(email.trim(), password.trim());
+
+    if (error) {
+      // A correct password on an unconfirmed address is not a credential
+      // failure and must not be shown as one: the remedy is a resend, not a
+      // retry. The server marks it explicitly rather than leaving the client
+      // to guess from a status code.
+      if (error.code === 'EMAIL_NOT_VERIFIED') {
+        setUnverifiedEmail(email.trim());
+        setRecoveryOpen(false);
+        setMessage({
+          type: 'error',
+          text: 'Your password was correct, but this email has not been confirmed yet.',
+        });
+        return;
+      }
+      setUnverifiedEmail(null);
+      setMessage({ type: 'error', text: error.message });
+      return;
+    }
+
+    setMessage({ type: 'success', text: 'Welcome back!' });
+    onAuthSuccess();
+  };
+
+  /**
+   * Create an account. This deliberately does NOT sign the user in.
+   *
+   * `POST /api/auth/signup` returns no token on purpose
+   * (`server/routes/auth.ts:347-350`): the address has to be confirmed first,
+   * because the route previously handed a 7-day credential to a mailbox nobody
+   * had proven they controlled.
+   *
+   * This used to call `onAuthSuccess()` under a message reading "Signing you
+   * in...". That ran `checkAuth`, which found no token, and dropped the new
+   * user back on the marketing landing screen with the message unmounted
+   * before it could be read. The server's own instruction, "check your email",
+   * sat unread on `result.data.message`. An App Store reviewer creating a test
+   * account hit that on their first interaction.
+   *
+   * So: switch to the sign-in form, seed `unverifiedEmail` so the resend panel
+   * is already open, and say what actually happened.
+   */
+  const performSignUp = async () => {
+    // Precondition, re-asserted at the point of use. `SignupConsent.ageEligible`
+    // is typed as the literal `true`, not `boolean`, so a consent record
+    // claiming otherwise is unrepresentable. Checking here rather than casting
+    // keeps that guarantee real, and makes this function safe to call
+    // independently of the submit guard in handleAuth.
+    if (!ageEligible || !legalAccepted) {
+      setMessage({
+        type: 'error',
+        text: `Confirm you are at least ${MINIMUM_ACCOUNT_AGE} and accept the Terms and Privacy Policy.`,
+      });
+      return;
+    }
+
+    const address = email.trim();
+    const { data, error } = await api.auth.signUp(
+      address,
+      password.trim(),
+      name.trim() || address.split('@')[0],
+      {
+        // The captured value, not a literal `true`. The submit guard above
+        // already blocks an unchecked box, but recording consent the user did
+        // not give would make the stored attestation a false one.
+        ageEligible,
+        termsVersion: CURRENT_TERMS_VERSION,
+        privacyVersion: CURRENT_PRIVACY_VERSION,
+      },
+    );
+
+    if (error) {
+      setUnverifiedEmail(null);
+      setMessage({ type: 'error', text: error.message });
+      return;
+    }
+
+    // Move to the sign-in form with the confirmation panel already showing.
+    setIsLogin(true);
+    setPassword('');
+    setAgeEligible(false);
+    setLegalAccepted(false);
+    setRecoveryOpen(false);
+    setUnverifiedEmail(address);
+
+    // 'unavailable' means the account exists but no mail went out. Reporting
+    // that as success would send the user to an inbox that will stay empty.
+    if (data?.verificationDelivery === 'unavailable') {
+      setMessage({
+        type: 'error',
+        text: `Account created, but the confirmation email to ${address} could not be sent. Use "Resend confirmation email" below.`,
+      });
+      return;
+    }
+
+    setMessage({
+      type: 'success',
+      text:
+        data?.message ??
+        `Account created. Check ${address} for a confirmation link, then sign in.`,
+    });
+  };
+
   const handleAuth = async () => {
     if (!email.trim() || !password.trim()) {
       setMessage({ type: 'error', text: 'Please enter email and password' });
@@ -101,53 +230,26 @@ export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) 
       return;
     }
 
+    if (!isLogin && (!ageEligible || !legalAccepted)) {
+      setMessage({
+        type: 'error',
+        text: `Confirm you are at least ${MINIMUM_ACCOUNT_AGE} and accept the Terms and Privacy Policy.`,
+      });
+      return;
+    }
+
     setLoading(true);
     setMessage(null);
 
     try {
-      // This previously called client.auth.signInWithPassword and
-      // client.auth.signUp on a Supabase stub that implemented neither,
-      // reached through requireSupabase(), which threw unconditionally because
-      // the credentials it demanded were removed from the project. Mobile had
-      // no working sign-in path at all.
-      const result = isLogin
-        ? await api.auth.signIn(email.trim(), password.trim())
-        : await api.auth.signUp(
-            email.trim(),
-            password.trim(),
-            name.trim() || email.split('@')[0],
-          );
-
-      if (result.error) {
-        // A correct password on an unconfirmed address is not a credential
-        // failure and must not be shown as one: the remedy is a resend, not a
-        // retry. The server marks it explicitly rather than leaving the client
-        // to guess from a status code.
-        if (result.error.code === 'EMAIL_NOT_VERIFIED') {
-          setUnverifiedEmail(email.trim());
-          setRecoveryOpen(false);
-          setMessage({
-            type: 'error',
-            text: 'Your password was correct, but this email has not been confirmed yet.',
-          });
-          return;
-        }
-        setUnverifiedEmail(null);
-        setMessage({ type: 'error', text: result.error.message });
-        return;
+      // The two flows are deliberately not a ternary any more. They differ in
+      // the one way that matters: sign-in establishes a session and sign-up
+      // does not, so they cannot share a success path.
+      if (isLogin) {
+        await performSignIn();
+      } else {
+        await performSignUp();
       }
-
-      setMessage({
-        type: 'success',
-        text: isLogin ? 'Welcome back!' : 'Account created. Signing you in...',
-      });
-
-      // The old code relied on a Supabase auth-state listener to navigate.
-      // No listener exists now, and onAuthSuccess was never invoked, so a
-      // successful login left the user sitting on this screen. The client has
-      // already persisted the token to AsyncStorage by this point, so the
-      // session is durable before we hand control back.
-      onAuthSuccess();
     } catch (error: unknown) {
       setMessage({
         type: 'error',
@@ -194,6 +296,44 @@ export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) 
                 autoCorrect={false}
                 editable={!loading}
               />
+
+              <TouchableOpacity
+                style={styles.consentRow}
+                onPress={() => setAgeEligible((v) => !v)}
+                disabled={loading}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: ageEligible }}
+              >
+                <View style={[styles.checkbox, ageEligible && styles.checkboxChecked]}>
+                  {ageEligible ? <Text style={styles.checkboxMark}>✓</Text> : null}
+                </View>
+                <Text style={styles.consentText}>
+                  I confirm I am at least {MINIMUM_ACCOUNT_AGE} years old.
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.consentRow}
+                onPress={() => setLegalAccepted((v) => !v)}
+                disabled={loading}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: legalAccepted }}
+              >
+                <View style={[styles.checkbox, legalAccepted && styles.checkboxChecked]}>
+                  {legalAccepted ? <Text style={styles.checkboxMark}>✓</Text> : null}
+                </View>
+                <Text style={styles.consentText}>
+                  I accept the{' '}
+                  <Text style={styles.consentLink} onPress={() => Linking.openURL(LEGAL_URLS.terms)}>
+                    Terms
+                  </Text>{' '}
+                  and{' '}
+                  <Text style={styles.consentLink} onPress={() => Linking.openURL(LEGAL_URLS.privacy)}>
+                    Privacy Policy
+                  </Text>
+                  .
+                </Text>
+              </TouchableOpacity>
             </>
           )}
 
@@ -418,6 +558,44 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
     marginBottom: 8,
+  },
+  consentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    gap: 10,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#2a2a3a',
+    backgroundColor: '#1a1a24',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  checkboxChecked: {
+    backgroundColor: '#FF5233',
+    borderColor: '#FF5233',
+  },
+  checkboxMark: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 16,
+  },
+  consentText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#b8b8c8',
+  },
+  consentLink: {
+    color: '#FF5233',
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
   input: {
     backgroundColor: '#1a1a24',

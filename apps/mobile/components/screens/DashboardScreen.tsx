@@ -33,8 +33,8 @@ export const DashboardScreen = ({ userId, userEmail, onSignOut }: DashboardScree
       // clauses are redundant here.
       //
       // Behaviour change worth knowing: the server scopes with
-      // OR[host_id, co-host, invited guest], where the Supabase query matched
-      // host_id alone. The dashboard now also shows events the user was
+      // OR[host_id, co-host, invited guest], where the previous direct query
+      // matched host_id alone. The dashboard now also shows events the user was
       // invited to, which matches the web app.
       const { data, error } = await api.events.list();
 
@@ -123,6 +123,17 @@ export const DashboardScreen = ({ userId, userEmail, onSignOut }: DashboardScree
           >
             <Ionicons name="document-text-outline" size={20} color="#6366F1" />
             <Text style={styles.draftsButtonText}>Drafts</Text>
+          </TouchableOpacity>
+          {/* The only entry point to account settings, and therefore to account
+              deletion. App Store guideline 5.1.1(v) requires that path to exist
+              for any app that creates accounts; before this control there was
+              no route to it from anywhere in the signed-in app. */}
+          <TouchableOpacity
+            style={styles.profileButton}
+            onPress={() => router.push('/settings')}
+            accessibilityLabel="Account settings"
+          >
+            <Ionicons name="settings-outline" size={22} color="#6366F1" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.signOutButton} onPress={onSignOut}>
             <Text style={styles.signOutText}>Sign Out</Text>

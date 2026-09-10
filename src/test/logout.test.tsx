@@ -6,29 +6,9 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { BrowserRouter } from 'react-router-dom';
 import App from '@/App';
 import { usePartyStore } from '@/store/usePartyStore';
-import { supabase, clearAuth } from '@/lib/supabase';
+import { clearAuth } from '@/lib/auth-storage';
 
-// Mock Supabase
-vi.mock('@/lib/supabase', () => ({
-  supabase: {
-    auth: {
-      signOut: vi.fn(),
-      getSession: vi.fn(),
-      onAuthStateChange: vi.fn(() => ({
-        data: { subscription: { unsubscribe: vi.fn() } }
-      })),
-      updateUser: vi.fn(),
-    },
-    from: vi.fn(() => ({
-      upsert: vi.fn(),
-      select: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          maybeSingle: vi.fn()
-        }))
-      }))
-    }))
-  },
-  isSupabaseConfigured: false,
+vi.mock('@/lib/auth-storage', () => ({
   getStoredToken: vi.fn(),
   setStoredToken: vi.fn(),
   getStoredUser: vi.fn(),
@@ -118,17 +98,6 @@ describe('Logout Userflow Integration Test', () => {
       isLoading: false,
     });
 
-    // Mock successful session check (no existing session initially)
-    (supabase.auth.getSession as any).mockResolvedValue({
-      data: { session: null },
-      error: null,
-    });
-
-    // Mock auth state change listener
-    (supabase.auth.onAuthStateChange as any).mockImplementation((callback) => {
-      // Don't trigger any events initially
-      return { data: { subscription: { unsubscribe: vi.fn() } } };
-    });
   });
 
   afterEach(() => {
@@ -145,20 +114,6 @@ describe('Logout Userflow Integration Test', () => {
       currentEvent: mockEvent,
       guests: [],
       isLoading: false,
-    });
-
-    // Mock signOut to resolve successfully
-    (supabase.auth.signOut as any).mockResolvedValue({
-      error: null,
-    });
-
-    // Mock auth state change to trigger SIGNED_OUT event
-    (supabase.auth.onAuthStateChange as any).mockImplementation((callback) => {
-      // Simulate SIGNED_OUT event after signOut is called
-      setTimeout(() => {
-        callback('SIGNED_OUT', null);
-      }, 10);
-      return { data: { subscription: { unsubscribe: vi.fn() } } };
     });
 
     // Render the App component
@@ -192,7 +147,8 @@ describe('Logout Userflow Integration Test', () => {
     expect(state.events).toEqual([]);
     expect(state.currentEvent).toBeNull();
 
-    // Verify stored auth credentials were cleared (post-Supabase-migration behavior)
+    // The store reset is not enough on its own: localStorage must be cleared
+    // too, or a reload rehydrates the session that was just discarded.
     expect(clearAuth).toHaveBeenCalled();
   });
 
@@ -207,19 +163,6 @@ describe('Logout Userflow Integration Test', () => {
       currentEvent: mockEvent, // But currentEvent is persisted
       guests: [],
       isLoading: false,
-    });
-
-    // Mock signOut to resolve successfully
-    (supabase.auth.signOut as any).mockResolvedValue({
-      error: null,
-    });
-
-    // Mock auth state change to trigger SIGNED_OUT event
-    (supabase.auth.onAuthStateChange as any).mockImplementation((callback) => {
-      setTimeout(() => {
-        callback('SIGNED_OUT', null);
-      }, 10);
-      return { data: { subscription: { unsubscribe: vi.fn() } } };
     });
 
     // Render the App component
@@ -263,19 +206,6 @@ describe('Logout Userflow Integration Test', () => {
       currentEvent: mockEvent,
       guests: [],
       isLoading: false,
-    });
-
-    // Mock signOut to fail
-    (supabase.auth.signOut as any).mockResolvedValue({
-      error: { message: 'Network error' },
-    });
-
-    // But still trigger SIGNED_OUT event (Supabase might sign out locally even if server fails)
-    (supabase.auth.onAuthStateChange as any).mockImplementation((callback) => {
-      setTimeout(() => {
-        callback('SIGNED_OUT', null);
-      }, 10);
-      return { data: { subscription: { unsubscribe: vi.fn() } } };
     });
 
     // Render the App component

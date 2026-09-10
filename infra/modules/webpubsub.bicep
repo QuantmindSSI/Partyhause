@@ -1,5 +1,5 @@
 // modules/webpubsub.bicep — Azure Web PubSub
-// Replaces Supabase Realtime (postgres_changes channels) for live event/guest
+// Realtime transport for live event/guest
 // updates. The API server publishes change events; the web client subscribes.
 
 @description('Azure region')

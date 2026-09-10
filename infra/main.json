@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.44.1.10279",
-      "templateHash": "12278964068342970752"
+      "version": "0.46.1.21595",
+      "templateHash": "3276274447316072454"
     }
   },
   "parameters": {
@@ -67,6 +67,19 @@
       "type": "string",
       "metadata": {
         "description": "Resend from email (verified sending address)"
+      }
+    },
+    "jwtSecret": {
+      "type": "securestring",
+      "metadata": {
+        "description": "HS256 signing key for application-issued JWTs (secret, required)"
+      }
+    },
+    "invitationTokenSecret": {
+      "type": "securestring",
+      "minLength": 32,
+      "metadata": {
+        "description": "HMAC key for deterministic invitation tokens (secret, required)"
       }
     },
     "entraTenantId": {
@@ -158,6 +171,12 @@
           "RESEND_FROM_EMAIL": {
             "value": "[parameters('RESEND_FROM_EMAIL')]"
           },
+          "jwtSecret": {
+            "value": "[parameters('jwtSecret')]"
+          },
+          "invitationTokenSecret": {
+            "value": "[parameters('invitationTokenSecret')]"
+          },
           "entraTenantId": {
             "value": "[parameters('entraTenantId')]"
           },
@@ -183,8 +202,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "214003723503466179"
+              "version": "0.46.1.21595",
+              "templateHash": "7617763956822063535"
             }
           },
           "parameters": {
@@ -234,6 +253,54 @@
               "type": "string",
               "metadata": {
                 "description": "Resend from email (verified sending address)"
+              }
+            },
+            "emailDataLocation": {
+              "type": "string",
+              "defaultValue": "United States",
+              "allowedValues": [
+                "United States",
+                "Europe",
+                "Australia",
+                "United Kingdom",
+                "Asia Pacific"
+              ],
+              "metadata": {
+                "description": "Where Communication Services stores message content at rest"
+              }
+            },
+            "emailCustomDomain": {
+              "type": "string",
+              "defaultValue": "partyhause.com",
+              "metadata": {
+                "description": "Custom sending domain to provision (requires DNS verification before use)"
+              }
+            },
+            "publicDomain": {
+              "type": "string",
+              "defaultValue": "partyhause.com",
+              "metadata": {
+                "description": "Public custom domain bound to the web Container App. Both the apex and the www host are permitted CORS origins, and the apex is the canonical base URL for links in outbound email."
+              }
+            },
+            "linkCustomEmailDomain": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Link the custom domain to the Communication Service. Only set true AFTER the domain shows Verified, otherwise the deployment fails."
+              }
+            },
+            "jwtSecret": {
+              "type": "securestring",
+              "metadata": {
+                "description": "HS256 signing key for application-issued JWTs (secret)"
+              }
+            },
+            "invitationTokenSecret": {
+              "type": "securestring",
+              "minLength": 32,
+              "metadata": {
+                "description": "HMAC key for deterministic invitation tokens (secret)"
               }
             },
             "entraTenantId": {
@@ -295,7 +362,7 @@
                 "name": "Basic"
               },
               "properties": {
-                "adminUserEnabled": false
+                "adminUserEnabled": true
               }
             },
             {
@@ -314,6 +381,109 @@
               },
               "dependsOn": [
                 "[resourceId('Microsoft.OperationalInsights/workspaces', format('log-partyhause-{0}', parameters('suffix')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Communication/emailServices",
+              "apiVersion": "2023-04-01",
+              "name": "[format('acsmail-partyhause-{0}', parameters('suffix'))]",
+              "location": "global",
+              "properties": {
+                "dataLocation": "[parameters('emailDataLocation')]"
+              },
+              "tags": {
+                "environment": "[parameters('environmentTag')]"
+              }
+            },
+            {
+              "type": "Microsoft.Communication/emailServices/domains",
+              "apiVersion": "2023-04-01",
+              "name": "[format('{0}/{1}', format('acsmail-partyhause-{0}', parameters('suffix')), 'AzureManagedDomain')]",
+              "location": "global",
+              "properties": {
+                "domainManagement": "AzureManaged",
+                "userEngagementTracking": "Disabled"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Communication/emailServices', format('acsmail-partyhause-{0}', parameters('suffix')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Communication/emailServices/domains",
+              "apiVersion": "2023-04-01",
+              "name": "[format('{0}/{1}', format('acsmail-partyhause-{0}', parameters('suffix')), parameters('emailCustomDomain'))]",
+              "location": "global",
+              "properties": {
+                "domainManagement": "CustomerManaged",
+                "userEngagementTracking": "Disabled"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Communication/emailServices', format('acsmail-partyhause-{0}', parameters('suffix')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Communication/emailServices/domains/senderUsernames",
+              "apiVersion": "2023-04-01",
+              "name": "[format('{0}/{1}/{2}', format('acsmail-partyhause-{0}', parameters('suffix')), parameters('emailCustomDomain'), 'noreply')]",
+              "properties": {
+                "username": "noreply",
+                "displayName": "PartyHause"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Communication/emailServices/domains', format('acsmail-partyhause-{0}', parameters('suffix')), parameters('emailCustomDomain'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Communication/communicationServices",
+              "apiVersion": "2023-04-01",
+              "name": "[format('acs-partyhause-{0}', parameters('suffix'))]",
+              "location": "global",
+              "properties": {
+                "dataLocation": "[parameters('emailDataLocation')]",
+                "linkedDomains": "[if(parameters('linkCustomEmailDomain'), createArray(resourceId('Microsoft.Communication/emailServices/domains', format('acsmail-partyhause-{0}', parameters('suffix')), 'AzureManagedDomain'), resourceId('Microsoft.Communication/emailServices/domains', format('acsmail-partyhause-{0}', parameters('suffix')), parameters('emailCustomDomain'))), createArray(resourceId('Microsoft.Communication/emailServices/domains', format('acsmail-partyhause-{0}', parameters('suffix')), 'AzureManagedDomain')))]"
+              },
+              "tags": {
+                "environment": "[parameters('environmentTag')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Communication/emailServices/domains', format('acsmail-partyhause-{0}', parameters('suffix')), 'AzureManagedDomain')]",
+                "[resourceId('Microsoft.Communication/emailServices/domains', format('acsmail-partyhause-{0}', parameters('suffix')), parameters('emailCustomDomain'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.CognitiveServices/accounts",
+              "apiVersion": "2024-10-01",
+              "name": "[format('oai-partyhause-{0}', parameters('suffix'))]",
+              "location": "[parameters('location')]",
+              "kind": "OpenAI",
+              "sku": {
+                "name": "S0"
+              },
+              "properties": {
+                "customSubDomainName": "[format('oai-partyhause-{0}', parameters('suffix'))]",
+                "publicNetworkAccess": "Enabled"
+              },
+              "tags": {
+                "environment": "[parameters('environmentTag')]"
+              }
+            },
+            {
+              "type": "Microsoft.CognitiveServices/accounts/deployments",
+              "apiVersion": "2024-10-01",
+              "name": "[format('{0}/{1}', format('oai-partyhause-{0}', parameters('suffix')), 'gpt-5-mini')]",
+              "sku": {
+                "name": "GlobalStandard",
+                "capacity": 10
+              },
+              "properties": {
+                "model": {
+                  "format": "OpenAI",
+                  "name": "gpt-5-mini",
+                  "version": "2025-08-07"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts', format('oai-partyhause-{0}', parameters('suffix')))]"
               ]
             },
             {
@@ -342,8 +512,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.44.1.10279",
-                      "templateHash": "4949130025354062808"
+                      "version": "0.46.1.21595",
+                      "templateHash": "6725578970889870162"
                     }
                   },
                   "parameters": {
@@ -378,34 +548,7 @@
                           "name": "standard"
                         },
                         "tenantId": "[subscription().tenantId]",
-                        "accessPolicies": [
-                          {
-                            "tenantId": "[subscription().tenantId]",
-                            "objectId": "[parameters('deployerObjectId')]",
-                            "permissions": {
-                              "keys": [
-                                "get",
-                                "list",
-                                "create",
-                                "delete",
-                                "purge"
-                              ],
-                              "secrets": [
-                                "get",
-                                "list",
-                                "set",
-                                "delete",
-                                "purge"
-                              ],
-                              "certificates": [
-                                "get",
-                                "list",
-                                "delete",
-                                "purge"
-                              ]
-                            }
-                          }
-                        ],
+                        "accessPolicies": "[if(empty(parameters('deployerObjectId')), createArray(), createArray(createObject('tenantId', subscription().tenantId, 'objectId', parameters('deployerObjectId'), 'permissions', createObject('keys', createArray('get', 'list', 'create', 'delete', 'purge'), 'secrets', createArray('get', 'list', 'set', 'delete', 'purge'), 'certificates', createArray('get', 'list', 'delete', 'purge')))))]",
                         "enableRbacAuthorization": false,
                         "enableSoftDelete": true,
                         "softDeleteRetentionInDays": 7,
@@ -462,8 +605,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.44.1.10279",
-                      "templateHash": "9684629508471260746"
+                      "version": "0.46.1.21595",
+                      "templateHash": "1704575539899362000"
                     }
                   },
                   "parameters": {
@@ -621,8 +764,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.44.1.10279",
-                      "templateHash": "4166193926854466590"
+                      "version": "0.46.1.21595",
+                      "templateHash": "430586496560571405"
                     }
                   },
                   "parameters": {
@@ -667,7 +810,7 @@
                         "accessTier": "Hot",
                         "supportsHttpsTrafficOnly": true,
                         "minimumTlsVersion": "TLS1_2",
-                        "allowBlobPublicAccess": false,
+                        "allowBlobPublicAccess": true,
                         "publicNetworkAccess": "Enabled"
                       }
                     },
@@ -676,7 +819,7 @@
                       "apiVersion": "2023-01-01",
                       "name": "[format('{0}/default/{1}', parameters('storageAccountName'), parameters('imageContainerName'))]",
                       "properties": {
-                        "publicAccess": "None"
+                        "publicAccess": "Blob"
                       },
                       "dependsOn": [
                         "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
@@ -738,8 +881,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.44.1.10279",
-                      "templateHash": "7658505589553010233"
+                      "version": "0.46.1.21595",
+                      "templateHash": "159642663565545747"
                     }
                   },
                   "parameters": {
@@ -846,30 +989,6 @@
                   },
                   "targetPort": {
                     "value": 80
-                  },
-                  "envVars": {
-                    "value": [
-                      {
-                        "name": "VITE_APP_NAME",
-                        "value": "PartyHause"
-                      },
-                      {
-                        "name": "VITE_APP_URL",
-                        "value": "[format('https://ca-web-partyhause-{0}.{1}.azurecontainerapps.io', parameters('suffix'), parameters('location'))]"
-                      },
-                      {
-                        "name": "VITE_ENTRA_TENANT_ID",
-                        "value": "[parameters('entraTenantId')]"
-                      },
-                      {
-                        "name": "VITE_ENTRA_SPA_CLIENT_ID",
-                        "value": "[parameters('entraSpaClientId')]"
-                      },
-                      {
-                        "name": "VITE_ENTRA_POLICY",
-                        "value": "[parameters('entraSignUpSignInPolicy')]"
-                      }
-                    ]
                   }
                 },
                 "template": {
@@ -878,8 +997,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.44.1.10279",
-                      "templateHash": "13106784443942122983"
+                      "version": "0.46.1.21595",
+                      "templateHash": "16955945802595436698"
                     }
                   },
                   "parameters": {
@@ -932,11 +1051,34 @@
                         "description": "Environment variables (non-secret values use `value`; secret values use `secretRef` matching a name in `secrets`)"
                       }
                     },
+                    "manageAcrPullAssignment": {
+                      "type": "bool",
+                      "defaultValue": false,
+                      "metadata": {
+                        "description": "Create the AcrPull role assignment for the app's managed\nidentity. Default false: in the existing prod environment both app\nidentities already hold AcrPull via out-of-band assignments, and a\ntemplate-created duplicate of the same (principal, role, scope) triple\nfails with RoleAssignmentExists. Set true when provisioning a fresh\nenvironment."
+                      }
+                    },
                     "secrets": {
                       "type": "array",
                       "defaultValue": [],
                       "metadata": {
                         "description": "Secrets exposed to the container app. Each item: { name: string, value: string }. Referenced from envVars via secretRef."
+                      }
+                    },
+                    "minReplicas": {
+                      "type": "int",
+                      "defaultValue": 1,
+                      "minValue": 0,
+                      "metadata": {
+                        "description": "Minimum replicas. Zero lets the app scale to nothing and\ncold-start on the next request, which was measured at ~21s to first byte on\nboth tiers: far past the point a browser gives up, and the documented cause of\nthe Safari \"cannot open page\" reports 428afe1 tried to fix.\n\nThat fix was applied with `az containerapp update` and never written here, so\nevery `az deployment sub create` in deploy.yml silently reset it. Keep any\nchange to this value in the template, not on the live app.\n\nDefaults to 1 so an unattended provision cannot reintroduce the cold start.\nPass 0 deliberately for non-production environments where idle cost matters\nmore than first-byte latency."
+                      }
+                    },
+                    "maxReplicas": {
+                      "type": "int",
+                      "defaultValue": 3,
+                      "minValue": 1,
+                      "metadata": {
+                        "description": "Maximum replicas."
                       }
                     }
                   },
@@ -983,8 +1125,8 @@
                             }
                           ],
                           "scale": {
-                            "minReplicas": 0,
-                            "maxReplicas": 3
+                            "minReplicas": "[parameters('minReplicas')]",
+                            "maxReplicas": "[parameters('maxReplicas')]"
                           }
                         }
                       },
@@ -993,13 +1135,14 @@
                       }
                     },
                     {
+                      "condition": "[parameters('manageAcrPullAssignment')]",
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
                       "scope": "[resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/')))]",
                       "name": "[guid(resourceId('Microsoft.App/containerApps', parameters('appName')), 'AcrPull')]",
                       "properties": {
                         "principalId": "[reference(resourceId('Microsoft.App/containerApps', parameters('appName')), '2024-03-01', 'full').identity.principalId]",
-                        "roleDefinitionId": "/providers/Microsoft.Authorization/roleDefinitions/7f951ddb-4da3-4683-8d00-9c357b6b258f",
+                        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')]",
                         "principalType": "ServicePrincipal"
                       },
                       "dependsOn": [
@@ -1071,7 +1214,7 @@
                       },
                       {
                         "name": "CORS_ALLOWED_ORIGINS",
-                        "value": "[format('https://ca-web-partyhause-{0}.{1}.azurecontainerapps.io', parameters('suffix'), parameters('location'))]"
+                        "value": "[format('https://{0},https://www.{1},https://{2}', parameters('publicDomain'), parameters('publicDomain'), reference(resourceId('Microsoft.Resources/deployments', 'webApp'), '2025-04-01').outputs.fqdn.value)]"
                       },
                       {
                         "name": "POSTGRES_HOST",
@@ -1094,6 +1237,10 @@
                         "secretRef": "postgres-password"
                       },
                       {
+                        "name": "DATABASE_URL",
+                        "secretRef": "database-url"
+                      },
+                      {
                         "name": "AZURE_STORAGE_ACCOUNT",
                         "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storage'), '2025-04-01').outputs.storageAccountName.value]"
                       },
@@ -1106,12 +1253,24 @@
                         "value": "[reference(resourceId('Microsoft.Resources/deployments', 'storage'), '2025-04-01').outputs.primaryBlobEndpoint.value]"
                       },
                       {
+                        "name": "AZURE_STORAGE_CONNECTION_STRING",
+                        "secretRef": "storage-conn-str"
+                      },
+                      {
                         "name": "WEBPUBSUB_ENDPOINT",
                         "value": "[reference(resourceId('Microsoft.Resources/deployments', 'webPubSub'), '2025-04-01').outputs.endpoint.value]"
                       },
                       {
                         "name": "WEBPUBSUB_CONNECTION_STRING",
                         "secretRef": "webpubsub-connection-string"
+                      },
+                      {
+                        "name": "JWT_SECRET",
+                        "secretRef": "jwt-secret"
+                      },
+                      {
+                        "name": "INVITATION_TOKEN_SECRET",
+                        "secretRef": "invitation-token-secret"
                       },
                       {
                         "name": "ENTRA_TENANT_ID",
@@ -1130,6 +1289,18 @@
                         "value": "[parameters('entraSignUpSignInPolicy')]"
                       },
                       {
+                        "name": "ACS_CONNECTION_STRING",
+                        "secretRef": "acs-connection-string"
+                      },
+                      {
+                        "name": "ACS_SENDER_ADDRESS",
+                        "value": "[if(parameters('linkCustomEmailDomain'), format('noreply@{0}', parameters('emailCustomDomain')), format('DoNotReply@{0}', reference(resourceId('Microsoft.Communication/emailServices/domains', format('acsmail-partyhause-{0}', parameters('suffix')), 'AzureManagedDomain'), '2023-04-01').mailFromSenderDomain))]"
+                      },
+                      {
+                        "name": "ACS_SENDER_DISPLAY_NAME",
+                        "value": "PartyHause"
+                      },
+                      {
                         "name": "RESEND_API_KEY",
                         "secretRef": "resend-api-key"
                       },
@@ -1140,6 +1311,26 @@
                       {
                         "name": "RESEND_FROM_NAME",
                         "value": "PartyHause"
+                      },
+                      {
+                        "name": "AZURE_OPENAI_ENDPOINT",
+                        "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', format('oai-partyhause-{0}', parameters('suffix'))), '2024-10-01').endpoint]"
+                      },
+                      {
+                        "name": "AZURE_OPENAI_DEPLOYMENT",
+                        "value": "gpt-5-mini"
+                      },
+                      {
+                        "name": "AZURE_OPENAI_API_KEY",
+                        "secretRef": "azure-openai-api-key"
+                      },
+                      {
+                        "name": "AZURE_OPENAI_API_VERSION",
+                        "value": "2024-10-21"
+                      },
+                      {
+                        "name": "VITE_APP_URL",
+                        "value": "[format('https://{0}', parameters('publicDomain'))]"
                       }
                     ]
                   },
@@ -1150,8 +1341,28 @@
                         "value": "[parameters('postgresAdminPassword')]"
                       },
                       {
+                        "name": "database-url",
+                        "value": "[format('postgresql://{0}:{1}@{2}:5432/{3}?sslmode=require', parameters('postgresAdminLogin'), uriComponent(parameters('postgresAdminPassword')), reference(resourceId('Microsoft.Resources/deployments', 'postgres'), '2025-04-01').outputs.serverFqdn.value, parameters('postgresDbName'))]"
+                      },
+                      {
+                        "name": "storage-conn-str",
+                        "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};AccountKey={1};EndpointSuffix=core.windows.net', reference(resourceId('Microsoft.Resources/deployments', 'storage'), '2025-04-01').outputs.storageAccountName.value, listKeys(resourceId('Microsoft.Storage/storageAccounts', format('stph{0}', parameters('suffix'))), '2023-01-01').keys[0].value)]"
+                      },
+                      {
                         "name": "webpubsub-connection-string",
                         "value": "[reference(resourceId('Microsoft.Resources/deployments', 'webPubSub'), '2025-04-01').outputs.primaryConnectionString.value]"
+                      },
+                      {
+                        "name": "acs-connection-string",
+                        "value": "[listKeys(resourceId('Microsoft.Communication/communicationServices', format('acs-partyhause-{0}', parameters('suffix'))), '2023-04-01').primaryConnectionString]"
+                      },
+                      {
+                        "name": "jwt-secret",
+                        "value": "[parameters('jwtSecret')]"
+                      },
+                      {
+                        "name": "invitation-token-secret",
+                        "value": "[parameters('invitationTokenSecret')]"
                       },
                       {
                         "name": "entra-api-client-secret",
@@ -1160,6 +1371,10 @@
                       {
                         "name": "resend-api-key",
                         "value": "[parameters('RESEND_API_KEY')]"
+                      },
+                      {
+                        "name": "azure-openai-api-key",
+                        "value": "[listKeys(resourceId('Microsoft.CognitiveServices/accounts', format('oai-partyhause-{0}', parameters('suffix'))), '2024-10-01').key1]"
                       }
                     ]
                   }
@@ -1170,8 +1385,8 @@
                   "metadata": {
                     "_generator": {
                       "name": "bicep",
-                      "version": "0.44.1.10279",
-                      "templateHash": "13106784443942122983"
+                      "version": "0.46.1.21595",
+                      "templateHash": "16955945802595436698"
                     }
                   },
                   "parameters": {
@@ -1224,11 +1439,34 @@
                         "description": "Environment variables (non-secret values use `value`; secret values use `secretRef` matching a name in `secrets`)"
                       }
                     },
+                    "manageAcrPullAssignment": {
+                      "type": "bool",
+                      "defaultValue": false,
+                      "metadata": {
+                        "description": "Create the AcrPull role assignment for the app's managed\nidentity. Default false: in the existing prod environment both app\nidentities already hold AcrPull via out-of-band assignments, and a\ntemplate-created duplicate of the same (principal, role, scope) triple\nfails with RoleAssignmentExists. Set true when provisioning a fresh\nenvironment."
+                      }
+                    },
                     "secrets": {
                       "type": "array",
                       "defaultValue": [],
                       "metadata": {
                         "description": "Secrets exposed to the container app. Each item: { name: string, value: string }. Referenced from envVars via secretRef."
+                      }
+                    },
+                    "minReplicas": {
+                      "type": "int",
+                      "defaultValue": 1,
+                      "minValue": 0,
+                      "metadata": {
+                        "description": "Minimum replicas. Zero lets the app scale to nothing and\ncold-start on the next request, which was measured at ~21s to first byte on\nboth tiers: far past the point a browser gives up, and the documented cause of\nthe Safari \"cannot open page\" reports 428afe1 tried to fix.\n\nThat fix was applied with `az containerapp update` and never written here, so\nevery `az deployment sub create` in deploy.yml silently reset it. Keep any\nchange to this value in the template, not on the live app.\n\nDefaults to 1 so an unattended provision cannot reintroduce the cold start.\nPass 0 deliberately for non-production environments where idle cost matters\nmore than first-byte latency."
+                      }
+                    },
+                    "maxReplicas": {
+                      "type": "int",
+                      "defaultValue": 3,
+                      "minValue": 1,
+                      "metadata": {
+                        "description": "Maximum replicas."
                       }
                     }
                   },
@@ -1275,8 +1513,8 @@
                             }
                           ],
                           "scale": {
-                            "minReplicas": 0,
-                            "maxReplicas": 3
+                            "minReplicas": "[parameters('minReplicas')]",
+                            "maxReplicas": "[parameters('maxReplicas')]"
                           }
                         }
                       },
@@ -1285,13 +1523,14 @@
                       }
                     },
                     {
+                      "condition": "[parameters('manageAcrPullAssignment')]",
                       "type": "Microsoft.Authorization/roleAssignments",
                       "apiVersion": "2022-04-01",
                       "scope": "[resourceId('Microsoft.ContainerRegistry/registries', last(split(parameters('acrId'), '/')))]",
                       "name": "[guid(resourceId('Microsoft.App/containerApps', parameters('appName')), 'AcrPull')]",
                       "properties": {
                         "principalId": "[reference(resourceId('Microsoft.App/containerApps', parameters('appName')), '2024-03-01', 'full').identity.principalId]",
-                        "roleDefinitionId": "/providers/Microsoft.Authorization/roleDefinitions/7f951ddb-4da3-4683-8d00-9c357b6b258f",
+                        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')]",
                         "principalType": "ServicePrincipal"
                       },
                       "dependsOn": [
@@ -1317,9 +1556,14 @@
               },
               "dependsOn": [
                 "[resourceId('Microsoft.ContainerRegistry/registries', format('acrpartyhause{0}', parameters('suffix')))]",
+                "[resourceId('Microsoft.Communication/emailServices/domains', format('acsmail-partyhause-{0}', parameters('suffix')), 'AzureManagedDomain')]",
                 "[resourceId('Microsoft.App/managedEnvironments', format('cae-partyhause-{0}', parameters('suffix')))]",
+                "[resourceId('Microsoft.Communication/communicationServices', format('acs-partyhause-{0}', parameters('suffix')))]",
+                "[resourceId('Microsoft.CognitiveServices/accounts', format('oai-partyhause-{0}', parameters('suffix')))]",
+                "[resourceId('Microsoft.CognitiveServices/accounts/deployments', format('oai-partyhause-{0}', parameters('suffix')), 'gpt-5-mini')]",
                 "[resourceId('Microsoft.Resources/deployments', 'postgres')]",
                 "[resourceId('Microsoft.Resources/deployments', 'storage')]",
+                "[resourceId('Microsoft.Resources/deployments', 'webApp')]",
                 "[resourceId('Microsoft.Resources/deployments', 'webPubSub')]"
               ]
             }
@@ -1376,6 +1620,34 @@
             "containerAppsEnvName": {
               "type": "string",
               "value": "[format('cae-partyhause-{0}', parameters('suffix'))]"
+            },
+            "emailServiceName": {
+              "type": "string",
+              "value": "[format('acsmail-partyhause-{0}', parameters('suffix'))]"
+            },
+            "communicationServiceName": {
+              "type": "string",
+              "value": "[format('acs-partyhause-{0}', parameters('suffix'))]"
+            },
+            "azureManagedSenderDomain": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Communication/emailServices/domains', format('acsmail-partyhause-{0}', parameters('suffix')), 'AzureManagedDomain'), '2023-04-01').mailFromSenderDomain]"
+            },
+            "azureManagedSenderAddress": {
+              "type": "string",
+              "value": "[format('DoNotReply@{0}', reference(resourceId('Microsoft.Communication/emailServices/domains', format('acsmail-partyhause-{0}', parameters('suffix')), 'AzureManagedDomain'), '2023-04-01').mailFromSenderDomain)]"
+            },
+            "customEmailDomainName": {
+              "type": "string",
+              "value": "[parameters('emailCustomDomain')]"
+            },
+            "customEmailDomainVerificationStates": {
+              "type": "object",
+              "value": "[reference(resourceId('Microsoft.Communication/emailServices/domains', format('acsmail-partyhause-{0}', parameters('suffix')), parameters('emailCustomDomain')), '2023-04-01').verificationStates]"
+            },
+            "customEmailDomainVerificationRecords": {
+              "type": "object",
+              "value": "[reference(resourceId('Microsoft.Communication/emailServices/domains', format('acsmail-partyhause-{0}', parameters('suffix')), parameters('emailCustomDomain')), '2023-04-01').verificationRecords]"
             }
           }
         }

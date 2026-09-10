@@ -13,213 +13,22 @@
 
 import type { Transport, ApiResponse } from '../http/transport';
 import type {
-  PartyEvent, Guest, TimelineBlock, Poll, CrewMember, CrewMemberRow, CrewCreatorRow,
+  TimelineBlock, Poll, CrewMember, CrewMemberRow, CrewCreatorRow,
   Notification, UploadedBlob, UserProfileDetail, SuggestedUser,
   FeedContentType, CrewFeedPage,
 } from '../types';
+import { unwrapList, unwrapOne } from './envelopes';
 
-/**
- * Unwrap an envelope response into the value callers actually want.
- *
- * Every list and single-item route wraps its payload under a named key:
- * `{ events }`, `{ event, stats }`, `{ guests, stats }`, `{ blocks }`,
- * `{ polls }`, `{ notifications }`, `{ profile }`. Returning the envelope
- * would make `data` an object where callers expect an array, so
- * `data.map(...)` throws at runtime while the types look fine.
- *
- * @param res Raw transport result.
- * @param key Envelope property to lift.
- * @param fallback Value when the key is absent, so a list route that omits an
- *        empty array yields [] rather than null.
- */
-function unwrap<T>(res: ApiResponse<unknown>, key: string, fallback: T | null = null): ApiResponse<T> {
-  if (res.error) return { data: null, error: res.error };
-  const payload = res.data as Record<string, unknown> | null;
-  if (!payload || typeof payload !== 'object') {
-    return { data: fallback, error: null };
-  }
-  const value = payload[key];
-  return { data: (value === undefined ? fallback : value) as T, error: null };
-}
-
-/** Lift an envelope containing a list, defaulting to an empty array. */
-async function unwrapList<T>(p: Promise<ApiResponse<unknown>>, key: string): Promise<ApiResponse<T[]>> {
-  return unwrap<T[]>(await p, key, []);
-}
-
-/** Lift an envelope containing a single item. */
-async function unwrapOne<T>(p: Promise<ApiResponse<unknown>>, key: string): Promise<ApiResponse<T>> {
-  return unwrap<T>(await p, key);
-}
-
-/**
- * Server-computed counts returned alongside a single event.
- *
- * `timeline_blocks` here is a COUNT. The event object carries a field with the
- * same name that is the schedule array. They are not interchangeable.
- *
- * `guests_accepted` counts both 'accepted' and the legacy 'confirmed' status,
- * which is the reason to take this rather than count client-side.
- */
-export interface EventStats {
-  total_guests: number;
-  guests_accepted: number;
-  guests_declined: number;
-  guests_pending: number;
-  guests_checked_in: number;
-  timeline_blocks: number;
-  media_count: number;
-}
-
-export interface EventWithStats {
-  event: PartyEvent;
-  stats: EventStats;
-}
-
-export interface EventsResource {
-  list(): Promise<ApiResponse<PartyEvent[]>>;
-  get(id: string): Promise<ApiResponse<PartyEvent>>;
-  /** The same call as `get`, keeping the server-computed stats. */
-  getWithStats(id: string): Promise<ApiResponse<EventWithStats>>;
-  create(input: Partial<PartyEvent>): Promise<ApiResponse<PartyEvent>>;
-  update(id: string, input: Partial<PartyEvent>): Promise<ApiResponse<PartyEvent>>;
-  remove(id: string): Promise<ApiResponse<{ success: boolean }>>;
-}
-
-export function createEventsResource(t: Transport): EventsResource {
-  return {
-    list: () => unwrapList<PartyEvent>(t.request('/api/events', { method: 'GET' }), 'events'),
-    // Path parameter, not a query string. server/routes/events.ts declares
-    // `router.get('/:id?')` and reads `req.params.id`, so `/api/events?id=x`
-    // silently returns the full list instead of one event. Mobile did exactly
-    // that in two screens.
-    get: (id) => unwrapOne<PartyEvent>(t.request(`/api/events/${encodeURIComponent(id)}`, { method: 'GET' }), 'event'),
-    getWithStats: (id) =>
-      t.request<EventWithStats>(`/api/events/${encodeURIComponent(id)}`, { method: 'GET' }),
-    create: (input) => unwrapOne<PartyEvent>(t.request('/api/events', { method: 'POST', body: input }), 'event'),
-    update: (id, input) =>
-      unwrapOne<PartyEvent>(t.request(`/api/events/${encodeURIComponent(id)}`, { method: 'PUT', body: input }), 'event'),
-    remove: (id) =>
-      t.request<{ success: boolean }>(`/api/events/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  };
-}
-
-/**
- * Body accepted by PUT /api/guests/:id.
- *
- * Deliberately not `Partial<Guest>`. The route destructures a mixed-case set
- * of names and ignores anything else, so passing the row shape silently
- * discards the update. `checkedIn` maps to the `checked_in` column and also
- * sets `checked_in_at`.
- *
- * Note the Guest model carries a legacy `is_checked_in` column alongside
- * `checked_in`. The API reads and writes only `checked_in`; anything written
- * to the legacy column is invisible to both this API and the web app.
- */
-export interface GuestUpdateInput {
-  name?: string;
-  email?: string;
-  phone?: string;
-  rsvpStatus?: 'pending' | 'accepted' | 'declined' | 'maybe' | 'confirmed';
-  plusOnes?: number;
-  dietaryRestrictions?: string;
-  customFields?: Record<string, unknown>;
-  checkedIn?: boolean;
-  email_status?: string;
-  last_email_sent_at?: string;
-  email_log_id?: string | null;
-}
-
-/** One guest in a bulk create. The route takes an array, never a single row. */
-/**
- * Per-guest payload for POST /api/guests.
- *
- * camelCase, unlike the Guest row that comes back, which is snake_case. The
- * route reads `guest.plusOnes` and `guest.dietaryRestrictions`; sending the
- * snake_case column names instead is silently accepted and dropped, so every
- * guest lands with plus_ones 0 and no dietary restrictions.
- *
- * The route also ignores any other key, including `eventDetails` and
- * `sendInvitations`. It creates guests and nothing else; it sends no email.
- */
-export interface GuestCreateInput {
-  name: string;
-  email?: string;
-  phone?: string;
-  plusOnes?: number;
-  dietaryRestrictions?: string[];
-  ticketType?: string;
-  customFields?: Record<string, unknown>;
-  role?: string;
-}
-
-/**
- * Server-computed guest counts returned alongside the list.
- *
- * Worth taking rather than re-deriving: `accepted` counts both 'accepted' and
- * the legacy 'confirmed' status, so a client that filters on 'accepted' alone
- * silently undercounts every guest created before the invite-join unification.
- *
- * Note `checkedIn` is camelCase here while the Guest row uses `checked_in`.
- */
-export interface GuestStats {
-  total: number;
-  accepted: number;
-  declined: number;
-  maybe: number;
-  pending: number;
-  checkedIn: number;
-}
-
-export interface GuestsPage {
-  guests: Guest[];
-  stats: GuestStats;
-}
-
-export interface GuestsResource {
-  listForEvent(eventId: string): Promise<ApiResponse<Guest[]>>;
-  /** The same call as `listForEvent`, keeping the server-computed stats. */
-  listForEventWithStats(eventId: string): Promise<ApiResponse<GuestsPage>>;
-  /**
-   * Add one guest.
-   *
-   * POST /api/guests is a bulk endpoint: it requires `{ eventId, guests: [] }`
-   * and answers `{ guests, success, count }`. Sending a single flat guest, as
-   * this client originally did, fails validation with "eventId is required".
-   * This wraps the single case and lifts the first row back out.
-   */
-  create(eventId: string, guest: GuestCreateInput): Promise<ApiResponse<Guest>>;
-  /** Add several guests in one request. */
-  createMany(eventId: string, guests: GuestCreateInput[]): Promise<ApiResponse<Guest[]>>;
-  update(id: string, input: GuestUpdateInput): Promise<ApiResponse<Guest>>;
-  remove(id: string): Promise<ApiResponse<{ success: boolean }>>;
-}
-
-export function createGuestsResource(t: Transport): GuestsResource {
-  return {
-    listForEvent: (eventId) => unwrapList<Guest>(t.request('/api/guests', { method: 'GET', query: { eventId } }), 'guests'),
-    listForEventWithStats: (eventId) =>
-      t.request<GuestsPage>('/api/guests', { method: 'GET', query: { eventId } }),
-    create: async (eventId, guest) => {
-      const res = await unwrapList<Guest>(
-        t.request('/api/guests', { method: 'POST', body: { eventId, guests: [guest] } }),
-        'guests',
-      );
-      if (res.error) return { data: null, error: res.error };
-      const first = (res.data ?? [])[0];
-      return first
-        ? { data: first, error: null }
-        : { data: null, error: { message: 'Guest was created but the server returned no row' } };
-    },
-    createMany: (eventId, guests) =>
-      unwrapList<Guest>(t.request('/api/guests', { method: 'POST', body: { eventId, guests } }), 'guests'),
-    // PUT /:id, not PATCH with a query string. The mobile app had this wrong.
-    update: (id, input) =>
-      unwrapOne<Guest>(t.request(`/api/guests/${encodeURIComponent(id)}`, { method: 'PUT', body: input }), 'guest'),
-    remove: (id) =>
-      t.request<{ success: boolean }>(`/api/guests/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  };
-}
+export { createEventsResource } from './legacy-events';
+export type { EventStats, EventWithStats, EventsResource } from './legacy-events';
+export { createGuestsResource } from './legacy-guests';
+export type {
+  GuestCreateInput,
+  GuestStats,
+  GuestsPage,
+  GuestsResource,
+  GuestUpdateInput,
+} from './legacy-guests';
 
 /**
  * The /api/timeline TABLE endpoints.
@@ -236,10 +45,75 @@ export function createGuestsResource(t: Transport): GuestsResource {
  * Use `events.get()` to read a schedule. These endpoints remain for the table,
  * should anything start populating it.
  */
+/**
+ * A timeline block as callers describe it.
+ *
+ * Snake_case, matching `TimelineBlock` and every other type in this package.
+ * The route reads camelCase from the request body while writing snake_case to
+ * the database, so the translation happens in `toTimelineWire` below rather
+ * than leaking two naming conventions to call sites.
+ */
+export interface TimelineBlockInput {
+  event_id?: string;
+  label?: string;
+  /** ISO-8601. The route passes this straight to `new Date()`. */
+  start_time?: string;
+  /** Minutes. There is no end_time; duration is what is stored. */
+  duration?: number;
+  type?: TimelineBlock['type'];
+  description?: string | null;
+  host_notes?: string | null;
+  guest_visible?: boolean;
+  /** Minutes before start_time to send a reminder. */
+  notify_before?: number | null;
+  location?: string | null;
+  assigned_to?: string[];
+  order_index?: number;
+}
+
+/**
+ * Translate a caller's block into the body `/api/timeline` actually reads.
+ *
+ * `server/routes/timeline.ts:59-71` destructures `eventId`, `startTime`,
+ * `hostNotes`, `guestVisible`, `notifyBefore` and `assignedTo`. Sending the
+ * snake_case field names, which is what `Partial<TimelineBlock>` produced,
+ * left `eventId` and `startTime` undefined and the route answered
+ * 400 "eventId, label, startTime, duration, and type are required" no matter
+ * what the caller passed. Nothing had ever called it, so nothing observed it.
+ *
+ * Keys absent from `input` stay absent, because PUT treats `undefined` as
+ * "leave alone" and an explicit null as "clear".
+ *
+ * @param input Caller-facing block fields.
+ * @returns The wire body, with only the supplied keys present.
+ */
+function toTimelineWire(input: TimelineBlockInput): Record<string, unknown> {
+  const pairs: Array<[string, unknown]> = [
+    ['eventId', input.event_id],
+    ['label', input.label],
+    ['startTime', input.start_time],
+    ['duration', input.duration],
+    ['type', input.type],
+    ['description', input.description],
+    ['hostNotes', input.host_notes],
+    ['guestVisible', input.guest_visible],
+    ['notifyBefore', input.notify_before],
+    ['location', input.location],
+    ['assignedTo', input.assigned_to],
+    ['orderIndex', input.order_index],
+  ];
+
+  const body: Record<string, unknown> = {};
+  for (const [key, value] of pairs) {
+    if (value !== undefined) body[key] = value;
+  }
+  return body;
+}
+
 export interface TimelineResource {
   listForEvent(eventId: string): Promise<ApiResponse<TimelineBlock[]>>;
-  create(input: Partial<TimelineBlock>): Promise<ApiResponse<TimelineBlock>>;
-  update(id: string, input: Partial<TimelineBlock>): Promise<ApiResponse<TimelineBlock>>;
+  create(input: TimelineBlockInput): Promise<ApiResponse<TimelineBlock>>;
+  update(id: string, input: TimelineBlockInput): Promise<ApiResponse<TimelineBlock>>;
   remove(id: string): Promise<ApiResponse<{ success: boolean }>>;
 }
 
@@ -247,9 +121,22 @@ export function createTimelineResource(t: Transport): TimelineResource {
   return {
     listForEvent: (eventId) =>
       unwrapList<TimelineBlock>(t.request(`/api/timeline/${encodeURIComponent(eventId)}`, { method: 'GET' }), 'blocks'),
-    create: (input) => t.request<TimelineBlock>('/api/timeline', { method: 'POST', body: input }),
+    // Both writes answer `{ block, success }`, so both unwrap. They previously
+    // typed the envelope as the block itself, which would have handed callers
+    // an object with no `id` and no failure to report.
+    create: (input) =>
+      unwrapOne<TimelineBlock>(
+        t.request('/api/timeline', { method: 'POST', body: toTimelineWire(input) }),
+        'block',
+      ),
     update: (id, input) =>
-      t.request<TimelineBlock>(`/api/timeline/${encodeURIComponent(id)}`, { method: 'PUT', body: input }),
+      unwrapOne<TimelineBlock>(
+        t.request(`/api/timeline/${encodeURIComponent(id)}`, {
+          method: 'PUT',
+          body: toTimelineWire(input),
+        }),
+        'block',
+      ),
     remove: (id) =>
       t.request<{ success: boolean }>(`/api/timeline/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   };
@@ -493,11 +380,39 @@ export function createFeedResource(t: Transport): FeedResource {
   };
 }
 
+/**
+ * The fields `PUT /api/users/me/profile` accepts.
+ *
+ * Limits mirror the server's, which rejects anything longer
+ * (`server/routes/users.ts:73-96`). Sending a field with an empty string
+ * clears it to null; omitting the field leaves it untouched. `website_url`
+ * must carry an http(s) scheme, because the profile screen renders it as a
+ * tappable link and `javascript:` there is a stored-XSS payload.
+ */
+export interface UserProfileUpdate {
+  /** Required by the server whenever present. 1-80 characters after trimming. */
+  display_name?: string;
+  /** Max 500. */
+  bio?: string;
+  /** Max 120. */
+  location?: string;
+  /** Max 200. Must begin with http:// or https:// when non-empty. */
+  website_url?: string;
+}
+
 export interface UsersResource {
   /** Rows arrive under `suggestions`, not as a bare array. */
   suggested(): Promise<ApiResponse<SuggestedUser[]>>;
   /** Returned flat by the route; nothing to unwrap. */
   get(id: string): Promise<ApiResponse<UserProfileDetail>>;
+  /**
+   * Update the signed-in user's own profile.
+   *
+   * Unlike `get`, this route wraps its answer in `{ profile }`, so it is
+   * unwrapped here. Sending no recognised field is a 400 from the server
+   * rather than a silent no-op.
+   */
+  updateProfile(input: UserProfileUpdate): Promise<ApiResponse<UserProfileDetail>>;
 }
 
 export function createUsersResource(t: Transport): UsersResource {
@@ -512,6 +427,11 @@ export function createUsersResource(t: Transport): UsersResource {
     // so every caller saw an empty profile and no failure to report.
     get: (id) =>
       t.request<UserProfileDetail>(`/api/users/${encodeURIComponent(id)}`, { method: 'GET' }),
+    updateProfile: (input) =>
+      unwrapOne<UserProfileDetail>(
+        t.request('/api/users/me/profile', { method: 'PUT', body: input }),
+        'profile',
+      ),
   };
 }
 

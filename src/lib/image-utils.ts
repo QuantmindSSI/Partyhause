@@ -1,13 +1,13 @@
 // Image upload and optimization utilities for PartyHause.
 //
-// Previously these uploaded directly to Supabase Storage from the browser.
-// They now POST to the Express API (`/api/storage/*`) which uploads to Azure
-// Blob Storage server-side. The client-side compression/resize logic is kept
-// unchanged — it runs before the upload so we send a reasonably-sized file.
+// Uploads POST to the Express API (`/api/storage/*`), which writes to Azure
+// Blob Storage server-side. The browser never holds a storage credential.
+// Compression and resizing run client-side first, so the request carries a
+// reasonably-sized file rather than an original off a phone camera.
 //
-// The auth token (Supabase access token, transitionally) is attached via the
-// shared `getAuthToken` helper so the API's `requireAuth` middleware accepts
-// the request.
+// The bearer token is the self-hosted HS256 JWT, attached via the shared
+// `getAuthToken` helper so the API's `requireAuth` middleware accepts the
+// request.
 
 import { getAuthToken } from './api-client';
 import { apiUrl } from './apiBase';
@@ -150,7 +150,7 @@ export const uploadImage = async (
     }
     formData.append('fileName', fileName);
 
-    // Attach the auth token (transitional: Supabase access token).
+    // Attach the self-hosted HS256 JWT.
     const token = await getAuthToken();
     const headers: Record<string, string> = {
       Accept: 'application/json',
@@ -343,9 +343,10 @@ export const getOptimizedImageUrl = (
     format?: 'webp' | 'jpg' | 'png';
   } = {}
 ): string => {
-  // Azure Blob Storage does not provide built-in image transformations like
-  // Supabase did. Return the original URL; transformations can be added later
-  // via Azure CDN / Image Transformation or a resize API.
+  // Azure Blob Storage performs no image transformation, so there is nothing
+  // to encode into the URL. Returning it unchanged is the honest answer: a
+  // width parameter that silently does nothing is worse than none at all.
+  // Resizing would need Azure CDN image transforms or a resize endpoint.
   return originalUrl;
 };
 

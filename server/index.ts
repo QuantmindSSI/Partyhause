@@ -17,10 +17,19 @@ const __dirname = path.dirname(__filename);
 // Route imports
 import sanitizeHtml from 'sanitize-html';
 import { assertJwtSecretConfigured } from './lib/jwt-secret';
+import { assertInvitationTokenSecretConfigured } from './lib/invitation-token';
 import { sendEmail, emailTransportStatus } from './lib/email';
 import { prisma } from './lib/prisma';
 import { requireAuth, type AuthenticatedRequest } from './middleware/auth';
 import { getEventAccess, canReadEvent, canInviteGuests } from './lib/event-access';
+import { startRetentionSweeper } from './lib/retention';
+import {
+  CorsOriginError,
+  isOriginAllowed,
+  parseAllowedOrigins,
+  type CorsPolicy,
+} from './lib/cors-policy';
+import { describeError, logFor } from './lib/error-response';
 
 /** Upper bound on a single send. Bulk invitations page through this. */
 const MAX_EMAIL_RECIPIENTS = 100;
@@ -123,6 +132,9 @@ import emailLogsRouter from './routes/email-logs';
 import storageRouter from './routes/storage';
 import realtimeRouter from './routes/realtime';
 import notificationsRouter from './routes/notifications';
+import mvpRouter, { mvpInputErrorHandler } from './routes/mvp';
+import rsvpRouter, { rsvpInputErrorHandler } from './routes/rsvp';
+import accountRouter, { accountInputErrorHandler, accountService } from './routes/account';
 
 // Load environment variables
 dotenv.config();
@@ -207,31 +219,27 @@ const emailLimiter = rateLimit({
 // resolution and client caching all happen there, so this file no longer
 // constructs a provider client of its own.
 
-// CORS
-const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+// CORS. The decision itself lives in ./lib/cors-policy so it can be tested
+// against the real implementation rather than a copy of it.
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+const corsPolicy: CorsPolicy = {
+  allowedOrigins: parseAllowedOrigins(process.env.CORS_ALLOWED_ORIGINS),
+  // Production fails closed on an unset variable; development stays open so
+  // :5173 can still call :3001. Both cases are argued in cors-policy.ts.
+  allowAnyOriginWhenUnset: !IS_PRODUCTION,
+};
+const allowedOrigins = corsPolicy.allowedOrigins;
 
 const corsOptions: cors.CorsOptions = {
   origin(origin, cb) {
-    if (!origin) return cb(null, true);
-    if (allowedOrigins.length === 0 || allowedOrigins.includes('*')) {
-      return cb(null, true);
-    }
-    if (allowedOrigins.includes(origin)) {
-      return cb(null, true);
-    }
-    return cb(new Error(`CORS: origin ${origin} not allowed`));
+    if (isOriginAllowed(origin, corsPolicy)) return cb(null, true);
+    return cb(new CorsOriginError(origin ?? ''));
   },
   credentials: true,
 };
 
 app.use(cors(corsOptions));
-// Behind Azure Container Apps ingress: exactly one trusted proxy hop, so
-// req.ip reflects the client (required for per-IP rate limiting) without
-// letting clients spoof arbitrary X-Forwarded-For chains.
-app.set('trust proxy', 1);
 
 app.use(
   express.json({
@@ -344,8 +352,17 @@ app.post('/api/send-email', emailLimiter, requireAuth, async (req: Authenticated
 });
 
 // ===== API Routes =====
+// RSVP is anonymous and carries its own tighter limiter. Mount it before the
+// umbrella limiter so every response, including a 429, retains no-store and
+// no-referrer privacy headers.
+app.use('/api/rsvp', rsvpInputErrorHandler);
+app.use('/api/rsvp', rsvpRouter);
 app.use('/api', apiLimiter);
 app.use('/api/auth', authRouter);
+app.use('/api/mvp/account', accountInputErrorHandler);
+app.use('/api/mvp/account', accountRouter);
+app.use('/api/mvp', mvpInputErrorHandler);
+app.use('/api/mvp', mvpRouter);
 app.use('/api/events', eventsRouter);
 app.use('/api/guests', guestsRouter);
 app.use('/api/timeline', timelineRouter);
@@ -369,6 +386,23 @@ app.use('/api/notifications', notificationsRouter);
 // Serve built static files from dist/ when present (local preview / combined mode)
 const distPath = path.resolve(__dirname, '../dist');
 if (fs.existsSync(distPath)) {
+  app.use('/join/:token', (_request, response, next) => {
+    response.set('Cache-Control', 'no-store');
+    response.set('Referrer-Policy', 'no-referrer');
+    response.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    next();
+  });
+
+  app.use(/^\/(privacy|terms|support)\.html$/, (_request, response, next) => {
+    response.set('Cache-Control', 'no-cache, no-store, max-age=0');
+    response.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+    response.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+    response.set('Referrer-Policy', 'no-referrer');
+    response.set('X-Content-Type-Options', 'nosniff');
+    response.set('X-Frame-Options', 'DENY');
+    next();
+  });
+
   // Browser auto-requests /favicon.ico; serve the 32x32 PNG as fallback
   app.get('/favicon.ico', (_req, res) => {
     res.sendFile(path.join(distPath, 'icons', 'favicon-32x32.png'));
@@ -387,20 +421,49 @@ app.use('/api', (_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// Global error handler
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error', message: err?.message });
+/**
+ * Global error handler.
+ *
+ * Two things it must not do, both of which it used to.
+ *
+ * It answered every error with 500, including a refused cross-origin request,
+ * which is a client mistake and is now 403. That matters beyond tidiness: a
+ * 500 is what monitoring escalates on, so stray origins probing the API read
+ * as server faults.
+ *
+ * It also returned `err.message` verbatim to the caller in production. A CORS
+ * message is harmless, but this handler is the terminus for *every* unhandled
+ * throw, and Prisma is the layer most likely to reach it: its errors carry
+ * table names, column names, constraint names and, on a uniqueness violation,
+ * the conflicting value. That is a description of the schema, handed to an
+ * anonymous caller, for free.
+ *
+ * The message is still logged in full, always. It moves from the response to
+ * the log rather than disappearing, so operators keep what they need and the
+ * client is told only that something failed. Outside production it is still
+ * returned, because that is where a developer reads it from the response and
+ * there is nothing to disclose.
+ */
+app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  void next;
+
+  const log = logFor(err);
+  if (log.level === 'warn') console.warn(log.message);
+  else console.error(log.message, log.detail);
+
+  const { status, body } = describeError(err, IS_PRODUCTION);
+  res.status(status).json(body);
 });
 
-// Fail closed before binding the listener. A missing or default JWT_SECRET in
-// production means every token is forgeable by anyone who can read this
-// repository, so refusing to start is the only safe outcome. Crashing here is
-// visible in Container Apps revision health; serving traffic would not be.
+// Fail closed before binding the listener. Authentication and invitation
+// credentials are security boundaries, so an unsafe production secret must
+// make the Container Apps revision visibly fail instead of serving traffic.
 try {
   assertJwtSecretConfigured();
+  assertInvitationTokenSecretConfigured();
+  startRetentionSweeper(prisma, () => accountService.retryInterruptedDeletions());
 } catch (err) {
-  console.error('FATAL: refusing to start with an unsafe JWT signing key.');
+  console.error('FATAL: refusing to start with unsafe secret configuration.');
   console.error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 }
@@ -408,7 +471,7 @@ try {
 app.listen(port, '0.0.0.0', () => {
   console.log(`PartyHause API server running at http://localhost:${port}`);
   console.log(`CORS allowed origins: ${allowedOrigins.length ? allowedOrigins.join(', ') : '(any)'}`);
-}).on('error', (err: any) => {
+}).on('error', (err: NodeJS.ErrnoException) => {
   console.error('Server failed to start:', err);
   if (err.code === 'EADDRINUSE') {
     console.error(`Port ${port} is already in use!`);

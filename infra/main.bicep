@@ -1,12 +1,12 @@
-// main.bicep — PartyHause infrastructure (Azure-native, post-Supabase migration)
+// main.bicep - PartyHause infrastructure (Azure-native)
 // Subscription-scope orchestrator: creates the resource group, then delegates
 // to resources.bicep (resource-group scope) which provisions:
 //   - Log Analytics Workspace
 //   - Key Vault (secrets)
 //   - Azure Container Registry
-//   - Cosmos DB for PostgreSQL cluster (replaces Supabase Postgres)
-//   - Storage Account + Blob containers (replaces Supabase Storage)
-//   - Azure Web PubSub (replaces Supabase Realtime)
+//   - Azure Database for PostgreSQL Flexible Server
+//   - Storage Account + Blob containers
+//   - Azure Web PubSub (realtime fan-out)
 //   - Container Apps Environment
 //   - Web Container App (PWA, nginx)
 //   - API Container App (Express) with managed identity + AcrPull
@@ -56,6 +56,11 @@ param RESEND_FROM_EMAIL string
 @secure()
 param jwtSecret string
 
+@description('HMAC key for deterministic invitation tokens (secret, required)')
+@secure()
+@minLength(32)
+param invitationTokenSecret string
+
 // ===== Auth (Microsoft Entra External ID / Azure AD B2C) =====
 @description('Entra External ID (B2C) tenant id')
 param entraTenantId string = ''
@@ -101,6 +106,7 @@ module resources 'resources.bicep' = {
     RESEND_API_KEY: RESEND_API_KEY
     RESEND_FROM_EMAIL: RESEND_FROM_EMAIL
     jwtSecret: jwtSecret
+    invitationTokenSecret: invitationTokenSecret
     entraTenantId: entraTenantId
     entraApiClientId: entraApiClientId
     entraApiClientSecret: entraApiClientSecret

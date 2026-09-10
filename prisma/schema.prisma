@@ -1,20 +1,26 @@
 // ============================================================================
 // PartyHause Prisma Schema
 // ============================================================================
-// Generated from 25 SQL migration files in supabase/migrations/ plus
-// supabase/schema.sql. All migrations applied in chronological order.
+// This file is the single source of truth for the database schema. It is
+// applied with `prisma migrate deploy`; prisma/migrations/ holds the history
+// and `npm run test:migrations` asserts that replaying it reproduces this file
+// exactly. Do not use `prisma db push` against a database that has migrations
+// applied: it will reshape tables without recording anything, and the next
+// `migrate diff` will report drift it cannot explain.
 //
 // IMPORTANT NOTES:
-// - All `auth.users(id)` foreign keys are modeled as plain String columns
-//   (no Prisma relation). After migration to Entra External ID / Azure AD
-//   B2C, these columns will hold Entra user object IDs instead of Supabase
-//   auth UUIDs. No AuthUser Prisma model is created because `auth.users` is
-//   a Supabase-internal table that will not exist in the Azure PostgreSQL
-//   database.
-// - RLS policies and Supabase trigger functions are NOT included here.
-//   RLS is Supabase-specific and will be replaced by application-level
-//   authorization. Trigger functions (update_updated_at_column, count
-//   maintenance, etc.) will be reimplemented at the application level.
+// - User foreign keys are plain String columns rather than Prisma relations.
+//   Ids are TEXT holding `gen_random_uuid()` output, not the uuid type, so a
+//   raw SQL predicate comparing one to a uuid fails with "operator does not
+//   exist: text = uuid". See server/sql/azure-pg-functions.sql.
+// - Row-level-security policies are NOT declared here and are not created by
+//   `prisma db push`. Authorization is enforced in the API; the matrix lives
+//   in server/lib/event-access.ts, which is the only thing enforcing it.
+// - CHECK constraints written as comments below are documentation, not
+//   enforcement, for the same reason. The API validates those vocabularies.
+// - Trigger functions (update_updated_at_column, count maintenance) are not
+//   emitted by `prisma db push` either; they are applied separately from
+//   server/sql/azure-pg-functions.sql.
 // - PostgreSQL CHECK constraints are documented in comments since Prisma
 //   does not support CHECK constraints directly.
 // - Database RPC functions are documented at the bottom of this file.
@@ -65,20 +71,28 @@ enum PriceTier {
 // LEGACY TABLES
 // ============================================================================
 
-// Users table — stores auth + profile data. Replaces Supabase auth.users.
-// Password hash stored for local auth; can be null for SSO/OAuth users.
+// Users table. Holds credentials and the verification/reset token state for
+// the self-hosted JWT auth in server/routes/auth.ts. password_hash is nullable
+// so an SSO row can exist without one; login refuses those rather than
+// comparing against null.
 model User {
-  id                            String   @id @default(dbgenerated("gen_random_uuid()"))
-  email                         String   @unique
-  name                          String?
-  password_hash                 String?
-  reset_token                   String?  @unique
-  reset_token_expires           DateTime?
-  email_verified                Boolean  @default(false)
-  verification_token            String?  @unique
-  verification_token_expires    DateTime?
-  created_at                    DateTime @default(now())
-  updated_at                    DateTime @default(now()) @updatedAt
+  id                         String    @id @default(dbgenerated("gen_random_uuid()"))
+  email                      String    @unique
+  name                       String?
+  password_hash              String?
+  reset_token                String?   @unique
+  reset_token_expires        DateTime?
+  email_verified             Boolean   @default(false)
+  verification_token         String?   @unique
+  verification_token_expires DateTime?
+  token_version              Int       @default(0)
+  account_status             String    @default("active")
+  terms_version              String?
+  privacy_version            String?
+  age_eligible               Boolean   @default(false)
+  deletion_requested_at      DateTime?
+  created_at                 DateTime  @default(now())
+  updated_at                 DateTime  @default(now()) @updatedAt
 
   // Relations
   events                  Event[]               @relation("UserHostedEvents")
@@ -98,6 +112,8 @@ model User {
   partyboard_stickies     PartyBoardSticky[]     @relation("PartyBoardStickyCreator")
   partyboard_sticky_votes PartyBoardStickyVote[] @relation("PartyBoardStickyVoter")
   partyboard_tasks        PartyBoardTask[]       @relation("PartyBoardTaskCreator")
+  mvp_commands            MvpCommand[]           @relation("MvpCommandActor")
+  attendance_audits       AttendanceAudit[]      @relation("AttendanceAuditActor")
 
   @@map("users")
 }
@@ -165,7 +181,7 @@ model Event {
 
   // Invite image / capacity (20250915, 20250918)
   invite_image_url String?
-  max_guests       Int?
+  max_guests       Int     @default(50)
   is_public        Boolean @default(false)
 
   // Description (20250917)
@@ -179,10 +195,14 @@ model Event {
   location_address     String?
   location_coordinates Unsupported("point")?
   privacy              String                @default("private") // CHECK: IN ('public', 'private', 'unlisted')
-  status               String                @default("draft") // CHECK: IN ('draft', 'published', 'active', 'completed', 'archived')
+  status               String                @default("draft") // CHECK: IN ('draft', 'published', 'active', 'completed', 'cancelled', 'archived')
   settings             Json                  @default("{}")
   template_data        Json                  @default("{}")
   timeline_blocks      Json                  @default("[]")
+  revision             Int                   @default(1)
+  published_at         DateTime?
+  cancelled_at         DateTime?
+  completed_at         DateTime?
 
   // Relations
   host                   User                  @relation("UserHostedEvents", fields: [host_id], references: [id])
@@ -206,6 +226,10 @@ model Event {
   polls                  Poll[]
   partyboard_stickies    PartyBoardSticky[]
   partyboard_tasks       PartyBoardTask[]
+  saved_events           SavedEvent[]
+  guest_invitations      GuestInvitation[]
+  invitation_deliveries  InvitationDelivery[]
+  attendance_audits      AttendanceAudit[]
 
   @@index([host_id])
   @@index([status])
@@ -237,13 +261,16 @@ model EventCoHost {
 // Guests table — built up across initial schema, email tracking, template
 // phase 1, and guest/crew features migrations.
 model Guest {
-  id            String   @id @default(dbgenerated("gen_random_uuid()"))
-  event_id      String
-  name          String // VARCHAR(255) NOT NULL
-  email         String // NOT NULL
-  is_checked_in Boolean  @default(false) // Legacy column from initial schema
-  created_at    DateTime @default(now())
-  updated_at    DateTime @default(now()) @updatedAt
+  id                String    @id @default(dbgenerated("gen_random_uuid()"))
+  event_id          String
+  name              String // VARCHAR(255) NOT NULL
+  email             String // NOT NULL
+  normalized_email  String    @default("")
+  revision          Int       @default(1)
+  rsvp_responded_at DateTime?
+  is_checked_in     Boolean   @default(false) // Legacy column from initial schema
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @default(now()) @updatedAt
 
   // Email tracking (20250914)
   email_status       String?   @default("not_sent") // CHECK: IN ('not_sent', 'sent', 'delivered', 'opened', 'clicked', 'bounced', 'failed')
@@ -277,7 +304,11 @@ model Guest {
   email_logs             EmailLog[]            @relation("GuestEmailLogs")
   cost_split_requests    CostSplitRequest[]
   guest_crew_conversions GuestCrewConversion[]
+  guest_invitation       GuestInvitation?
+  invitation_deliveries  InvitationDelivery[]
+  attendance_audits      AttendanceAudit[]
 
+  @@unique([event_id, normalized_email])
   @@index([event_id])
   @@index([rsvp_status])
   @@index([email])
@@ -662,6 +693,7 @@ model UserProfile {
   notification_actors          Notification[]       @relation("NotificationActor")
   feed_read_status             FeedReadStatus[]
   content_interactions         ContentInteraction[]
+  saved_events                 SavedEvent[]
 
   @@index([username])
   @@index([display_name])
@@ -680,6 +712,7 @@ model Connection {
   notify_on_events Boolean  @default(true)
   notify_on_posts  Boolean  @default(true)
   created_at       DateTime @default(now())
+  connection_type  String   @default("follow")
 
   // CHECK: follower_id != following_id
 
@@ -692,6 +725,33 @@ model Connection {
   @@index([follower_id])
   @@index([following_id])
   @@map("connections")
+}
+
+// PartyBoard persistence is modelled by PartyBoardSticky, PartyBoardStickyVote
+// and PartyBoardTask further down this file. An earlier draft of this schema
+// carried a second model over the same `partyboard_stickies` table holding
+// `vote_count`, `voter_ids` and `reaction_count` as columns. That is the shape
+// currently deployed, and it is why the baseline migration creates the table
+// that way, but it is not the shape the application wants: a counter cannot
+// answer `user_has_voted` for a given viewer, and a JSONB array of ids cannot
+// make a repeated click a toggle rather than a second vote. The reconciliation
+// lives in 20260909000000_partyboard_vote_tables, which preserves the existing
+// voter_ids by migrating them into rows.
+
+// Legacy web bookmarks. Excluded from IOS-MVP-1 but retained for schema parity.
+model SavedEvent {
+  id       String   @id @default(dbgenerated("gen_random_uuid()"))
+  user_id  String
+  event_id String
+  saved_at DateTime @default(now())
+
+  user  UserProfile @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  event Event       @relation(fields: [event_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, event_id])
+  @@index([user_id])
+  @@index([event_id])
+  @@map("saved_events")
 }
 
 // Connection requests (20251101)
@@ -1156,6 +1216,133 @@ model EventCostSummary {
   event Event @relation(fields: [event_id], references: [id])
 
   @@map("event_cost_summaries")
+}
+
+// Idempotency record for retryable IOS-MVP commands.
+model MvpCommand {
+  id              String    @id @default(dbgenerated("gen_random_uuid()"))
+  actor_id        String
+  idempotency_key String
+  operation       String
+  request_hash    String
+  status          String    @default("pending")
+  request_payload Json?
+  response        Json?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @default(now()) @updatedAt
+  expires_at      DateTime
+
+  actor                   User                 @relation("MvpCommandActor", fields: [actor_id], references: [id], onDelete: Cascade)
+  attendance_audit        AttendanceAudit?
+  invitation_deliveries InvitationDelivery[] @relation("InvitationDeliveryCommand")
+
+  @@unique([actor_id, idempotency_key])
+  @@index([status, expires_at])
+  @@index([actor_id, operation, created_at])
+  @@map("mvp_commands")
+}
+
+// One hashed browser RSVP credential per guest.
+model GuestInvitation {
+  id         String    @id @default(dbgenerated("gen_random_uuid()"))
+  guest_id   String    @unique
+  event_id   String
+  token_hash String    @unique
+  expires_at DateTime
+  revoked_at DateTime?
+  created_at DateTime  @default(now())
+  updated_at DateTime  @default(now()) @updatedAt
+
+  guest      Guest                @relation(fields: [guest_id], references: [id], onDelete: Cascade)
+  event      Event                @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  deliveries InvitationDelivery[]
+
+  @@index([event_id])
+  @@index([expires_at])
+  @@index([revoked_at])
+  @@map("guest_invitations")
+}
+
+// Provider-owned delivery evidence for one guest invitation.
+model InvitationDelivery {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()"))
+  command_id            String
+  invitation_id         String
+  event_id              String
+  guest_id              String
+  status                String    @default("queued")
+  provider              String
+  provider_message_id   String?
+  attempt_count         Int       @default(0)
+  error_code            String?
+  processing_started_at DateTime?
+  lease_expires_at      DateTime?
+  lease_token           String?
+  accepted_at           DateTime?
+  delivered_at          DateTime?
+  bounced_at            DateTime?
+  failed_at             DateTime?
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @default(now()) @updatedAt
+
+  invitation GuestInvitation @relation(fields: [invitation_id], references: [id], onDelete: Cascade)
+  event      Event           @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  guest      Guest           @relation(fields: [guest_id], references: [id], onDelete: Cascade)
+  command    MvpCommand      @relation("InvitationDeliveryCommand", fields: [command_id], references: [id], onDelete: Cascade)
+
+  @@unique([command_id, guest_id])
+  @@index([invitation_id])
+  @@index([event_id, status])
+  @@index([guest_id, created_at])
+  @@index([status, lease_expires_at])
+  @@index([provider, provider_message_id])
+  @@map("invitation_deliveries")
+}
+
+// Immutable evidence for check-in and explicit attendance corrections.
+model AttendanceAudit {
+  id             String   @id @default(dbgenerated("gen_random_uuid()"))
+  event_id       String
+  guest_id       String
+  actor_id       String
+  command_id     String   @unique
+  action         String
+  prior_state    Boolean
+  new_state      Boolean
+  guest_revision Int
+  occurred_at    DateTime @default(now())
+
+  event   Event      @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  guest   Guest      @relation(fields: [guest_id], references: [id], onDelete: Cascade)
+  actor   User       @relation("AttendanceAuditActor", fields: [actor_id], references: [id], onDelete: Cascade)
+  command MvpCommand @relation(fields: [command_id], references: [id], onDelete: Cascade)
+
+  @@index([event_id, occurred_at])
+  @@index([guest_id, occurred_at])
+  @@index([actor_id, occurred_at])
+  @@map("attendance_audits")
+}
+
+// Nonidentifying deletion receipt. user_id deliberately has no User relation.
+model AccountDeletionRequest {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()"))
+  user_id                 String?   @unique
+  subject_hash            String?   @unique
+  status                  String    @default("pending")
+  requested_at            DateTime  @default(now())
+  confirmation_expires_at DateTime?
+  erase_by                DateTime
+  processing_started_at   DateTime?
+  attempt_count           Int       @default(0)
+  completed_at            DateTime?
+  expires_at              DateTime
+  error_code              String?
+  error_at                DateTime?
+
+  @@index([status, requested_at])
+  @@index([completed_at])
+  @@index([expires_at])
+  @@map("account_deletion_requests")
 }
 
 // ============================================================================

@@ -10,8 +10,11 @@ import type { Configuration } from '@azure/msal-browser';
  *   VITE_ENTRA_SPA_CLIENT_ID  — SPA app registration client ID
  *   VITE_ENTRA_POLICY         — User flow name, e.g. "B2C_1_susi"
  *
- * If any of these are unset, `msalConfig` is exported as `null` so the app
- * can gracefully fall back to Supabase auth.
+ * If any of these are unset, `msalConfig` is exported as `null` and the app
+ * uses the self-hosted JWT path in `src/lib/auth.ts`, which is the only auth
+ * path that currently works end to end. There is no second provider to fall
+ * back to: the API performs no JWKS, issuer or audience validation, so it
+ * cannot verify an Entra RS256 token even when these variables are set.
  */
 
 const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID as string | undefined;

@@ -1,7 +1,7 @@
 /**
  * useUserProfile Hook - Web Version
  * Fetches complete user profile with stats and viewer relationship
- * Calls the Express API (/api/users/:id) instead of querying Supabase directly
+ * Calls the Express API (GET /api/users/:id).
  */
 
 import { useState, useEffect, useCallback } from 'react';

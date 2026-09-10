@@ -30,20 +30,7 @@ export default function EventIdLayout() {
         }}
       />
       <Stack.Screen
-        name="games"
-        options={{
-          title: 'Games',
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
         name="invites"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="planning"
         options={{
           headerShown: false,
         }}

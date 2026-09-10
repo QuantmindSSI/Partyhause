@@ -1,10 +1,13 @@
 /**
  * @partyhause/core
  *
- * The shared API client consumed by both the Vite web app and the Expo mobile
- * app. Replaces the Supabase stub this package previously exported, which was
- * dead on both platforms: it had no `from()` method (13 mobile screens called
- * it) and read `localStorage`, which does not exist in React Native.
+ * The shared API client. It is written against a storage adapter rather than
+ * against `localStorage` directly, because React Native has no `localStorage`
+ * and any client that assumes one is web-only by construction.
+ *
+ * Note that the web app does not consume this package today; it runs a second
+ * client at src/lib/api-client.ts. Treat any API contract change as a
+ * two-site change until they are unified.
  */
 
 export { createApiClient } from './client';
@@ -20,15 +23,41 @@ export type {
   TokenStorage, Telemetry, ApiCallRecord, UnauthorizedHandler, ApiClientConfig,
 } from './http/adapters';
 
-export { createWebStorage, createAsyncStorage } from './http/storage-adapters';
-export type { AsyncStorageLike, WebStorageLike } from './http/storage-adapters';
+export {
+  createWebStorage,
+  createAsyncStorage,
+  createSecureStoreStorage,
+  SECURE_STORE_MIGRATION_KEY,
+} from './http/storage-adapters';
+export type {
+  AsyncStorageLike,
+  SecureStoreLike,
+  SecureStoreStorageOptions,
+  WebStorageLike,
+} from './http/storage-adapters';
 
 export type { AuthResource } from './resources/auth';
+export { createAccountResource } from './resources/account';
+export type {
+  AccountDeletion,
+  AccountDeletionStatus,
+  AccountLegalSummary,
+  AccountResource,
+} from './resources/account';
+export { createRsvpResource } from './resources/rsvp';
+export type {
+  RsvpChoice,
+  RsvpInvitation,
+  RsvpResource,
+} from './resources/rsvp';
 export type {
   EventsResource, GuestsResource, TimelineResource, PollsResource,
   PartyCrewResource, UsersResource, FeedResource, NotificationsResource,
   StorageResource, EmailResource, EmailLogsResource,
+  EventStats, EventWithStats,
   GuestCreateInput, GuestUpdateInput, EmailLog, EmailLogInput,
+  UserProfileUpdate,
+  TimelineBlockInput,
   CrewStatus, CrewConnection, CrewRequest, CrewToggleResult, CrewMembersPage, CrewingWithPage, CrewRequestsPage,
   PostComment,
   PostCommentAuthor,
@@ -37,3 +66,4 @@ export type {
 
 export * from './types';
 export * from './store';
+export * from './legal';

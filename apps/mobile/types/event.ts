@@ -57,11 +57,21 @@ export interface Event {
   privacy?: 'public' | 'private' | 'unlisted'; // Alternative field name
   settings?: Record<string, any>; // JSONB field for template-specific data
   /**
-   * Matches the CHECK constraint on events.status. This previously listed
-   * 'cancelled', which the database rejects, and omitted 'active' and
-   * 'archived', which it accepts.
+   * Matches the CHECK constraint on events.status.
+   *
+   * 'cancelled' was removed from this union once, correctly: the constraint
+   * did not accept it and a write of it failed. The migration
+   * 20260905000200_core_integrity_constraints restores it to the constraint,
+   * and POST /api/mvp/events/:id/cancel writes it, so the value can now come
+   * back over the wire and this type has to admit it.
+   *
+   * Reading it is safe on any database. Writing it is not: it only succeeds
+   * once that migration has been applied. The cancel control in
+   * app/events/[id]/index.tsx therefore still writes 'archived', which is
+   * accepted before and after, and must not be switched until the migration
+   * is deployed everywhere.
    */
-  status: 'draft' | 'published' | 'active' | 'completed' | 'archived';
+  status: 'draft' | 'published' | 'active' | 'completed' | 'cancelled' | 'archived';
   
   // Metadata
   created_at?: string;

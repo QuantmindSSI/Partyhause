@@ -466,9 +466,11 @@ router.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response
     };
 
     // Private account viewed by a non-follower: minimal public card only.
-    // (Under the original Supabase RLS, private profiles were not selectable
-    // by other users at all — see 20251101 migration "Public profiles are
-    // viewable by everyone" policy.)
+    // This is deliberately more permissive than the row-level-security policy
+    // it replaced, which made private profiles unselectable by other users
+    // entirely. A hard 404 would make "this account is private" and "this
+    // account does not exist" indistinguishable, so a follow request could
+    // never be sent. The reduced card carries no post, event or crew data.
     if (profile.is_private && !isSelf && !viewerIsFollowing) {
       return res.status(200).json({
         id: profile.id,

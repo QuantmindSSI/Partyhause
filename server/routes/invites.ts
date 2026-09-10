@@ -152,11 +152,12 @@ router.post('/join', optionalAuth, async (req: AuthenticatedRequest, res: Respon
       });
     }
 
-    // Create guest entry. rsvp_status vocabulary is
-    // ('pending','accepted','declined','maybe') — see prisma/schema.prisma
-    // Guest.rsvp_status and the CHECK constraint in
-    // supabase/migrations/20251022000000_template_implementation_phase1.sql.
-    // Joining via invite link counts as accepting the invitation.
+    // Create guest entry. The rsvp_status vocabulary is
+    // ('pending','accepted','declined','maybe'); see Guest.rsvp_status in
+    // prisma/schema.prisma. The CHECK that once enforced it is documented
+    // there but not created, because `prisma db push` does not emit CHECK
+    // constraints, so this list is the only thing enforcing the vocabulary.
+    // Joining via an invite link counts as accepting the invitation.
     const guest = await prisma.guest.create({
       data: {
         event_id,

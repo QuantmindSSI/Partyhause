@@ -1,12 +1,10 @@
 /**
  * The mobile app's API client instance.
  *
- * Replaces lib/supabase.ts, which was non-functional in every build:
- * `requireSupabase()` threw whenever EXPO_PUBLIC_SUPABASE_URL and
- * EXPO_PUBLIC_SUPABASE_ANON_KEY were unset, which was always, because Supabase
- * was removed from this project in July 2026. The exported `supabase` const
- * evaluated to null for the same reason, so `supabase.auth.getSession()` threw
- * a TypeError. Every screen touching auth or data crashed on mount.
+ * Every screen that touches auth or data goes through this instance. It talks
+ * to the Express API over HTTP and persists the session in AsyncStorage using
+ * the same two key names the web app uses, so the token format is one
+ * contract rather than two.
  *
  * One instance, created once at module load. The token lives in AsyncStorage
  * and is attached by the transport, so no call site handles Authorization

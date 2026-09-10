@@ -1,0 +1,18 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "APRP2V384G.com.partyhause.mobile",
+        "appIDs": ["APRP2V384G.com.partyhause.mobile"],
+        "paths": ["/join/*"],
+        "components": [
+          {
+            "/": "/join/*",
+            "comment": "RSVP to an invitation. The token in the path is the guest's credential."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { eventService } from '@/lib/events';
-import { clearAuth } from '@/lib/supabase';
+import { clearAuth } from '@/lib/auth-storage';
 import type { TimelineBlock } from '@/features/timeline/types';
 
 export type UserRole = 'user' | 'creator' | 'vendor';

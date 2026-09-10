@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { InviteTemplate, InviteCustomization } from '@/types/invites';
-import { format } from 'date-fns';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -38,12 +37,35 @@ export function InvitePreview({
   const showDetails = customization?.show_event_details !== false;
   const showRSVP = customization?.show_rsvp_button !== false;
 
+  /**
+   * Render an event date as "Saturday, October 4, 2026".
+   *
+   * This was `date-fns` `format(d, 'EEEE, MMMM d, yyyy')`, and `date-fns` was
+   * never a dependency of this app. It resolved only because apps/mobile used
+   * to be hoisted into the npm workspace, so Metro found the web app's copy at
+   * the repository root. Giving mobile its own node_modules removed that copy
+   * and the iOS build failed at the bundle step with "Unable to resolve module
+   * date-fns".
+   *
+   * Replaced rather than declared: this was the only call in the app, and
+   * Intl produces byte-identical output for this pattern, verified across
+   * several dates. Adding a dependency to keep one format string would also
+   * mean maintaining it against two different React majors.
+   *
+   * The locale is pinned to en-US deliberately. `date-fns` `format` without a
+   * `locale` option always renders English regardless of device settings, so
+   * passing `undefined` here would silently change what existing users see.
+   */
   const formatEventDate = (dateString: string) => {
-    try {
-      return format(new Date(dateString), 'EEEE, MMMM d, yyyy');
-    } catch {
-      return dateString;
-    }
+    const parsed = new Date(dateString);
+    if (Number.isNaN(parsed.getTime())) return dateString;
+
+    return parsed.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
   };
 
   // Different layouts

@@ -64,9 +64,9 @@ function deepMerge(target: any, source: any): any {
 /**
  * Create an event from a template with user overrides.
  * Ported from TemplateService.createEventFromTemplate, using Prisma.
- * Note: partyboard_tasks and budget_items tables do not exist in the Prisma
- * schema, so those creation steps are skipped (the original Supabase code
- * also tolerated failures for those).
+ * Note: the partyboard_tasks and budget_items tables do not exist in the
+ * Prisma schema, so those creation steps are skipped rather than attempted
+ * and swallowed. A template that claims to seed them does not.
  */
 async function createEventFromTemplate(
   userId: string,

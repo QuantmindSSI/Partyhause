@@ -32,7 +32,9 @@
   },
   "submit": {
     "production": {
-      "ios": {},
+      "ios": {
+        "appleTeamId": "APRP2V384G"
+      },
       "android": {
         "track": "internal"
       }

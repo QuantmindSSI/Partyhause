@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { getStoredToken } from '@/lib/auth-storage';
 import { apiRequest } from '../api/client';
 import { FeedPost } from '../types';
 
@@ -31,9 +31,9 @@ export function useCrewFeed(
   const [hasMore, setHasMore] = useState(true);
 
   const fetchFeed = useCallback(async (reset: boolean = false) => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const token = getStoredToken();
     
-    if (!session?.access_token) {
+    if (!token) {
       setIsLoading(false);
       return;
     }

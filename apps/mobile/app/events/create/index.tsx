@@ -55,6 +55,17 @@ const TEMPLATES = [
     icon: '🎤',
     color: '#26A69A',
   },
+  // TemplateForm has routed 'corporate' to a fully implemented CorporateForm
+  // since the template forms were written, but this array never carried the
+  // entry. Selection is driven entirely by TEMPLATES.map below and lookup is
+  // TEMPLATES.find, so the form was unreachable by every path in the wizard.
+  {
+    id: 'corporate',
+    name: 'Corporate Event',
+    description: 'Offsite, all-hands or client hosting',
+    icon: '🏢',
+    color: '#546E7A',
+  },
   {
     id: 'travel',
     name: 'Group Travel',

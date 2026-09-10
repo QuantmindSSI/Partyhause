@@ -28,11 +28,9 @@ export default function ProfileScreen() {
 
   React.useEffect(() => {
     const getUserId = async () => {
-      // Reads the cached session from AsyncStorage. The previous version went
-      // through the Supabase stub, which is null on mobile because no
-      // EXPO_PUBLIC_SUPABASE_* values are configured, so this always bailed and
-      // currentUserId stayed null: the profile could never be recognised as
-      // the viewer's own.
+      // Reads the cached session from AsyncStorage. currentUserId decides
+      // whether this profile renders as the viewer's own, so a null here is
+      // not cosmetic: it hides every owner-only control on the screen.
       const user = await api.auth.getCachedUser();
       setCurrentUserId(user?.id ?? null);
     };
@@ -71,8 +69,11 @@ export default function ProfileScreen() {
   };
 
   const handleEditProfile = () => {
-    // Navigate to edit profile screen
-    router.push('/settings/profile' as any);
+    // The `as any` that used to be here suppressed a real type error: there was
+    // no app/settings/ directory, so this button reached expo-router's
+    // unmatched screen. The route exists now and the cast is gone, which means
+    // typed routes will catch it if the screen is ever moved again.
+    router.push('/settings/profile');
   };
 
   return (

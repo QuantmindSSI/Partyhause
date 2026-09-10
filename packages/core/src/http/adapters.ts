@@ -24,6 +24,8 @@ export interface TokenStorage {
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<void>;
   removeItem(key: string): Promise<void>;
+  /** Atomically clear token and user only when the current token matches. */
+  clearSessionIfToken?(expectedToken: string): Promise<boolean>;
 }
 
 /** One completed request, for observability. Never includes headers or bodies. */
@@ -55,7 +57,7 @@ export type Telemetry = (record: ApiCallRecord) => void;
  * navigation stack. The transport does not care which, and still returns a
  * normal error result to the caller so no request silently hangs.
  */
-export type UnauthorizedHandler = () => void | Promise<void>;
+export type UnauthorizedHandler = (rejectedToken?: string) => void | Promise<void>;
 
 /** Everything the client factory needs to bind itself to a platform. */
 export interface ApiClientConfig {
@@ -92,6 +94,12 @@ export function createMemoryStorage(): TokenStorage {
     },
     async removeItem(key) {
       map.delete(key);
+    },
+    async clearSessionIfToken(expectedToken) {
+      if (map.get(STORAGE_KEYS.token) !== expectedToken) return false;
+      map.delete(STORAGE_KEYS.token);
+      map.delete(STORAGE_KEYS.user);
+      return true;
     },
   };
 }

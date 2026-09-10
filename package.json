@@ -8,7 +8,6 @@
     "npm": ">=8.0.0"
   },
   "workspaces": [
-    "apps/*",
     "packages/*"
   ],
   "scripts": {
@@ -17,19 +16,23 @@
     "build:web": "npx vite build",
     "build:mobile": "node ./scripts/build-mobile-pwa.cjs",
     "typecheck": "npx tsc -p tsconfig.app.json && npx tsc -p tsconfig.node.json && npx tsc -p tsconfig.server.json && npx tsc -p packages/core/tsconfig.json && npx tsc --noEmit -p apps/mobile/tsconfig.json",
-    "build:check": "npm run typecheck && npm run audit:contracts && npx vite build",
+    "build:check": "npm run typecheck && npm run audit:contracts && npm run icons:mobile:check && npx vite build",
     "lint": "eslint .",
     "preview": "npx vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:migrations": "prisma migrate deploy && prisma db execute --file prisma/migrations/20260905000100_database_functions/migration.sql && prisma db execute --file prisma/migrations/20260905000100_database_functions/migration.sql && prisma migrate deploy && node scripts/verify-migration-invariants.cjs && npx tsx scripts/verify-mvp-concurrency.ts && npx tsx scripts/verify-signup-transaction.ts && prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code",
     "test:coverage": "vitest run --coverage",
-    "smoke-test:migration": "node ./scripts/smoke-test-migration.js",
     "server": "tsx server/index.ts",
     "dev:api": "tsx watch server/dev-api.ts",
     "dev:docker": "docker-compose up --build",
     "audit:endpoints": "node scripts/audit-endpoints.cjs",
-    "audit:contracts": "node scripts/audit-contracts.cjs"
+    "audit:contracts": "node scripts/audit-contracts.cjs",
+    "icons:mobile": "node scripts/generate-mobile-icons.mjs",
+    "icons:mobile:check": "node scripts/generate-mobile-icons.mjs --check"
   },
   "dependencies": {
     "@azure/communication-email": "^1.1.0",
@@ -98,6 +101,7 @@
     "zustand": "^4.4.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.8.0",
     "@testing-library/react": "^16.3.0",

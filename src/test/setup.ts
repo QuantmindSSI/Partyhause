@@ -28,23 +28,77 @@ configure({ asyncUtilTimeout: 5000 })
 // Mock framer-motion components FIRST to avoid animation issues
 vi.mock('framer-motion', () => {
   const React = require('react');
+
+  // framer-motion's animation props are not valid DOM attributes. Forwarding
+  // them produces a React "unknown prop" warning per element per render,
+  // which buries real warnings, so they are stripped here rather than in
+  // every suite that renders an animated component.
+  const MOTION_ONLY_PROPS = new Set([
+    'initial', 'animate', 'exit', 'transition', 'variants', 'viewport',
+    'whileHover', 'whileTap', 'whileFocus', 'whileInView', 'whileDrag',
+    'layout', 'layoutId', 'drag', 'dragConstraints', 'onAnimationStart',
+    'onAnimationComplete', 'custom',
+  ]);
+
+  const stripMotionProps = (props: any) => {
+    if (!props) return props;
+    const next: Record<string, unknown> = {};
+    for (const key of Object.keys(props)) {
+      if (!MOTION_ONLY_PROPS.has(key)) next[key] = props[key];
+    }
+    return next;
+  };
+
+  const motionTag = (tag: string) => (props: any) =>
+    React.createElement(tag, stripMotionProps(props), props?.children);
+
+  // A MotionValue is only ever read through `style` here, and jsdom does no
+  // layout, so a plain object with the same read surface is sufficient.
+  const motionValue = (value: number) => ({
+    get: () => value,
+    set: vi.fn(),
+    onChange: () => () => {},
+    on: () => () => {},
+    destroy: vi.fn(),
+  });
+
   return {
     motion: {
-      div: (props: any) => React.createElement('div', props, props.children),
-      h1: (props: any) => React.createElement('h1', props, props.children),
-      header: (props: any) => React.createElement('header', props, props.children),
-      button: (props: any) => React.createElement('button', props, props.children),
-      p: (props: any) => React.createElement('p', props, props.children),
-      span: (props: any) => React.createElement('span', props, props.children),
-      form: (props: any) => React.createElement('form', props, props.children),
-      input: (props: any) => React.createElement('input', props, props.children),
-      label: (props: any) => React.createElement('label', props, props.children),
+      div: motionTag('div'),
+      h1: motionTag('h1'),
+      h2: motionTag('h2'),
+      h3: motionTag('h3'),
+      header: motionTag('header'),
+      nav: motionTag('nav'),
+      section: motionTag('section'),
+      article: motionTag('article'),
+      button: motionTag('button'),
+      a: motionTag('a'),
+      p: motionTag('p'),
+      span: motionTag('span'),
+      ul: motionTag('ul'),
+      li: motionTag('li'),
+      form: motionTag('form'),
+      input: motionTag('input'),
+      label: motionTag('label'),
+      footer: motionTag('footer'),
     },
     AnimatePresence: (props: any) => props.children,
-    useAnimation: () => ({
-      start: vi.fn(),
-      stop: vi.fn(),
+    useAnimation: () => ({ start: vi.fn(), stop: vi.fn() }),
+    useScroll: () => ({
+      scrollY: motionValue(0),
+      scrollYProgress: motionValue(0),
+      scrollX: motionValue(0),
+      scrollXProgress: motionValue(0),
     }),
+    useTransform: (_source: unknown, _input: unknown, output: unknown) =>
+      motionValue(Array.isArray(output) ? (output[0] as number) : 0),
+    useMotionValue: (initial: number) => motionValue(initial),
+    useSpring: (initial: number) => motionValue(initial),
+    // Default to "motion is fine". Suites that need the reduced-motion branch
+    // override this module locally.
+    useReducedMotion: () => false,
+    useInView: () => true,
   };
 })
 
@@ -87,73 +141,15 @@ React.createElement = (type: any, props: any, ...children: any[]) => {
   }
 }
 
-// Mock Supabase — post-migration: stubs that use localStorage for token storage
-vi.mock('@/lib/supabase', () => {
-  const TOKEN_KEY = 'partyhause_auth_token';
-  const USER_KEY = 'partyhause_auth_user';
+// `@/lib/auth-storage` is deliberately NOT mocked.
+//
+// It is five functions over localStorage with no SDK and no network, and this
+// file installs a real localStorage below. A mock here would be a second
+// implementation of the same behaviour, free to drift from the real one, and
+// drift in the module that decides "am I signed in" is the expensive kind.
+// Suites that need the calls observable install their own vi.fn() mock.
 
-  const getStoredToken = () => localStorage.getItem(TOKEN_KEY);
-  const setStoredToken = (token: string | null) => {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
-  };
-  const getStoredUser = () => {
-    try {
-      const raw = localStorage.getItem(USER_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch { return null; }
-  };
-  const setStoredUser = (user: any) => {
-    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
-    else localStorage.removeItem(USER_KEY);
-  };
-  const clearAuth = () => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
-  };
-
-  return {
-    supabase: {
-      auth: {
-        getSession: async () => {
-          const token = getStoredToken();
-          const user = getStoredUser();
-          return { data: { session: token && user ? { access_token: token, user } : null } };
-        },
-        getUser: async () => ({ data: { user: getStoredUser() } }),
-        signOut: async () => { clearAuth(); return { error: null }; },
-        signInWithPassword: vi.fn().mockResolvedValue({ data: { user: null, session: null }, error: null }),
-        signUp: vi.fn().mockResolvedValue({ data: { user: null, session: null }, error: null }),
-        onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
-        updateUser: async () => ({ data: { user: null }, error: null }),
-        resetPasswordForEmail: async () => ({ error: null }),
-        verifyOtp: async () => ({ error: null }),
-      },
-      from: () => ({
-        select: () => ({
-          eq: () => ({
-            single: async () => ({ data: null, error: new Error('disabled') }),
-            order: () => ({ limit: () => Promise.resolve({ data: [], error: null }) }),
-          }),
-          or: () => ({ order: () => Promise.resolve({ data: [], error: null }) }),
-          order: () => Promise.resolve({ data: [], error: null }),
-        }),
-        insert: () => ({ select: () => ({ single: async () => ({ data: null, error: new Error('disabled') }) }) }),
-        update: () => ({ eq: () => ({ select: () => ({ single: async () => ({ data: null, error: new Error('disabled') }) }) }) }),
-        delete: () => ({ eq: () => Promise.resolve({ data: null, error: null }) }),
-        rpc: () => Promise.resolve({ data: null, error: new Error('disabled') }),
-      }),
-    },
-    isSupabaseConfigured: false,
-    getStoredToken,
-    setStoredToken,
-    getStoredUser,
-    setStoredUser,
-    clearAuth,
-  };
-})
-
-// Real localStorage for jsdom (used by supabase stub for token storage)
+// Real localStorage for jsdom (backs @/lib/auth-storage)
 let store: Record<string, string> = {};
 global.localStorage = {
   getItem: (key: string) => store[key] ?? null,
@@ -336,16 +332,6 @@ vi.mock('@/hooks/use-auth', () => ({
 
 // Also mock the aggregate '@/lib' index import so modules that import from '@/lib' resolve
 vi.mock('@/lib', () => ({
-  // lightweight supabase auth mock
-  supabase: {
-    auth: {
-      signInWithPassword: vi.fn().mockResolvedValue({ data: { user: null, session: null }, error: null }),
-      signUp: vi.fn().mockResolvedValue({ data: { user: null, session: null }, error: null }),
-      signOut: vi.fn().mockResolvedValue({ error: null }),
-      getSession: vi.fn().mockResolvedValue({ data: { session: null }, error: null }),
-      onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
-    }
-  },
   // reuse a mocked eventService shape
   eventService: {
     getUserEvents: vi.fn(async (userId: string) => []),

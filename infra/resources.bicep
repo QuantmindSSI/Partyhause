@@ -54,6 +54,11 @@ param linkCustomEmailDomain bool = false
 @secure()
 param jwtSecret string
 
+@description('HMAC key for deterministic invitation tokens (secret)')
+@secure()
+@minLength(32)
+param invitationTokenSecret string
+
 // ===== Auth (Microsoft Entra External ID / Azure AD B2C) =====
 @description('Entra External ID (B2C) tenant id')
 param entraTenantId string
@@ -66,6 +71,7 @@ param entraApiClientId string
 param entraApiClientSecret string
 
 @description('Entra External ID (B2C) SPA app (web) client id')
+#disable-next-line no-unused-params
 param entraSpaClientId string
 
 @description('B2C user-flow signup-signin policy name (e.g. B2C_1_susi)')
@@ -320,6 +326,7 @@ module apiApp 'modules/container-app.bicep' = {
       { name: 'WEBPUBSUB_ENDPOINT', value: webPubSub.outputs.endpoint }
       { name: 'WEBPUBSUB_CONNECTION_STRING', secretRef: 'webpubsub-connection-string' }
       { name: 'JWT_SECRET', secretRef: 'jwt-secret' }
+      { name: 'INVITATION_TOKEN_SECRET', secretRef: 'invitation-token-secret' }
       { name: 'ENTRA_TENANT_ID', value: entraTenantId }
       { name: 'ENTRA_API_CLIENT_ID', value: entraApiClientId }
       { name: 'ENTRA_API_CLIENT_SECRET', secretRef: 'entra-api-client-secret' }
@@ -360,6 +367,7 @@ module apiApp 'modules/container-app.bicep' = {
       { name: 'webpubsub-connection-string', value: webPubSub.outputs.primaryConnectionString }
       { name: 'acs-connection-string', value: communicationService.listKeys().primaryConnectionString }
       { name: 'jwt-secret', value: jwtSecret }
+      { name: 'invitation-token-secret', value: invitationTokenSecret }
       { name: 'entra-api-client-secret', value: entraApiClientSecret }
       { name: 'resend-api-key', value: RESEND_API_KEY }
       { name: 'azure-openai-api-key', value: openai.listKeys().key1 }

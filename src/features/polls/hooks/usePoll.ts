@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Poll, VoteData, CreatePollData } from '../types';
-import { supabase } from '@/lib/supabase';
+import { getStoredToken } from '@/lib/auth-storage';
 import { getApiBaseUrl } from '@/lib/apiBase';
 
 interface UsePollOptions {
@@ -26,12 +26,12 @@ export const usePoll = ({ eventId, pollId, autoRefresh = false }: UsePollOptions
     setError(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const token = getStoredToken();
       
       const response = await fetch(`${API_BASE}/api/polls?eventId=${encodeURIComponent(id)}`, {
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
+          'Authorization': `Bearer ${token ?? ''}`,
         },
       });
 
@@ -57,12 +57,12 @@ export const usePoll = ({ eventId, pollId, autoRefresh = false }: UsePollOptions
     setError(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const token = getStoredToken();
       
       const response = await fetch(`${API_BASE}/api/polls/${encodeURIComponent(id)}`, {
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
+          'Authorization': `Bearer ${token ?? ''}`,
         },
       });
 
@@ -85,13 +85,13 @@ export const usePoll = ({ eventId, pollId, autoRefresh = false }: UsePollOptions
     setError(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const token = getStoredToken();
       
       const response = await fetch(`${API_BASE}/api/polls`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
+          'Authorization': `Bearer ${token ?? ''}`,
         },
         body: JSON.stringify({
           event_id: eventIdParam,
@@ -126,13 +126,13 @@ export const usePoll = ({ eventId, pollId, autoRefresh = false }: UsePollOptions
     setError(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const token = getStoredToken();
       
       const response = await fetch(`${API_BASE}/api/polls/${encodeURIComponent(pollIdParam)}/vote`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
+          'Authorization': `Bearer ${token ?? ''}`,
         },
         body: JSON.stringify(voteData),
       });
@@ -169,13 +169,13 @@ export const usePoll = ({ eventId, pollId, autoRefresh = false }: UsePollOptions
     setError(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const token = getStoredToken();
       
       const response = await fetch(`${API_BASE}/api/polls/${encodeURIComponent(pollIdParam)}/close`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
+          'Authorization': `Bearer ${token ?? ''}`,
         },
       });
 
