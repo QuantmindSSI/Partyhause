@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { setStoredUser } from '@/lib/auth-storage';
 import { usePartyStore, type UserRole } from '@/store/usePartyStore';
 import { Ticket, Sparkles, Briefcase, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -60,6 +61,21 @@ export const RoleSelection = () => {
     setSaving(true);
     try {
       usePartyStore.getState().setUser({ ...user, role: selected });
+
+      // The choice is also written to the cached user, and that is what makes
+      // it survive a refresh. `use-auth.ts` re-runs `setUser(getStoredUser())`
+      // on every mount, and the store coerces a missing role to 'user', so a
+      // role held only in memory or only in zustand's persisted state is
+      // silently discarded on the next page load. Before this, upgrading to
+      // Creator and pressing reload put the host back on the attendee
+      // dashboard with no way to reach event creation.
+      setStoredUser({
+        id: user.id,
+        email: user.email ?? '',
+        name: user.name,
+        role: selected,
+      });
+
       const page = selected === 'creator' ? 'creator-dashboard'
                  : selected === 'vendor'  ? 'vendor-dashboard'
                  : 'user-dashboard';

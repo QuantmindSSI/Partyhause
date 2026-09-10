@@ -35,7 +35,25 @@ export interface StoredUser {
   id: string;
   email: string;
   name?: string;
+  /**
+   * Which dashboard this account uses: attendee, creator or vendor.
+   *
+   * Cached here despite the rule above about not caching anything that can go
+   * stale, because there is nothing to go stale against. The server has no
+   * `role` column on `users` and `/api/auth/me` does not return one; the role
+   * exists only in the browser.
+   *
+   * It has to live in THIS object specifically. `src/hooks/use-auth.ts` calls
+   * `setUser(getStoredUser())` on every mount, and the store's `setUser`
+   * normalizes a missing role to `'user'`. So a role kept anywhere else,
+   * including zustand's own persisted `party-store`, is overwritten on the
+   * next page load: a host who upgraded to Creator was silently demoted to
+   * Attendee by refreshing, losing the only route to the create-event screen.
+   */
+  role?: 'user' | 'creator' | 'vendor';
 }
+
+const ROLES = new Set(['user', 'creator', 'vendor']);
 
 /**
  * Reads the bearer token.
@@ -86,6 +104,13 @@ export function getStoredUser(): StoredUser | null {
       id: candidate.id,
       email: candidate.email,
       name: typeof candidate.name === 'string' ? candidate.name : undefined,
+      // An unrecognised role degrades to undefined rather than being passed
+      // through. The store would coerce it to 'user' anyway, and a value
+      // outside the union would widen the type for every consumer downstream.
+      role:
+        typeof candidate.role === 'string' && ROLES.has(candidate.role)
+          ? candidate.role
+          : undefined,
     };
   } catch {
     return null;

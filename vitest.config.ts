@@ -8,6 +8,19 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: true,
+    // Vitest owns `src/`, Playwright owns `e2e/`. Stated explicitly because the
+    // two runners claim overlapping filenames: vitest's default `include` is
+    // `**/*.{test,spec}.?(c|m)[jt]s?(x)`, which swallows `e2e/*.spec.ts` and
+    // then fails to collect it with "Playwright Test did not expect
+    // test.describe() to be called here". That is a confusing way to learn the
+    // suites are not separated, and it turned `npm run test:run` red without a
+    // single assertion having failed.
+    //
+    // `include` alone is what fixes it; `exclude` restates the boundary from
+    // the other side so that a future suite added outside `src/` fails by being
+    // ignored rather than by poisoning this run. Both are kept deliberately.
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    exclude: ['node_modules/**', 'dist/**', 'e2e/**'],
     // Vitest's per-test budget, raised from its 5000ms default.
     //
     // src/test/setup.ts sets testing-library's asyncUtilTimeout to 5000ms so a

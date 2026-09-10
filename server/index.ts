@@ -23,6 +23,13 @@ import { prisma } from './lib/prisma';
 import { requireAuth, type AuthenticatedRequest } from './middleware/auth';
 import { getEventAccess, canReadEvent, canInviteGuests } from './lib/event-access';
 import { startRetentionSweeper } from './lib/retention';
+import {
+  CorsOriginError,
+  isOriginAllowed,
+  parseAllowedOrigins,
+  type CorsPolicy,
+} from './lib/cors-policy';
+import { describeError, logFor } from './lib/error-response';
 
 /** Upper bound on a single send. Bulk invitations page through this. */
 const MAX_EMAIL_RECIPIENTS = 100;
@@ -212,31 +219,27 @@ const emailLimiter = rateLimit({
 // resolution and client caching all happen there, so this file no longer
 // constructs a provider client of its own.
 
-// CORS
-const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+// CORS. The decision itself lives in ./lib/cors-policy so it can be tested
+// against the real implementation rather than a copy of it.
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+const corsPolicy: CorsPolicy = {
+  allowedOrigins: parseAllowedOrigins(process.env.CORS_ALLOWED_ORIGINS),
+  // Production fails closed on an unset variable; development stays open so
+  // :5173 can still call :3001. Both cases are argued in cors-policy.ts.
+  allowAnyOriginWhenUnset: !IS_PRODUCTION,
+};
+const allowedOrigins = corsPolicy.allowedOrigins;
 
 const corsOptions: cors.CorsOptions = {
   origin(origin, cb) {
-    if (!origin) return cb(null, true);
-    if (allowedOrigins.length === 0 || allowedOrigins.includes('*')) {
-      return cb(null, true);
-    }
-    if (allowedOrigins.includes(origin)) {
-      return cb(null, true);
-    }
-    return cb(new Error(`CORS: origin ${origin} not allowed`));
+    if (isOriginAllowed(origin, corsPolicy)) return cb(null, true);
+    return cb(new CorsOriginError(origin ?? ''));
   },
   credentials: true,
 };
 
 app.use(cors(corsOptions));
-// Behind Azure Container Apps ingress: exactly one trusted proxy hop, so
-// req.ip reflects the client (required for per-IP rate limiting) without
-// letting clients spoof arbitrary X-Forwarded-For chains.
-app.set('trust proxy', 1);
 
 app.use(
   express.json({
@@ -418,12 +421,38 @@ app.use('/api', (_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// Global error handler
+/**
+ * Global error handler.
+ *
+ * Two things it must not do, both of which it used to.
+ *
+ * It answered every error with 500, including a refused cross-origin request,
+ * which is a client mistake and is now 403. That matters beyond tidiness: a
+ * 500 is what monitoring escalates on, so stray origins probing the API read
+ * as server faults.
+ *
+ * It also returned `err.message` verbatim to the caller in production. A CORS
+ * message is harmless, but this handler is the terminus for *every* unhandled
+ * throw, and Prisma is the layer most likely to reach it: its errors carry
+ * table names, column names, constraint names and, on a uniqueness violation,
+ * the conflicting value. That is a description of the schema, handed to an
+ * anonymous caller, for free.
+ *
+ * The message is still logged in full, always. It moves from the response to
+ * the log rather than disappearing, so operators keep what they need and the
+ * client is told only that something failed. Outside production it is still
+ * returned, because that is where a developer reads it from the response and
+ * there is nothing to disclose.
+ */
 app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
   void next;
-  console.error('Unhandled error:', err);
-  const message = err instanceof Error ? err.message : undefined;
-  res.status(500).json({ error: 'Internal server error', message });
+
+  const log = logFor(err);
+  if (log.level === 'warn') console.warn(log.message);
+  else console.error(log.message, log.detail);
+
+  const { status, body } = describeError(err, IS_PRODUCTION);
+  res.status(status).json(body);
 });
 
 // Fail closed before binding the listener. Authentication and invitation

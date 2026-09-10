@@ -43,6 +43,15 @@ node_modules/
 # Local Netlify folder
 .netlify
 
+# Playwright output. e2e/.artifacts holds traces and screenshots from failed
+# runs and is written by playwright.config.ts `outputDir`; a single trace.zip
+# is around 11 MB, so committing them would bloat history for output that is
+# only meaningful next to the run that produced it.
+e2e/.artifacts/
+playwright-report/
+blob-report/
+.playwright/
+
 # Mobile app build artifacts (not deploying mobile version)
 apps/mobile/dist/
 apps/mobile/.expo/
