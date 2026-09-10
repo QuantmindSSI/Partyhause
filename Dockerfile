@@ -3,7 +3,18 @@ FROM node:22.22.0-slim AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# --legacy-peer-deps is required, not defensive. The lockfile is written by a
+# resolver running with that flag, and bare `npm ci` recomputes an ideal tree
+# that disagrees with it, then refuses to install:
+#
+#   Invalid: lock file's picomatch@2.3.2 does not satisfy picomatch@4.0.7
+#   Missing: picomatch@2.3.2 from lock file
+#
+# which reads as a corrupt lockfile and is not one. The same lockfile installs
+# cleanly with the flag. AGENTS.md documents it for local installs; every
+# automated install path had omitted it, so this image could not be built at
+# all until 2026-09-10.
+RUN npm ci --legacy-peer-deps
 
 COPY . .
 

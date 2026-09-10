@@ -45,8 +45,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
+      # --legacy-peer-deps is required. The lockfile is written by a resolver
+      # running with that flag; bare `npm ci` recomputes a conflicting tree and
+      # fails on picomatch, which looks like a corrupt lockfile and is not one.
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       # @prisma/client ships as a stub whose types are written by `generate`.
       # Without this step the package exports nothing, and typechecking
