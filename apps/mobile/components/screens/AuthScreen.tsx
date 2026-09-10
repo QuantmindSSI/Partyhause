@@ -108,6 +108,117 @@ export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) 
     });
   };
 
+  /**
+   * Sign in. This is the only path that produces a session.
+   *
+   * The client has persisted the token and the cached user together by the
+   * time this resolves, so handing control to `onAuthSuccess` is safe here.
+   */
+  const performSignIn = async () => {
+    const { error } = await api.auth.signIn(email.trim(), password.trim());
+
+    if (error) {
+      // A correct password on an unconfirmed address is not a credential
+      // failure and must not be shown as one: the remedy is a resend, not a
+      // retry. The server marks it explicitly rather than leaving the client
+      // to guess from a status code.
+      if (error.code === 'EMAIL_NOT_VERIFIED') {
+        setUnverifiedEmail(email.trim());
+        setRecoveryOpen(false);
+        setMessage({
+          type: 'error',
+          text: 'Your password was correct, but this email has not been confirmed yet.',
+        });
+        return;
+      }
+      setUnverifiedEmail(null);
+      setMessage({ type: 'error', text: error.message });
+      return;
+    }
+
+    setMessage({ type: 'success', text: 'Welcome back!' });
+    onAuthSuccess();
+  };
+
+  /**
+   * Create an account. This deliberately does NOT sign the user in.
+   *
+   * `POST /api/auth/signup` returns no token on purpose
+   * (`server/routes/auth.ts:347-350`): the address has to be confirmed first,
+   * because the route previously handed a 7-day credential to a mailbox nobody
+   * had proven they controlled.
+   *
+   * This used to call `onAuthSuccess()` under a message reading "Signing you
+   * in...". That ran `checkAuth`, which found no token, and dropped the new
+   * user back on the marketing landing screen with the message unmounted
+   * before it could be read. The server's own instruction, "check your email",
+   * sat unread on `result.data.message`. An App Store reviewer creating a test
+   * account hit that on their first interaction.
+   *
+   * So: switch to the sign-in form, seed `unverifiedEmail` so the resend panel
+   * is already open, and say what actually happened.
+   */
+  const performSignUp = async () => {
+    // Precondition, re-asserted at the point of use. `SignupConsent.ageEligible`
+    // is typed as the literal `true`, not `boolean`, so a consent record
+    // claiming otherwise is unrepresentable. Checking here rather than casting
+    // keeps that guarantee real, and makes this function safe to call
+    // independently of the submit guard in handleAuth.
+    if (!ageEligible || !legalAccepted) {
+      setMessage({
+        type: 'error',
+        text: `Confirm you are at least ${MINIMUM_ACCOUNT_AGE} and accept the Terms and Privacy Policy.`,
+      });
+      return;
+    }
+
+    const address = email.trim();
+    const { data, error } = await api.auth.signUp(
+      address,
+      password.trim(),
+      name.trim() || address.split('@')[0],
+      {
+        // The captured value, not a literal `true`. The submit guard above
+        // already blocks an unchecked box, but recording consent the user did
+        // not give would make the stored attestation a false one.
+        ageEligible,
+        termsVersion: CURRENT_TERMS_VERSION,
+        privacyVersion: CURRENT_PRIVACY_VERSION,
+      },
+    );
+
+    if (error) {
+      setUnverifiedEmail(null);
+      setMessage({ type: 'error', text: error.message });
+      return;
+    }
+
+    // Move to the sign-in form with the confirmation panel already showing.
+    setIsLogin(true);
+    setPassword('');
+    setAgeEligible(false);
+    setLegalAccepted(false);
+    setRecoveryOpen(false);
+    setUnverifiedEmail(address);
+
+    // 'unavailable' means the account exists but no mail went out. Reporting
+    // that as success would send the user to an inbox that will stay empty.
+    if (data?.verificationDelivery === 'unavailable') {
+      setMessage({
+        type: 'error',
+        text: `Account created, but the confirmation email to ${address} could not be sent. Use "Resend confirmation email" below.`,
+      });
+      return;
+    }
+
+    setMessage({
+      type: 'success',
+      text:
+        data?.message ??
+        `Account created. Check ${address} for a confirmation link, then sign in.`,
+    });
+  };
+
   const handleAuth = async () => {
     if (!email.trim() || !password.trim()) {
       setMessage({ type: 'error', text: 'Please enter email and password' });
@@ -131,53 +242,14 @@ export const AuthScreen = ({ onBackToLanding, onAuthSuccess }: AuthScreenProps) 
     setMessage(null);
 
     try {
-      // Both branches go through the shared client, which persists the
-      // token and the cached user together on success and writes nothing on
-      // failure.
-      const result = isLogin
-        ? await api.auth.signIn(email.trim(), password.trim())
-        : await api.auth.signUp(
-            email.trim(),
-            password.trim(),
-            name.trim() || email.split('@')[0],
-            {
-              ageEligible: true,
-              termsVersion: CURRENT_TERMS_VERSION,
-              privacyVersion: CURRENT_PRIVACY_VERSION,
-            },
-          );
-
-      if (result.error) {
-        // A correct password on an unconfirmed address is not a credential
-        // failure and must not be shown as one: the remedy is a resend, not a
-        // retry. The server marks it explicitly rather than leaving the client
-        // to guess from a status code.
-        if (result.error.code === 'EMAIL_NOT_VERIFIED') {
-          setUnverifiedEmail(email.trim());
-          setRecoveryOpen(false);
-          setMessage({
-            type: 'error',
-            text: 'Your password was correct, but this email has not been confirmed yet.',
-          });
-          return;
-        }
-        setUnverifiedEmail(null);
-        setMessage({ type: 'error', text: result.error.message });
-        return;
+      // The two flows are deliberately not a ternary any more. They differ in
+      // the one way that matters: sign-in establishes a session and sign-up
+      // does not, so they cannot share a success path.
+      if (isLogin) {
+        await performSignIn();
+      } else {
+        await performSignUp();
       }
-
-      setMessage({
-        type: 'success',
-        text: isLogin ? 'Welcome back!' : 'Account created. Signing you in...',
-      });
-
-      // Navigation is explicit. There is no auth-state event stream to
-      // subscribe to: the token changes only when this screen signs in or
-      // out, both local actions, so a listener would be a slower way to
-      // observe something already known here. The client has
-      // already persisted the token to AsyncStorage by this point, so the
-      // session is durable before we hand control back.
-      onAuthSuccess();
     } catch (error: unknown) {
       setMessage({
         type: 'error',

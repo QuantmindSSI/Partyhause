@@ -10,7 +10,31 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import type { TimelineBlock } from '@partyhause/core';
 import { api } from '@/lib/client';
+
+/**
+ * Turn the wizard's "HH:MM" onto the event's day as an absolute instant.
+ *
+ * `POST /api/timeline` stores a DateTime, so it passes whatever arrives to
+ * `new Date()`. A bare "18:30" is not a date and would become Invalid Date;
+ * sending an instant removes the ambiguity rather than relying on the server's
+ * locale.
+ *
+ * @param clock "HH:MM" from the timeline step, possibly malformed.
+ * @param day The event's start date as an ISO or date string.
+ * @returns An ISO-8601 timestamp.
+ */
+function toIsoStart(clock: string, day: string): string {
+  const base = new Date(day);
+  const anchor = Number.isNaN(base.getTime()) ? new Date() : base;
+
+  const [hours, minutes] = clock.split(':').map(Number);
+  if (Number.isInteger(hours) && Number.isInteger(minutes)) {
+    anchor.setHours(hours, minutes, 0, 0);
+  }
+  return anchor.toISOString();
+}
 
 export default function ReviewScreen() {
   const router = useRouter();
@@ -197,25 +221,48 @@ export default function ReviewScreen() {
           }
           
           if (timeline.length > 0) {
-            // Written onto the event, not to POST /api/timeline.
+            // Written to /api/timeline, not onto the event's JSON column.
             //
-            // That endpoint creates ONE block from
-            // `{ eventId, label, startTime, duration, type }` in camelCase and
-            // writes it to the `timeline_blocks` table. This was sending
-            // `{ event_id, blocks: [...] }`, so it failed validation with a
-            // 400 every time and the schedule was silently lost, swallowed by
-            // the surrounding catch.
+            // History, because this has now been wrong twice. It originally
+            // sent `{ event_id, blocks: [...] }` to POST /api/timeline, which
+            // creates ONE block and validates different field names, so it
+            // 400'd every time and the schedule was lost inside the catch
+            // below. The fix at the time was to write the JSON column instead,
+            // on the grounds that the relational table was the one nothing
+            // read.
             //
-            // Even had it been shaped correctly, it would have written to a
-            // table nothing reads: the live schedule is the
-            // `events.timeline_blocks` JSON column, which is what the
-            // activities screen renders.
-            const { error: timelineError } = await api.events.update(eventId, {
-              timeline_blocks: timeline,
-            });
+            // That is no longer true, and the JSON column is the wrong target:
+            // `serialiseEvent` withholds it from every client including the
+            // host, deliberately, because it cannot express `guest_visible` or
+            // `host_notes`. So a schedule written there is invisible to the
+            // activities screen, which is the only screen that shows it. The
+            // relational table is the representation that carries visibility,
+            // and the route filters on it per viewer.
+            //
+            // One request per block, because the route creates one block per
+            // call. The loop is bounded by the wizard's own list, which is
+            // built by hand a block at a time.
+            const failures: string[] = [];
+            for (const block of timeline as Array<Record<string, unknown>>) {
+              const { error: blockError } = await api.timeline.create({
+                event_id: eventId,
+                label: String(block.label ?? ''),
+                start_time: toIsoStart(String(block.start_time ?? ''), startDate),
+                duration: Number(block.duration ?? 0),
+                type: block.type as TimelineBlock['type'],
+                guest_visible: true,
+              });
+              if (blockError) failures.push(`${String(block.label)}: ${blockError.message}`);
+            }
 
-            if (timelineError) {
-              console.error('[Review] Failed to save timeline:', timelineError.message);
+            if (failures.length > 0) {
+              // Reported, not swallowed. The event itself was created, so this
+              // is a partial success and the host needs to know which part.
+              console.error('[Review] Timeline blocks rejected:', failures.join('; '));
+              Alert.alert(
+                'Event created, schedule incomplete',
+                `${failures.length} of ${timeline.length} activities could not be saved. You can add them from the event's Activities screen.`,
+              );
             }
           }
         } catch (error) {

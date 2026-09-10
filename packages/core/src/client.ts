@@ -17,6 +17,8 @@ import { createTransport } from './http/transport';
 import type { Transport, ApiResponse, RequestOptions } from './http/transport';
 import { createAuthResource } from './resources/auth';
 import type { AuthResource } from './resources/auth';
+import { createAccountResource } from './resources/account';
+import type { AccountResource } from './resources/account';
 import {
   createEventsResource, createGuestsResource, createTimelineResource,
   createPollsResource, createPartyCrewResource, createUsersResource, createFeedResource,
@@ -31,6 +33,17 @@ import type {
 
 export interface ApiClient {
   auth: AuthResource;
+  /**
+   * Account summary, legal versions, and permanent deletion.
+   *
+   * This was written and then never reachable: `createAccountResource` existed
+   * with a full deletion flow while this interface had no `account` member and
+   * the factory below never called it, so no client could delete an account.
+   * App Store guideline 5.1.1(v) requires in-app deletion of any app that
+   * creates accounts, which made the omission a submission blocker rather than
+   * a missing convenience.
+   */
+  account: AccountResource;
   events: EventsResource;
   guests: GuestsResource;
   timeline: TimelineResource;
@@ -61,6 +74,7 @@ export function createApiClient(config: ApiClientConfig): ApiClient {
   const transport: Transport = createTransport(config);
   return {
     auth: createAuthResource(transport),
+    account: createAccountResource(transport),
     events: createEventsResource(transport),
     guests: createGuestsResource(transport),
     timeline: createTimelineResource(transport),

@@ -50,6 +50,8 @@ export type {
   StorageResource, EmailResource, EmailLogsResource,
   EventStats, EventWithStats,
   GuestCreateInput, GuestUpdateInput, EmailLog, EmailLogInput,
+  UserProfileUpdate,
+  TimelineBlockInput,
   CrewStatus, CrewConnection, CrewRequest, CrewToggleResult, CrewMembersPage, CrewingWithPage, CrewRequestsPage,
   PostComment,
   PostCommentAuthor,

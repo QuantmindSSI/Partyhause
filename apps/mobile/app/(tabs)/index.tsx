@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { useFocusEffect } from "expo-router";
 import { api } from "@/lib/client";
 import { LandingScreen } from "@/components/screens/LandingScreenEnhanced";
 import { AuthScreen } from "@/components/screens/AuthScreen";
@@ -12,15 +13,6 @@ export default function HomeScreen() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
-  // There is deliberately no auth-state subscription here.
-  // There is no event stream: the JWT lives in AsyncStorage and changes
-  // only when this app signs in or out, both of which are local actions we
-  // already observe. Checking once on mount is sufficient and removes a
-  // subscription that returned a no-op unsubscribe anyway.
-  useEffect(() => {
-    void checkAuth();
-  }, []);
-
   /**
    * Establish whether a usable session exists.
    *
@@ -30,7 +22,7 @@ export default function HomeScreen() {
    * against /api/auth/me, and a rejection is treated as signed out. The
    * transport clears the stored credentials on 401, so no stale token lingers.
    */
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     if (!(await api.auth.isAuthenticated())) {
       setAppMode("landing");
       return;
@@ -47,7 +39,19 @@ export default function HomeScreen() {
     setUserId(data.id);
     setUserEmail(data.email);
     setAppMode("dashboard");
-  };
+  }, []);
+
+  // On focus rather than on mount. This screen stays mounted while other
+  // routes are pushed over it, so a mount-only check could not observe a
+  // session ending elsewhere. Account deletion in /settings does exactly that:
+  // it destroys the account and clears the token, then returns here. Without a
+  // focus check the dashboard would still be rendered for a user who no longer
+  // exists, and every query on it would fail with 401.
+  useFocusEffect(
+    useCallback(() => {
+      void checkAuth();
+    }, [checkAuth]),
+  );
 
   const handleSignOut = async () => {
     // Clears the local session even if the network call fails, so a user can

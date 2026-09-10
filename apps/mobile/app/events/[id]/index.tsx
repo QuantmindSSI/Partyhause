@@ -561,16 +561,14 @@ export default function EventDetailsScreen() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          title: getEventTitle(event),
-            headerRight: () => (
-            <TouchableOpacity onPress={() => {/* TODO: Edit event */}}>
-              <Ionicons name="create-outline" size={24} color="#9333ea" />
-            </TouchableOpacity>
-          ),
-        }}
-      />
+      {/* headerRight carried an edit-event button whose handler was an empty
+          block. It was doubly dead: `_layout.tsx` sets `headerShown: false`
+          both globally and for this screen, so the header hosting it never
+          rendered. Removed rather than implemented, because a control nobody
+          could reach is not a missing feature. `title` is kept to match the
+          loading and error branches above, and is what would appear if the
+          header were ever enabled. */}
+      <Stack.Screen options={{ title: getEventTitle(event) }} />
 
       <ScrollView style={styles.content}>
         {/* Event Header */}

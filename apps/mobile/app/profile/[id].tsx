@@ -69,8 +69,11 @@ export default function ProfileScreen() {
   };
 
   const handleEditProfile = () => {
-    // Navigate to edit profile screen
-    router.push('/settings/profile' as any);
+    // The `as any` that used to be here suppressed a real type error: there was
+    // no app/settings/ directory, so this button reached expo-router's
+    // unmatched screen. The route exists now and the cast is gone, which means
+    // typed routes will catch it if the screen is ever moved again.
+    router.push('/settings/profile');
   };
 
   return (

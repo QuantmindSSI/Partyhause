@@ -144,9 +144,14 @@ export function PartyCrewFeedScreen() {
         <Text style={styles.emptyText}>
           Join some creators to see their events, tips, and party content in your feed
         </Text>
+        {/* Was `/(tabs)/explore`, a tab deleted on 2026-09-05. This call site
+            was not updated, so the primary control of the empty state led to
+            expo-router's unmatched screen, two taps from a cold launch. It now
+            points at /discover, which lists real suggestions from
+            GET /api/users/suggested. */}
         <TouchableOpacity
           style={styles.exploreButton}
-          onPress={() => router.push('/(tabs)/explore')}
+          onPress={() => router.push('/discover')}
         >
           <Text style={styles.exploreButtonText}>Explore Creators</Text>
         </TouchableOpacity>

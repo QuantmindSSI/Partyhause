@@ -278,26 +278,33 @@ export const LandingScreen = ({ onGetStarted, onSignIn }: LandingScreenProps) =>
           </View>
         </View>
 
-        {/* Social Proof Section */}
+        {/* What the app actually does.
+            This block previously claimed "10k+ Events Created", "50k+ Happy
+            Guests" and a "4.9★ Rating", above the line "Join thousands of
+            hosts". All four were hardcoded literals with no data source behind
+            them, on the first screen of the app. App Store guideline 2.3.1
+            prohibits that, and there is no metrics endpoint to make them true.
+            Each item below maps to a shipping API surface: /api/guests,
+            /api/mvp/events/:id/invitations/send, and /api/rsvp. */}
         <View style={styles.section}>
           <View style={styles.socialProof}>
             <Text style={styles.socialProofText}>
-              Join thousands of hosts creating unforgettable experiences
+              Everything you need to host, in one place
             </Text>
             <View style={styles.statsContainer}>
               <View style={styles.stat}>
-                <Text style={styles.statNumber}>10k+</Text>
-                <Text style={styles.statLabel}>Events Created</Text>
+                <Text style={styles.statNumber}>📋</Text>
+                <Text style={styles.statLabel}>Guest lists</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.stat}>
-                <Text style={styles.statNumber}>50k+</Text>
-                <Text style={styles.statLabel}>Happy Guests</Text>
+                <Text style={styles.statNumber}>✉️</Text>
+                <Text style={styles.statLabel}>Invitations</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.stat}>
-                <Text style={styles.statNumber}>4.9★</Text>
-                <Text style={styles.statLabel}>Rating</Text>
+                <Text style={styles.statNumber}>✅</Text>
+                <Text style={styles.statLabel}>RSVP tracking</Text>
               </View>
             </View>
           </View>
@@ -333,7 +340,7 @@ export const LandingScreen = ({ onGetStarted, onSignIn }: LandingScreenProps) =>
             Making events memorable, one invitation at a time
           </Text>
           <Text style={styles.footerCopyright}>
-            © 2025 PartyHause. All rights reserved.
+            © {new Date().getFullYear()} PartyHause. All rights reserved.
           </Text>
         </View>
       </Animated.ScrollView>
